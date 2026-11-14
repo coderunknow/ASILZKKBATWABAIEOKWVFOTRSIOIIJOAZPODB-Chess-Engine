@@ -259,3 +259,26 @@ ten were implementation defects/footguns fixed in code or its tests.
   weights); match-only variance = w' Sigma_m w. (6) Boundary bootstrap replicates (score 0/1
   in any resample) fail closed (EvidenceError) instead of clamping. (7) anchors: error_convention
   must be one of sd/se/ci95/ci90/ci99 — ambiguity is rejected, matching §9.6 conversion rules.
+
+- 2026-11-14 (adversarial review, mission §3.8 — independent pass over high-risk paths):
+  * match.py clock: charged time = set_position+go round-trip wall time (IPC latency charged
+    to the mover — conservative: never grants extra time; may flag ~ms early). ACCEPTED.
+  * match.py go() crash-net in clock mode = remaining clock + 60 s: a hung engine blocks the
+    worker up to that bound, then counts toward the per-side abort limit. ACCEPTED (bounded).
+  * GameClock tracks periods per side independently (each side gets its own 40-move counter
+    and period grants) — correct for repeating TC. Verified by unit tests.
+  * Manifest identity: white_artifact/black_artifact hash the --white-cmd/--black-cmd of the
+    BATCH (colors swap per game via AB/BA); aggregate_shards checks frozen hashes against
+    those top-level artifacts — consistent, no per-game ambiguity.
+  * aggregate_shards duplicate-key = (shard_id, schedule_index, replay_depth): replayed
+    attempts share schedule_index but differ in replay_depth — no false duplicate hits.
+  * rating_estimator: load_batch 'name=path' splits on '=' (paths never contain '=' on POSIX/
+    Windows runners); boundary scores raise EvidenceError (fail closed, never clamped);
+    mat_inverse verifies A*inv=I to 1e-6 before use; combine_batches λ from match-only
+    variances per §9.8 and shared calibration c* added ONCE (never pooled).
+  * Gate has NO sequential-testing path: sample size fixed (--min-games), no alpha-spending
+    entry points — matches §9.5 (fixed preregistered samples; new batches need new
+    preregistration). REPORTED, nothing to change.
+  * Residual risk accepted: clock policy 'add' vs cutechess/CCRL semantics not yet verified
+    against cutechess source (pilot task); Flawless clock-management verified at smoke level
+    (tests/clock_smoke.rs), deeper budget behavior under real 40/15 load is a pilot task.
