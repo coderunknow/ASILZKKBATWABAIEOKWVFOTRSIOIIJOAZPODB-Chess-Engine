@@ -71,7 +71,9 @@ See STATUS.md "Measured strength probes" for the table. Raw evidence: `benches/p
 (40 games), `benches/probe-003-sf19lite-skill5/` (40, pre-RFP/CE build, 2026-11-14T03:28:59Z),
 `benches/probe-002-sf19lite-skill10/` (40), `benches/probe-004-sf19lite-skill5-rfp/` (40, RFP+CE
 build, 2026-11-14T04:26:01Z), `benches/ab-004-rfp-checkext/`
-(40 A/B vs pre-change build, movetime 50 ms) — PGN + games.jsonl + meta.json committed.
+(40 A/B vs pre-change build, movetime 50 ms), `benches/probe-005-postfix-validation/`
+(40, post-refactor builds, 100 ms/move; Flawless 24/40 = 0.600, 95% CI [0.463, 0.725],
+logistic +70 CI [−26, +168]; engine binary SHA-256 9d7b22d5d1af0c56b0d56f908edd679b8628d90126d2fe5efc3c4faf24144208, git commit 45f8507 in meta.json) — PGN + games.jsonl + meta.json committed.
 **Binary-hash caveat:** probe-003 and probe-004 meta.json predate the binary-hashing instrumentation
 (added 2026-11-14); they record the probe command line but NOT the probed binary's SHA-256 or the
 git commit — their engine identity rests on the recorded cmd + timestamps, not a verifiable hash.
