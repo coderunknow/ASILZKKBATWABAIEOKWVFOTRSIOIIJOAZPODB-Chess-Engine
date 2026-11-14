@@ -13,7 +13,7 @@ fn main() {
     match args.get(1).map(|s| s.as_str()) {
         None => {
             eprintln!("{ENGINE_NAME} {ENGINE_VERSION} — UCI chess engine");
-            eprintln!("usage: {ENGINE_NAME} [uci|perft <depth> [fen]|divide <depth> [fen]|bench]");
+            eprintln!("usage: {ENGINE_NAME} [uci|perft <depth> [fen]|divide <depth> [fen]|bench|eval [fen]|bench_eval]");
             std::process::exit(2);
         }
         Some("perft") => cmd_perft(&args[2..]),
@@ -95,9 +95,93 @@ fn cmd_divide(args: &[String]) {
     println!("total = {total}  ({:.3}s)", dt.as_secs_f64());
 }
 
+/// Fixed-depth search benchmark over a fixed set of positions.
+///
+/// Prints per-position depth/score/nodes, then a total: nodes + an FNV-1a
+/// signature over (fen, depth, bestmove) — a deterministic regression signature
+/// for the search implementation on this machine. Timing varies by machine;
+/// node counts and the signature should not change for identical engine code.
 fn cmd_bench() {
-    eprintln!("bench: search not implemented yet");
-    std::process::exit(1);
+    use asilzkkbbatwabaieokwvfotrsioiij::search::{SearchLimits, Searcher};
+    use asilzkkbbatwabaieokwvfotrsioiij::tt::TranspositionTable;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    const DEPTH: i32 = 10;
+    let positions = [
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "rn1q1rk1/pb4pp/1p2pn2/3p2b1/2PP3B/2N2N2/PP2QPPP/R2R1K2 w - - 2 16",
+        "2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - 0 1",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+        "3r2k1/ppq2pp1/2n1pn1p/3p2P1/2PP2P1/P1N2N2/1PQ1R2P/2R3K1 w - - 7 22",
+        "8/8/8/8/8/8/8/K6k w - - 0 1",
+        "6k1/8/6K1/8/8/8/8/1Q6 w - - 0 1",
+        "r1b1kb1r/pp1p1ppp/2n2n2/q1pp4/3P4/2PB1N2/PP3PPP/RNBQ1RK1 w kq - 0 1",
+    ];
+
+    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    let t = Instant::now();
+    let mut total_nodes = 0u64;
+    let mut signature: u64 = 0xcbf29ce484222325;
+    let mut fnv = |bytes: &[u8]| {
+        for &b in bytes {
+            signature ^= b as u64;
+            signature = signature.wrapping_mul(0x100000001b3);
+        }
+    };
+
+    for (i, fen) in positions.iter().enumerate() {
+        let mut pos = Position::from_fen(fen).unwrap_or_else(|e| {
+            eprintln!("bench FEN {i} invalid: {e}");
+            std::process::exit(1);
+        });
+        let stop = Arc::new(AtomicBool::new(false));
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: DEPTH,
+            max_nodes: u64::MAX,
+            soft_ms: u64::MAX,
+            hard_ms: u64::MAX,
+            infinite: false,
+            ponder: false,
+        }));
+        let mut tt = TranspositionTable::new(16);
+        let result =
+            Searcher::new(&mut tt, &stop, limits).search_root(&mut pos, None, 1, &mut |_| {});
+        total_nodes += result.nodes;
+        let bm = result.best_move.to_uci();
+        fnv(fen.as_bytes());
+        fnv(b"|");
+        fnv(&DEPTH.to_le_bytes());
+        fnv(bm.as_bytes());
+        fnv(b"\n");
+        println!(
+            "bench [{i:2}]: depth {} score {:6} nodes {} pv {}",
+            result.depth,
+            result.score_cp,
+            result.nodes,
+            result
+                .pv
+                .iter()
+                .map(|m| m.to_uci())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
+
+    let dt = t.elapsed().as_secs_f64();
+    println!("bench signature: {signature:016x}");
+    println!(
+        "bench: {} positions at depth {} — {} nodes in {:.2}s ({} nps)",
+        positions.len(),
+        DEPTH,
+        total_nodes,
+        dt,
+        (total_nodes as f64 / dt.max(1e-9)) as u64
+    );
 }
 
 /// Batch mode: read FENs (one per line) from stdin; print the engine's legal moves for each.
