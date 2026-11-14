@@ -48,6 +48,7 @@ committed under `benches/probe-*`.
 | probe-003 | Skill 5 (pre-RFP/CE) | 11/13/16 | 0.438 | [0.325, 0.550] | −44 (CI [−127, +35]) |
 | probe-002 | Skill 10 | 1/7/32 | 0.113 | [0.050, 0.175] | −359 (CI [−512, −269]) |
 | probe-004 | Skill 5 (RFP+CE build) | 14/14/12 | 0.525 | [0.412, 0.637] | +17 (CI [−61, +98]) |
+| probe-005 | Skill 5 (post-refactor, 100 ms) | 20/8/12 | 0.600 | [0.463, 0.725] | +70 (CI [−26, +168]) |
 | A/B 004 | vs pre-change build, 50 ms | 18/13/9 | 0.613 | [0.487, 0.725] | +80 (CI [−9, +168]) |
 
 Conclusion (honest): our strength is bracketed between pinned SF-Skill-5 and SF-Skill-10 at
@@ -77,20 +78,27 @@ signature unchanged `fc907eba40b7869f`, 2,221,199 nodes @ d10 (43% reduction; 25
 
 ## CI status on current head (2026-11-14, verified via gh run list/view)
 
+- Head `ca61ea6` (PR #1): CI run **43579289640 — SUCCESS** (ubuntu-latest, windows-latest, msrv rust 1.80 all green).
+- Head `89189a6` (docs-only): CI run 43579193978 — SUCCESS (all three jobs).
 - Head `e769d9a` (PR #1): CI run **43578826380 — SUCCESS** (ubuntu-latest, windows-latest, msrv rust 1.80 all green).
 - Head `45f8507`: CI run 43578590768 — SUCCESS (all three jobs).
 - Head `1fb14ae`: CI run 43578036659 — SUCCESS (all three jobs).
 - (Failures 43577034924 on db174e4 and 43577274974 on 4aa7f06 were the clippy `too_many_arguments`
   episode — fixed by StoreRequest in d6dc221; remote annotations then confirmed the root cause.)
-- CodeRabbit re-review requested 2026-11-14T~09:25Z on head `e769d9a` (previous review 5903125228
-  covered db174e4-era code; its 13 findings are dispositioned in DESIGN_LOG.md). Result pending —
-  see "Reviews" below. PR #1 stays OPEN, unmerged, never marked ready on CI alone.
+- CodeRabbit re-review: requested 2026-11-14T09:25Z on head `e769d9a` → returned **"Review rate
+  limited"** (neutral, e769d9a check-run). The automatic push-review path is disabled for this OSS
+  repository ("Review skipped: manual review required for this OSS repository" on 89189a6/ca61ea6).
+  `@coderabbitai resume` posted 2026-11-14T09:47Z — awaiting result. **No review pass may be claimed
+  until CodeRabbit completes on the exact final head SHA.**
 - Evidence pipeline: scripts/match.py now records hardware/OS, per-side artifact SHA-256 (incl.
   dynamically loaded WASM), git commit, adjudication and color-pairing text in meta.json; pre-
   registered ≥60-line opening suites for batch A/B (`benches/rating-openings-batchA.txt`,
   `batchB.txt`, FEN-verified, mutually disjoint); value-free anchor descriptor template
   (`benches/anchor-pool.template.json`). Manifest is now written and closed before the first game
-  so provenance survives an interrupted batch.
+  so provenance survives an interrupted batch (fixed after observing it buffered for a whole run).
+- probe-005 (post-refactor regression probe vs SF19-lite Skill 5, committed): 24/40 = 0.600,
+  opening-clustered 95% CI [0.463, 0.725], logistic +70 (CI [-26, +168]), 0 engine-error games —
+  same band as probe-004 (0.525), no regression. Relative statistic only; not a rating.
 
 ## Rating status (absolute; release-gate relevant)
 
@@ -119,7 +127,7 @@ Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, not draft.
 
 | Reviewer | State | Notes |
 |----------|-------|-------|
-| CodeRabbit | re-review requested 2026-11-14T~09:25Z on head e769d9a (previous: COMPLETED on db174e4-fix era as review 5903125228, 13/13 findings dispositioned in DESIGN_LOG.md; see `git log` for 50adb09/e769d9a) | REVIEW: do not claim pass before the bot completes on this exact final SHA — verify `gh pr view 1 --json reviews` and map the reviewed SHA; CodeRabbit reviews the SHA current at completion, not at request time |
+| CodeRabbit | re-review requested 2026-11-14T09:25Z → **"Review rate limited"** on e769d9a; push-triggered reviews are DISABLED for this OSS repo ("manual review required for this OSS repository" on 89189a6/ca61ea6); `@coderabbitai resume` posted 2026-11-14T09:47Z — awaiting result. Prior substantive review 5903125228 (13/13 dispositioned) | REVIEW: do not claim pass before the bot completes on this exact final SHA — verify `gh api repos/coderunknow/FlawLessChess/commits/<sha>/check-runs` and map the reviewed SHA; manual review is the only working path (push path disabled), and it is rate limited — retry at the next hour boundary if resume fails |
 | GitHub Copilot | BLOCKED | quota insufficient at default effort (2026-11-14). Retry at LOWER effort requested by task but requires the web UI reviewers panel (effort selection); API re-request rejected (`422: not a collaborator`); docs.github.com unreachable from sandbox. No findings recorded. |
 | Codex | RATE_LIMITED | documented retry (`@codex review`) attempted 2026-11-14T05:47Z → "You have reached your Codex usage limits for code reviews." Prior run at 05a36c0: code review FAILED (usage limit), no findings available. |
 | Qodo | BLOCKED | "Qodo reviews are paused because your trial has ended." (billing-blocked, 2026-11-14). No code findings. |
