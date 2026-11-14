@@ -200,7 +200,7 @@ impl UciEngine {
                         list.push(Move::from_uci(args[i]).unwrap());
                         i += 1;
                     }
-                    search_moves = Some(list);
+                    search_moves = if list.is_empty() { None } else { Some(list) };
                     continue;
                 }
                 "ponder" => {
@@ -343,6 +343,8 @@ impl UciEngine {
                 }
                 Err(_) => {
                     // Search thread panicked; unblock the GUI with a legal fallback.
+                    // The marker goes to stdout so GUIs and the match runner can see it.
+                    println!("info string search thread panicked; emitting fallback bestmove");
                     eprintln!("info string search thread panicked; emitting fallback bestmove");
                     match fallback_move {
                         Some(m) => println!("bestmove {m}"),

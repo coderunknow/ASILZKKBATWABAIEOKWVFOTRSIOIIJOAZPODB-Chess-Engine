@@ -316,3 +316,139 @@ fn perft_small_fast() {
     let mut pos = Position::startpos();
     assert_eq!(movegen::perft(&mut pos, 3), 8902);
 }
+
+// ---------- Audit regressions: draw-rule vs checkmate precedence ----------
+
+fn search_score(
+    fen: &str,
+    depth: i32,
+    searchmoves: Option<Vec<&str>>,
+) -> flawless::search::SearchResult {
+    use flawless::search::{SearchLimits, Searcher};
+    use flawless::tt::TranspositionTable;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    let mut pos = Position::from_fen(fen).unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let limits = Arc::new(std::sync::Mutex::new(SearchLimits {
+        max_depth: depth,
+        max_nodes: u64::MAX,
+        soft_ms: u64::MAX,
+        hard_ms: u64::MAX,
+        infinite: false,
+        ponder: false,
+    }));
+    let mut tt = TranspositionTable::new(4);
+    let moves = searchmoves.map(|v| {
+        v.iter()
+            .map(|s| flawless::types::Move::from_uci(s).unwrap())
+            .collect::<Vec<_>>()
+    });
+    Searcher::new(&mut tt, &stop, limits).search_root(&mut pos, moves, 1, &mut |_| {})
+}
+
+// FIDE: checkmate ends the game immediately — it takes precedence over the
+// fifty-move draw (FIDE 9.6.2 makes the 75-move draw non-terminal when the
+// last move produced checkmate; mate always stands).
+#[test]
+fn mate_beats_fifty_move_rule() {
+    // Fool's mate final position, white to move, checkmated, halfmove clock 100.
+    let result = search_score(
+        "rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 100 75",
+        1,
+        None,
+    );
+    assert_eq!(
+        result.score_cp, -30_000,
+        "checkmate must outrank the fifty-move draw"
+    );
+}
+
+#[test]
+fn mate_beats_repetition_rule() {
+    let mut pos =
+        Position::from_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 10 10")
+            .unwrap();
+    pos.history.push(pos.hash); // simulate one earlier occurrence of this exact position
+    assert!(pos.is_repetition());
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let limits = std::sync::Arc::new(std::sync::Mutex::new(flawless::search::SearchLimits {
+        max_depth: 1,
+        max_nodes: u64::MAX,
+        soft_ms: u64::MAX,
+        hard_ms: u64::MAX,
+        infinite: false,
+        ponder: false,
+    }));
+    let mut tt = flawless::tt::TranspositionTable::new(4);
+    let result = flawless::search::Searcher::new(&mut tt, &stop, limits).search_root(
+        &mut pos,
+        None,
+        1,
+        &mut |_| {},
+    );
+    assert_eq!(
+        result.score_cp, -30_000,
+        "checkmate must outrank a repetition draw"
+    );
+}
+
+// The claimable draw still applies away from mate: non-check, winning material does
+// not save the game at 100 halfmoves.
+#[test]
+fn fifty_move_draw_still_applies_without_mate() {
+    let result = search_score("r7/8/8/8/8/5k2/8/6K1 w - - 100 75", 2, None);
+    assert_eq!(
+        result.score_cp, 0,
+        "non-mated position at halfmove 100 scores as a draw"
+    );
+}
+
+// Stalemate is a draw — never a fail-high of an enclosing search node.
+#[test]
+fn stalemate_root_scores_draw() {
+    // Black to move: Kh8 stalemated by Kf7 and Qg6 (not in check).
+    let result = search_score("7k/5K2/6Q1/8/8/8/8/8 b - - 0 1", 4, None);
+    assert_eq!(
+        result.score_cp, 0,
+        "stalemate must score 0, not a mate or a fail-high cp"
+    );
+}
+
+// go searchmoves must restrict the MultiPV=1 root search as well.
+#[test]
+fn searchmoves_restricts_root_search() {
+    let a = search_score(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        5,
+        Some(vec!["h2h3"]),
+    );
+    assert_eq!(
+        a.best_move.to_uci(),
+        "h2h3",
+        "search must honor the restricted root move set"
+    );
+    // sanity: unrestricted search does not pick h2h3 at depth 5 on this engine build
+    let b = search_score(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        5,
+        None,
+    );
+    assert_ne!(
+        b.best_move.to_uci(),
+        "h2h3",
+        "sanity anchor for the searchmoves restriction test"
+    );
+}
+
+#[test]
+fn searchmoves_empty_falls_back_to_all_legal() {
+    // Some(empty) is normalized by the UCI layer; the API's None means "all legal moves".
+    let result = search_score(
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        1,
+        None,
+    );
+    assert_ne!(result.best_move.to_uci(), "0000");
+}

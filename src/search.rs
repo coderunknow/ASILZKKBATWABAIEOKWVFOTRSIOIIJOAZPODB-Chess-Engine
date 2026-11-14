@@ -5,7 +5,9 @@
 //! in [`Searcher`] so a future parallel search can instance per thread.
 //!
 //! Draws honored inside search: repetition (2-fold along the search path), fifty-move rule,
-//! insufficient material; checkmate/stalemate handled by the no-legal-moves branch.
+//! insufficient material; checkmate/stalemate handled by the no-legal-moves branch, which is
+//! checked BEFORE any pruning heuristic so a terminal node can never be pruned or mis-scored.
+//! Mate takes precedence over claimable draw rules when the side to move is in check.
 
 use crate::eval::{
     ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_SCORE, PIECE_VALUE_MG,
@@ -76,6 +78,8 @@ pub struct Searcher<'a> {
     nodes: u64,
     seldepth: i32,
     start: Instant,
+    /// Legal moves allowed at the root (from `go searchmoves`). Applied at ply 0 only.
+    root_moves: Option<Vec<Move>>,
 }
 
 impl<'a> Searcher<'a> {
@@ -95,6 +99,7 @@ impl<'a> Searcher<'a> {
             nodes: 0,
             seldepth: 0,
             start: Instant::now(),
+            root_moves: None,
         }
     }
 
@@ -215,6 +220,11 @@ impl<'a> Searcher<'a> {
         if let Some(ref only) = root_moves {
             roots.retain(|m| only.contains(m));
         }
+        self.root_moves = if root_moves.is_some() {
+            Some(roots.clone())
+        } else {
+            None
+        };
         if roots.is_empty() {
             return SearchResult {
                 best_move: Move::NULL,
@@ -322,6 +332,7 @@ impl<'a> Searcher<'a> {
             }
             depth += 1;
         }
+        self.root_moves = None;
         best.seldepth = self.seldepth;
         best.nodes = self.nodes;
         best
@@ -402,18 +413,24 @@ impl<'a> Searcher<'a> {
         if ply >= MAX_PLY {
             return self.static_eval(pos);
         }
-        if pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material() {
+        let in_chk = in_check(pos);
+        // A dead position is a draw (FIDE 5.2.2/5.6), even if a check is on the board.
+        if pos.insufficient_material() {
             return DRAW_SCORE;
         }
-        if depth <= 0 {
-            return self.quiesce(pos, alpha, beta, ply);
+        // Claimable draw rules (repetition, fifty-move) never override checkmate:
+        // when the side to move is in check we fall through to the terminal check
+        // below so mate/stalemate is scored correctly (FIDE 9.3, 9.6 precedence).
+        if !in_chk && (pos.is_repetition() || pos.is_fifty_move()) {
+            return DRAW_SCORE;
         }
-        let in_chk = in_check(pos);
         let mut alpha = alpha;
         let alpha_entry = alpha;
         let is_pv = beta - alpha > 1;
 
-        // Transposition table probe
+        // Transposition table probe first: terminal nodes are deterministic, so a
+        // sufficient-depth entry is equally valid there — and this keeps TT-cutoff
+        // nodes off the movegen path.
         let key = pos.hash;
         let probe = self.tt.probe(key, ply);
         let tt_move = probe.best_move;
@@ -426,6 +443,33 @@ impl<'a> Searcher<'a> {
                     _ => {}
                 }
             }
+        }
+
+        // Terminal (no legal moves) BEFORE any pruning/fail-soft heuristic:
+        // mate takes precedence over draw rules; stalemate is a draw.
+        let mut moves = generate_legal(pos);
+        if ply == 0 {
+            if let Some(ref only) = self.root_moves {
+                let mut j = 0usize;
+                for i in 0..moves.len {
+                    if only.contains(&moves.moves[i]) {
+                        moves.moves[j] = moves.moves[i];
+                        moves.scores[j] = moves.scores[i];
+                        j += 1;
+                    }
+                }
+                moves.len = j;
+            }
+        }
+        if moves.len == 0 {
+            return if in_chk {
+                -MATE_SCORE + ply
+            } else {
+                DRAW_SCORE
+            };
+        }
+        if depth <= 0 {
+            return self.quiesce(pos, alpha, beta, ply);
         }
 
         // Null-move pruning (not in check, not PV, non-trivial material)
@@ -466,14 +510,6 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        let mut moves = generate_legal(pos);
-        if moves.len == 0 {
-            return if in_chk {
-                -MATE_SCORE + ply
-            } else {
-                DRAW_SCORE
-            };
-        }
         self.order_and_score(pos, &mut moves, tt_move, ply as usize);
 
         let mut best_score = -INF_SCORE;
@@ -580,6 +616,17 @@ impl<'a> Searcher<'a> {
         let in_chk = in_check(pos);
         let mut alpha = alpha;
 
+        // Terminal BEFORE the stand-pat cutoffs: stand-pat is only valid when the side
+        // to move has at least one legal move. Stalemate is a draw; mate is scored.
+        let mut moves = generate_legal(pos);
+        if moves.len == 0 {
+            return if in_chk {
+                -MATE_SCORE + ply
+            } else {
+                DRAW_SCORE
+            };
+        }
+
         if !in_chk {
             let stand_pat = self.static_eval(pos);
             if stand_pat >= beta {
@@ -591,15 +638,6 @@ impl<'a> Searcher<'a> {
             if stand_pat + 200 < alpha {
                 return alpha; // delta pruning
             }
-        }
-
-        let mut moves = generate_legal(pos);
-        if moves.len == 0 {
-            return if in_chk {
-                -MATE_SCORE + ply
-            } else {
-                DRAW_SCORE
-            };
         }
         if !in_chk {
             let mut j = 0;

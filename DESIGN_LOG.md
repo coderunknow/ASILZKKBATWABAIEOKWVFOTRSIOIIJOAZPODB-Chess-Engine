@@ -73,3 +73,35 @@
 - ADR-0002 recorded. Historical benchmark artifacts/PGNs/append-only logs NOT rewritten (old name
   retained there deliberately). Branch name unchanged (mission: do not rename existing branch).
 - Verified: build OK, UCI id line reports Flawless, 18/18 tests pass.
+
+## 2026-11-14 — Audit pass 1: terminal/draw precedence + panic-fallback plumbing
+
+Defects found and fixed (all reproduced by failing→passing tests in tests/correctness.rs):
+
+1. `search()` returned `DRAW_SCORE` for repetition/fifty-move nodes BEFORE detecting checkmate —
+   a mated position at halfmove ≥ 100 (or reached off a repeating path) scored as a draw.
+   Fix: insufficient-material remains an immediate draw (FIDE dead position); repetition/fifty-move
+   shortcuts now require `!in_check`; the no-legal-moves terminal check runs BEFORE null-move/
+   futility/RFP and scores mate as -MATE+ply (mate precedence, FIDE 9.6.2). Stalemate → DRAW_SCORE.
+2. `quiesce()` applied the stand-pat beta cutoff and delta pruning BEFORE the terminal check —
+   a stalemate qsearch node could return a fail-high (beta) or a bogus upper bound (alpha).
+   Fix: generate legal moves first; terminal check before any stand-pat cutoff.
+3. Reverse futility pruning could fire on a terminal (stalemate) node returning `beta` — now
+   unreachable (terminal check precedes RFP).
+4. `go searchmoves X` was silently ignored by the MultiPV=1 search path (root restriction was
+   only applied to the MultiPV>1 enumeration, not to the PVS main line). Fix: root filter applied
+   at ply 0 inside `search()` via a `root_moves` field on `Searcher`; `go searchmoves` with an
+   empty move list now falls back to all legal moves instead of emitting `bestmove 0000`.
+5. Panic fallback (search thread dies): engine now emits a GUI-visible
+   `info string search thread panicked; emitting fallback bestmove` on stdout; match.py detects it,
+   tags the game `engine_error=true` with `engine_error_turns`; stats.py excludes such games from
+   statistics unless `--include-engine-error` is passed. Previously the fallback was invisible
+   (marker went to stderr, which match.py devnull'd) so panicking games were counted as normal.
+6. CI: removed remaining `|| true` masks on smoke steps; added a UCI bestmove smoke (depth 2) and
+   an MSRV (Rust 1.80) job; Windows + Linux both run smoke tests at runtime.
+
+Consequences:
+- bench signature changed d790483532d87af0 → 3086f65159758c9d (2,317,474 nodes): positions 4/6/7
+  PVs shifted after the unsound-pruning removal and mate-precedence fix (deterministic per build).
+- 24/24 tests incl. 6 new audit regressions. DIFTEST (perft d=2, 2321 positions): 0 mismatches.
+- The bench change is a correctness consequence, NOT an optimization; no strength gain claimed.

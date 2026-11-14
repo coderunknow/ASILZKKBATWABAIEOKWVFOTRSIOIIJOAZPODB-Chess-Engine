@@ -43,6 +43,7 @@ class UciEngine:
             stderr=subprocess.DEVNULL,
             bufsize=0,
         )
+        self.engine_error_events: list[str] = []
         self._send("uci")
         self._wait_for("uciok", timeout=60.0)
         if hash_mb is not None:
@@ -92,6 +93,8 @@ class UciEngine:
         self._send(" ".join(args))
         while True:
             line = self._readline(300.0).decode(errors="replace").strip()
+            if line.startswith("info string") and "panicked" in line:
+                self.engine_error_events.append(line)
             if line.startswith("bestmove"):
                 parts = line.split()
                 return parts[1]
@@ -152,6 +155,7 @@ def play_game(
     board = chess.Board()
     apply_opening(board, omoves)
     move_count = len(board.move_stack)
+    engine_error_turns: list[int] = []
 
     while True:
         if board.is_game_over(claim_draw=True):
@@ -174,6 +178,8 @@ def play_game(
                 "moves": [m.uci() for m in board.move_stack],
                 "fen": board.fen(),
                 "move_count": len(board.move_stack),
+                "engine_error": True,
+                "engine_error_turns": engine_error_turns,
             }
         except TimeoutError:
             # engine failed to move in time -> loss on time/forfeit
@@ -187,6 +193,8 @@ def play_game(
                 "moves": [m.uci() for m in board.move_stack],
                 "fen": board.fen(),
                 "move_count": len(board.move_stack),
+                "engine_error": True,
+                "engine_error_turns": engine_error_turns,
             }
         dt = time.time() - t0
         try:
@@ -201,6 +209,8 @@ def play_game(
                     "moves": [m.uci() for m in board.move_stack],
                     "fen": board.fen(),
                     "move_count": len(board.move_stack),
+                    "engine_error": True,
+                    "engine_error_turns": engine_error_turns,
                 }
         except ValueError:
             return {
@@ -214,6 +224,9 @@ def play_game(
                 "move_count": len(board.move_stack),
             }
         board.push(move)
+        if mover.engine_error_events:
+            engine_error_turns.append(len(board.move_stack))
+            mover.engine_error_events = []
         if dt > 30:
             sys.stderr.write(f"slow move {move_uci} ({dt:.1f}s)\n")
 
@@ -227,6 +240,8 @@ def play_game(
         "moves": [m.uci() for m in board.move_stack],
         "fen": board.fen(),
         "move_count": len(board.move_stack),
+        "engine_error": bool(engine_error_turns),
+        "engine_error_turns": engine_error_turns,
     }
 
 

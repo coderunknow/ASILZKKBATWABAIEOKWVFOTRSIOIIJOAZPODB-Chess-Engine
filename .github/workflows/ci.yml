@@ -56,9 +56,32 @@ jobs:
           echo "$out" | grep -q '^uciok$' || { echo "missing uciok"; exit 1; }
           echo "$out" | grep -q '^readyok$' || { echo "missing readyok"; exit 1; }
 
+      - name: UCI bestmove smoke test (search depth 2)
+        shell: bash
+        run: |
+          out=$(printf 'uci\nisready\nposition startpos\ngo depth 2\nquit\n' | ./target/release/flawless uci)
+          echo "$out"
+          echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8]([qrbn])?' || { echo "no legal bestmove"; exit 1; }
+
       - name: Perft sanity (depth 3 startpos)
         shell: bash
         run: |
           out=$(./target/release/flawless perft 3)
           echo "$out"
           echo "$out" | grep -q '8902' || { echo "perft d3 mismatch"; exit 1; }
+
+  msrv:
+    name: msrv (rust 1.80)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.80.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.80.0
+
+      - name: Check on MSRV
+        run: cargo check --release
+        env:
+          CARGO_NET_OFFLINE: "false"

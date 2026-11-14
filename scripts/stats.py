@@ -18,14 +18,20 @@ import sys
 from collections import defaultdict
 
 
-def load(path: str) -> list[dict]:
+def load(path: str, include_engine_error: bool = False) -> tuple[list[dict], int]:
     games = []
+    skipped = 0
     with open(path) as f:
         for line in f:
             line = line.strip()
-            if line:
-                games.append(json.loads(line))
-    return games
+            if not line:
+                continue
+            g = json.loads(line)
+            if g.get("engine_error") and not include_engine_error:
+                skipped += 1
+                continue
+            games.append(g)
+    return games, skipped
 
 
 def elo_from_score(s: float) -> float:
@@ -91,9 +97,16 @@ def main() -> int:
     ap.add_argument("--focus", required=True, help="engine name to analyze")
     ap.add_argument("--bootstrap", type=int, default=10000)
     ap.add_argument("--seed", type=int, default=20261114)
+    ap.add_argument("--include-engine-error", action="store_true",
+                    help="include games flagged engine-error (default: excluded, reported separately)")
     args = ap.parse_args()
 
-    games = load(args.jsonl)
+    games, skipped = load(args.jsonl, include_engine_error=args.include_engine_error)
+    if skipped:
+        print(f"engine-error games excluded from statistics: {skipped}")
+    if not games:
+        print("no scorable games after exclusions", file=sys.stderr)
+        return 2
     by_opening, clusters = analyze(games, args.focus)
     total_games = sum(c[1] for c in clusters)
     total_score = sum(c[0] for c in clusters)
