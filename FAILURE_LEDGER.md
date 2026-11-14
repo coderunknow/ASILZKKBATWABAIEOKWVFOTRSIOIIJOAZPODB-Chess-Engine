@@ -126,3 +126,29 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   (correctly). Fix: build transitively consistent synthetic worlds (per-anchor score patterns
   matching published gaps). Uniform per-opening score clusters make Sigma_m degenerate (zero
   variance) and force the GLS fallback — synthetic fixtures must use heterogeneous clusters.
+
+## 2026-11-14 — Anchor-verify hosted pipeline: 5 iterative failures resolved (evidence preserved)
+
+- Attempt: rebuild all candidate anchors on hosted runners (anchor-verify.yml) with UCI identity
+  + SHA-256 + license checks (mission §3.2).
+- Failures, in order, each diagnosed via check-run annotations (the only runner readout):
+  1. `ls LICENSE* COPYING* license*` exit-6 trap: unmatched globs make `ls` fail even when
+     LICENSE matched. Fixed with `shopt -s nullglob` array test.
+  2. `sed 's/\n/%0A/g'` line-based annotation escaping never matches (sed is line-oriented);
+     replaced with python replace() chunking.
+  3. WyldChess download 404: tags are `v1.2`/`v1.1` (script derived `1.2`). Fixed prefix.
+  4. Raven binaries abort at startup on Ubuntu 24.04 (`*** buffer overflow detected ***`,
+     rc=134): upstream `parsefen` 1-byte VLA overrun (position.c:27, ASAN: dynamic-stack-
+     buffer-overflow, strcpy into `char fen[strlen(ofen)]`). Hardened gcc13/_FORTIFY_SOURCE=3
+     traps it; author-era builds did not. Anchor source NEVER patched; built with
+     -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 as documented accommodation (research evidence).
+  5. SF10 node-count parse missed `Nodes searched  :` spacing → regex fixed; calibration job
+     green (factor k=1.0291 vs i7-4770K).
+- Raven 0.50–0.90 then EXCLUDED anyway: NO license file at any tested revision (LICENSE.md
+  GPL-3.0 only added 2025-02-07 at HEAD) — unverifiable license under the fail-closed rule.
+- Result: 6/6 pool anchors green on runners (run 43597866181) + verify-flawless (bench
+  signature fc907eba40b7869f reproduced) + sf10-calibration. Pool frozen in
+  benches/anchor-pool.json; rating-run acquire step implemented (artifact download + hash
+  verify, rebuild fallback, fail-closed).
+- Lesson: annotate real stderr/rc on every runner step; glob-listing tests must use nullglob;
+  pin tag names verbatim from the tags API; license must exist at the EXACT revision.

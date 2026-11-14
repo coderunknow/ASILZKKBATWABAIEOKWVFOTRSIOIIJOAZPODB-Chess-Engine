@@ -138,3 +138,21 @@
   Stash 14.0 (2085). benches/anchor-research-20261114.md records all provenance. STATUS.md
   Rating-status section updated (blocker + next actions revised). DESIGN_LOG adversarial
   review entry added (mission §3.8). Commits: 5823fff, d25b683, 82ca55b, 4ab675d, + docs.
+
+- 2026-11-14 (seg 11 — anchor verification complete; pool frozen): workspace restore #5
+  recovered via fetch+reset (d023ee8 intact on origin). Lower-band identity research:
+  Vice 1.0 unverifiable (bluefeversoft/vice = "Vice 1.2" + Chapter 97+ branches only),
+  Rival 1.18/Bubble 1.5/Schola 1.1.0 no verifiable repos (exclusions recorded), wowl 1.3.7
+  FOUND (eric-ycw/wowl tag v1.3.7, MIT, CCRL 1849±22/630g). Built all ladder candidates
+  locally (11 binaries; 3 hash-reproducible across the restore). anchor-verify.yml written
+  (matrix rebuild + UCI id + SHA-256 + LICENSE + verify-flawless bench-signature + SF10
+  calibration vs i7-4770K reference 2054ms/3,939,338 nodes from Tors3/CCRL_ScirptsTests).
+  5 runner failures diagnosed and fixed via annotations (see FAILURE_LEDGER 2026-11-14 entry).
+  Ravens excluded (no license at tested revisions). SF10 factor k=1.0291 → 40/15 wall-clock
+  within ~3% of CCRL equivalence. RUNNER-VERIFIED POOL FROZEN: benches/anchor-pool.json
+  (Wowl 1.3.7=1849±22, Topple 0.1.1=2324±17, Topple 0.2.1=2439±14, akimbo 0.1.1=2441±19,
+  WyldChess 1.2=2445±21, WyldChess 1.1=2474±21; all ci95; run 43597866181 artifacts).
+  rating-run.yml acquire step implemented (artifact download + hash-verify, rebuild fallback).
+  MERGE_READINESS.md created (§7 checklist with evidence). Local gates: pool schema ✓ (match.py
+  fail-closed validator), YAML ✓, test_match 104/104, test_rating_estimator 46/46, cargo 33/33.
+  Commits: 5b2cc78, 5a77079, 59c8a0c, 5fd73b1, 086feb8, 0d8287b + this.

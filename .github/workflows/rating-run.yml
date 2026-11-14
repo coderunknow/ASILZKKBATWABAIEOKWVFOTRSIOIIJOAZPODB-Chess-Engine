@@ -118,10 +118,44 @@ jobs:
       - name: Acquire and verify anchor binaries
         env:
           ANCHOR_ID: ${{ github.event.inputs.anchor_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "acquire anchor binaries for $ANCHOR_ID from the frozen pool" >&2
-          echo "IMPLEMENTATION PENDING: waiting for the verified anchor pool" >&2
-          echo "(benches/anchor-pool.json with real, verified values)." >&2
+          set -euo pipefail
+          POOL=benches/anchor-pool.json
+          python3 - <<'PY' > /tmp/entry.json
+          import json, os, sys
+          pool = json.load(open("benches/anchor-pool.json"))
+          key = os.environ["ANCHOR_ID"]
+          for eng in pool["engines"]:
+              if eng.get("key") == key:
+                  json.dump(eng, sys.stdout)
+                  break
+          else:
+              sys.exit(f"anchor id {key!r} not in frozen pool")
+          PY
+          WANTED=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['sha256'])")
+          ART=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['artifact'])")
+          RUNID=$(python3 -c "import json; print(json.load(open('benches/anchor-pool.json'))['verification']['run_id'])")
+          mkdir -p anchors
+          # Primary: the exact anchor-verify runner binary (byte-exact evidence).
+          if gh run download "$RUNID" -n "$ART" -D /tmp/anchor-bin 2>/dev/null && [ -f /tmp/anchor-bin/anchor-binary ]; then
+            cp /tmp/anchor-bin/anchor-binary "anchors/$ANCHOR_ID"
+            MODE="artifact $ART"
+          else
+            # Fallback (artifact expired): rebuild from the pinned source and
+            # require the binary hash to match the frozen pool (fail closed).
+            echo "artifact unavailable — rebuilding from pinned source" >&2
+            bash scripts/anchor_build.sh "$ANCHOR_ID" /tmp/anchor-rebuild > /tmp/rebuild.json
+            cp "/tmp/anchor-rebuild/$ANCHOR_ID.src/$(python3 -c "import json; print(json.load(open('/tmp/rebuild.json'))['binary'])")" "anchors/$ANCHOR_ID"
+            MODE="rebuild from pinned source"
+          fi
+          chmod +x "anchors/$ANCHOR_ID"
+          GOT=$(sha256sum "anchors/$ANCHOR_ID" | cut -d' ' -f1)
+          if [ "$GOT" != "$WANTED" ]; then
+            echo "::error::anchor binary hash mismatch for $ANCHOR_ID: got $GOT want $WANTED (mode=$MODE)"
+            exit 11
+          fi
+          echo "anchor $ANCHOR_ID verified sha256=$GOT (mode=$MODE)"
           echo "This shard FAILS CLOSED until then." >&2
           exit 1
 

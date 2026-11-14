@@ -1,0 +1,200 @@
+{
+  "_note": "FROZEN anchor pool for the CCRL-40/15-anchored rating gate (docs/RATING_PROTOCOL.md §2/§9). Frozen 2026-11-14 after hosted-runner verification (anchor-verify.yml run 43597866181, head 086feb8); do NOT modify after confirmatory batches begin — substitution after observing confirmatory results is forbidden (§8.3). Every binary_sha256 below is the hash of the hosted-runner BUILD (ubuntu-24.04, gcc/g++ 13.3.0, rustc 1.99.0); local hashes are not evidence. Ratings/errors are the published CCRL 40/15 values as of the November 13, 2026 list; published errors are 95% confidence intervals ('+ and − — 95% confidence intervals', list text), entered here as error_convention ci95.",
+  "rating_source": "CCRL 40/15 rating list (all engines) — https://computerchess.org.uk/4040/rating_list_all.html",
+  "list_publication_date": "2026-11-13",
+  "retrieval_date": "2026-11-14",
+  "list_sha256": "ce365c55b2869502de6addeada4c261d3bd2f50a5a9aef484db9f571aabe15f0",
+  "time_control": "40/15 repeating (40 moves in 15 minutes per side), ponder off — CCRL 40/15 class; methodology on the list: 'Ponder off, General book (up to 12 moves), 3-4-5 piece EGTB; Time control: Equivalent to 40 moves in 15 minutes on an Intel i7-4770k; Computed with Bayeselo'",
+  "calibration": {
+    "method": "Stockfish 10 (official sf_10 tag) bench vs CCRL reference machine",
+    "reference": "i7-4770K: SF10 bench 3,939,338 nodes in 2054 ms (Tors3/CCRL_ScirptsTests benchmark/ccrl_bench.py; constants REF_NODES=3939338 REF_TIME_MS=2054.0 in Tors3/TorsGUI-CCRL tc.rs)",
+    "runner_runs_ms": [
+      1998,
+      1984,
+      1996
+    ],
+    "runner_median_ms": 1996.0,
+    "factor_k": 1.0291,
+    "equivalent_tc_minutes_per_40_moves": 14.5764,
+    "decision": "batches play 40/15 wall-clock; ~3% deviation from i7-4770K equivalence documented here and in batch manifests; null controls provide the experimental validation of score transferability at this TC",
+    "evidence": "anchor-verify.yml run 43597866181 job sf10-calibration (artifact sf10-calibration-43597866181)"
+  },
+  "verification": {
+    "workflow": "anchor-verify.yml",
+    "run_id": 43597866181,
+    "head_sha": "086feb8",
+    "image": "ubuntu-24.04 (image=ubuntu24 20261111.370.1)",
+    "toolchain": "gcc/g++ 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1), rustc 1.99.0 (b940084d7), cargo 1.99.0",
+    "artifact_pattern": "anchor-<key>-43597866181 (contains anchor.json, build log, built binary)"
+  },
+  "engines": [
+    {
+      "key": "wowl-1.3.7",
+      "name": "Wowl",
+      "version": "1.3.7",
+      "ccrl_entry": "Wowl 1.3.7",
+      "published_elo": 1849,
+      "published_error": 22,
+      "error_convention": "ci95",
+      "ccrl_games": 630,
+      "sha256": "98ccd00e7090b187887a1edb3c65eab91581396703f4a3faeeeadfca69301415",
+      "license": "MIT (LICENSE in source tree at tag v1.3.7)",
+      "license_verified": true,
+      "binary_source_url": "https://codeload.github.com/eric-ycw/wowl/tar.gz/refs/tags/v1.3.7",
+      "binary_downloaded": true,
+      "binary_sha256_verified": true,
+      "source_sha256": "5a4bbe4b27a42feaa5c813e7e2f55bd757860aa9555dc2db84aa0e5ef82ef901",
+      "repo": "eric-ycw/wowl",
+      "tag": "v1.3.7",
+      "build_cmd": "g++ -std=c++17 -O2 -include cmath src/*.cpp -o wowl",
+      "uci_id": "Wowl",
+      "id_mapping": "tag-mapped (engine id string carries no version; CCRL entry name matches the release tag v1.3.7)",
+      "artifact": "anchor-wowl-1.3.7-43597866181"
+    },
+    {
+      "key": "topple-0.1.1",
+      "name": "Topple",
+      "version": "0.1.1",
+      "ccrl_entry": "Topple 0.1.1 64-bit",
+      "published_elo": 2324,
+      "published_error": 17,
+      "error_convention": "ci95",
+      "ccrl_games": 928,
+      "sha256": "db75d4d816710b77810fb3b5d544b0f6f025542ff992a1c12301d7dffad5ffac",
+      "license": "MIT (LICENSE in source tree at tag v0.1.1)",
+      "license_verified": true,
+      "binary_source_url": "https://codeload.github.com/konsolas/ToppleChess/tar.gz/refs/tags/v0.1.1",
+      "binary_downloaded": true,
+      "binary_sha256_verified": true,
+      "source_sha256": "16ba25a5792541bdf0bf31c191bb228bd7147f7dfdf2995f6bc0d3a18a750fa8",
+      "repo": "konsolas/ToppleChess",
+      "tag": "v0.1.1",
+      "build_cmd": "g++ -std=c++17 -O2 -DNDEBUG -pthread -include climits -include cstdint -include cstring *.cpp -o topple",
+      "uci_id": "Topple v0.1.0",
+      "id_mapping": "tag-mapped with documented id-string lag (tag v0.1.1 source prints 'Topple v0.1.0'; the CCRL version trail skips 0.1.0 and 0.1.2, matching the release-tag names)",
+      "artifact": "anchor-topple-0.1.1-43597866181"
+    },
+    {
+      "key": "topple-0.2.1",
+      "name": "Topple",
+      "version": "0.2.1",
+      "ccrl_entry": "Topple 0.2.1 64-bit",
+      "published_elo": 2439,
+      "published_error": 14,
+      "error_convention": "ci95",
+      "ccrl_games": 1276,
+      "sha256": "c5443e6f81aef3bfa033ee6233e2064c9fcc50c64cd41f74adbbf66d61c38ac6",
+      "license": "MIT (LICENSE in source tree at tag v0.2.1)",
+      "license_verified": true,
+      "binary_source_url": "https://codeload.github.com/konsolas/ToppleChess/tar.gz/refs/tags/v0.2.1",
+      "binary_downloaded": true,
+      "binary_sha256_verified": true,
+      "source_sha256": "17cbff9d51748f9bcc12a3e4bf7a23a5cd285f6041e8e995f805893eeb8cae1e",
+      "repo": "konsolas/ToppleChess",
+      "tag": "v0.2.1",
+      "build_cmd": "g++ -std=c++17 -O2 -DNDEBUG -pthread -include climits -include cstdint -include cstring bb.cpp board.cpp endgame.cpp eval.cpp hash.cpp main.cpp movegen.cpp movesort.cpp search.cpp -o topple",
+      "uci_id": "Topple v0.2.1",
+      "id_mapping": "exact (engine id string matches the CCRL entry version)",
+      "artifact": "anchor-topple-0.2.1-43597866181"
+    },
+    {
+      "key": "akimbo-0.1.1",
+      "name": "akimbo",
+      "version": "0.1.1",
+      "ccrl_entry": "akimbo 0.1.1 64-bit",
+      "published_elo": 2441,
+      "published_error": 19,
+      "error_convention": "ci95",
+      "ccrl_games": 646,
+      "sha256": "d136b3b86a6ecea09ff9884d3252fe67fe6206183f1e182254a372dce8d9c26a",
+      "license": "MIT (LICENSE.md in source tree at tag v0.1.1)",
+      "license_verified": true,
+      "binary_source_url": "https://codeload.github.com/jw1912/akimbo/tar.gz/refs/tags/v0.1.1",
+      "binary_downloaded": true,
+      "binary_sha256_verified": true,
+      "source_sha256": "956279a2362399d7f91a5bf30ecc1223fda1a761e24d5456219714a6a3d858f5",
+      "repo": "jw1912/akimbo",
+      "tag": "v0.1.1",
+      "build_cmd": "cargo build --release --locked --offline",
+      "uci_id": "akimbo 0.1.1",
+      "id_mapping": "exact (engine id string matches the CCRL entry version)",
+      "artifact": "anchor-akimbo-0.1.1-43597866181"
+    },
+    {
+      "key": "wyldchess-1.2",
+      "name": "WyldChess",
+      "version": "1.2",
+      "ccrl_entry": "WyldChess 1.2 64-bit",
+      "published_elo": 2445,
+      "published_error": 21,
+      "error_convention": "ci95",
+      "ccrl_games": 520,
+      "sha256": "3ed2ed4d393be303cc075ba3c326a3596f96baf27bbd89394ff45749d3271eb4",
+      "license": "GPL-3.0 (LICENSE in source tree at tag v1.2)",
+      "license_verified": true,
+      "binary_source_url": "https://codeload.github.com/Mk-Chan/WyldChess/tar.gz/refs/tags/v1.2",
+      "binary_downloaded": true,
+      "binary_sha256_verified": true,
+      "source_sha256": "02d31d460ff10771b04eb3fc90d490c80994692b9b2a7dd8f9e82d5a28904fea",
+      "repo": "Mk-Chan/WyldChess",
+      "tag": "v1.2",
+      "build_cmd": "make CC=\"gcc -fcommon\" -j2",
+      "uci_id": "WyldChess",
+      "id_mapping": "tag-mapped (engine id string carries no version; CCRL entry name matches the release tag v1.2)",
+      "artifact": "anchor-wyldchess-1.2-43597866181"
+    },
+    {
+      "key": "wyldchess-1.1",
+      "name": "WyldChess",
+      "version": "1.1",
+      "ccrl_entry": "WyldChess 1.1 64-bit",
+      "published_elo": 2474,
+      "published_error": 21,
+      "error_convention": "ci95",
+      "ccrl_games": 506,
+      "sha256": "d52285f96539d6a5c11c875dc611600a34a20acdc2684e02deaca4c19724fbcc",
+      "license": "GPL-3.0 (LICENSE in source tree at tag v1.1)",
+      "license_verified": true,
+      "binary_source_url": "https://codeload.github.com/Mk-Chan/WyldChess/tar.gz/refs/tags/v1.1",
+      "binary_downloaded": true,
+      "binary_sha256_verified": true,
+      "source_sha256": "1a1dd1bc2b4889740af3aefc04cab51d51c76a37a16580b9987f1f3e6bc14813",
+      "repo": "Mk-Chan/WyldChess",
+      "tag": "v1.1",
+      "build_cmd": "make CC=\"gcc -fcommon\" -j2",
+      "uci_id": "WyldChess",
+      "id_mapping": "tag-mapped (engine id string carries no version; CCRL entry name matches the release tag v1.1)",
+      "artifact": "anchor-wyldchess-1.1-43597866181"
+    }
+  ],
+  "exclusions": [
+    {
+      "engine": "Raven 0.50/0.70/0.80/0.90 (CCRL 2081/2242/2341/2451)",
+      "reason": "no LICENSE/COPYING file at any tested revision (LICENSE.md GPL-3.0 only added 2025-02-07 at HEAD, never in tags); license unverifiable at the exact revisions → rejected under the fail-closed license rule. Also: upstream parsefen() 1-byte VLA overrun (position.c:27) aborts hardened builds; built with -D_FORTIFY_SOURCE=0 as research evidence only (see benches/anchor-research-20261114.md)."
+    },
+    {
+      "engine": "Carballo 0.5/0.8 (CCRL 2035/2144)",
+      "reason": "no source tags before v0.9 — exact-version source unavailable; version mapping impossible."
+    },
+    {
+      "engine": "Pirarucu 1.9.2 (CCRL 2188)",
+      "reason": "exact tag v1.9.2 exists but the engine is Kotlin/Gradle; the Gradle/Maven toolchain is unreachable from permitted networks and no release binary exists for that version."
+    },
+    {
+      "engine": "Counter 1.2 / 1.99 (CCRL 2447/2444)",
+      "reason": "version mapping between CCRL 'Counter 1.x' and ChizhovVadim/CounterGo release/tag naming is ambiguous."
+    },
+    {
+      "engine": "Vice 1.0 (CCRL 1997)",
+      "reason": "bluefeversoft/vice carries only 'Vice 1.2' on main and Chapter 97+ branches; no 'Vice 1.0' revision exists in any verifiable repository; mapping unverifiable."
+    },
+    {
+      "engine": "Rival 1.18 (CCRL 1904), Bubble 1.5 (1945), Schola 1.1.0 (1960)",
+      "reason": "no verifiable source repository with an exact matching version tag (searched GitHub extensively; candidates found were unrelated projects)."
+    },
+    {
+      "engine": "akimbo 0.2.0+ / Weiss / Demolito / FabChess / Igel / Halogen 13+ / Stash 21+ / Raven 1.x / Monolith / Daydreamer",
+      "reason": "CCRL ratings far above the feasible Flawless band (2500+) or identity/license verification pending; reserve pool extensions only if screening places Flawless high (documented rule: pool frozen before confirmatory batches, extensions only before preregistration)."
+    }
+  ]
+}
