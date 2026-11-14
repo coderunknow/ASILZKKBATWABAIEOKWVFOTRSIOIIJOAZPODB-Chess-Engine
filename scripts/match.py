@@ -141,6 +141,13 @@ def adjudicate(board: chess.Board) -> tuple[str, str] | None:
     return None
 
 
+def harvest_engine_errors(mover: UciEngine, plies: int, turns: list[int]) -> None:
+    """Move any buffered panic-fallback markers from the mover into the turns list."""
+    if mover.engine_error_events:
+        turns.append(plies)
+        mover.engine_error_events = []
+
+
 def play_game(
     white: UciEngine,
     black: UciEngine,
@@ -168,6 +175,7 @@ def play_game(
         try:
             move_uci = mover.go(movetime_ms=movetime_ms, depth=depth)
         except EngineExited:
+            harvest_engine_errors(mover, len(board.move_stack) + 1, engine_error_turns)
             loser = "white" if board.turn == chess.WHITE else "black"
             return {
                 "opening": oname,
@@ -182,6 +190,7 @@ def play_game(
                 "engine_error_turns": engine_error_turns,
             }
         except TimeoutError:
+            harvest_engine_errors(mover, len(board.move_stack) + 1, engine_error_turns)
             # engine failed to move in time -> loss on time/forfeit
             loser = "white" if board.turn == chess.WHITE else "black"
             return {
@@ -200,6 +209,7 @@ def play_game(
         try:
             move = chess.Move.from_uci(move_uci)
             if move not in board.legal_moves:
+                harvest_engine_errors(mover, len(board.move_stack) + 1, engine_error_turns)
                 return {
                     "opening": oname,
                     "white": white_name,
@@ -213,6 +223,7 @@ def play_game(
                     "engine_error_turns": engine_error_turns,
                 }
         except ValueError:
+            harvest_engine_errors(mover, len(board.move_stack) + 1, engine_error_turns)
             return {
                 "opening": oname,
                 "white": white_name,
@@ -224,9 +235,7 @@ def play_game(
                 "move_count": len(board.move_stack),
             }
         board.push(move)
-        if mover.engine_error_events:
-            engine_error_turns.append(len(board.move_stack))
-            mover.engine_error_events = []
+        harvest_engine_errors(mover, len(board.move_stack), engine_error_turns)
         if dt > 30:
             sys.stderr.write(f"slow move {move_uci} ({dt:.1f}s)\n")
 
