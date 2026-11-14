@@ -44,7 +44,13 @@ case "$KEY" in
       0.80) EXPECTED_ID="Raven 0.80" ;;
       0.90) EXPECTED_ID="Raven 0.90" ;;
     esac
-    BUILD='srcs=$(sed -n "s/^SOURCES = //p" makefile | tr -d "\r") && gcc $srcs -lm -O2 -DNDEBUG -fcommon -o raven'
+    # -D_FORTIFY_SOURCE=0: Raven's parsefen() has an upstream 1-byte VLA overrun at
+    # startup (position.c:27, strcpy into char fen[strlen(ofen)]). Modern hardened
+    # toolchains (Ubuntu 24.04 gcc13) abort on it; the author-era builds did not.
+    # The anchor source is NEVER patched; the flag reproduces era semantics and is
+    # recorded. If the anchor misbehaves in matches, the engine-error policy aborts
+    # the anchor (fail closed).
+    BUILD='srcs=$(sed -n "s/^SOURCES = //p" makefile | tr -d "\r") && gcc $srcs -lm -O2 -DNDEBUG -fcommon -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -o raven'
     LICENSE="GPL-3.0" ;;
   topple-0.1.1)
     REPO="konsolas/ToppleChess"; TAG="v0.1.1"; NAME="Topple"; VERSION="0.1.1"
