@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Statistics for match JSONL output: score, Elo difference, opening-clustered 95% bootstrap CI.
+"""Statistics for match JSONL output: score, Elo difference, opening-clustered 95% bootstrap CI + bootstrap SD.
 
 Method: after pairing games by opening, we bootstrap over *openings* (not individual
 games) so the confidence interval respects opening clustering — paired openings produce
@@ -35,16 +35,18 @@ def load(path: str, include_engine_error: bool = False) -> tuple[list[dict], int
 
 
 def elo_from_score(s: float) -> float:
-    s = min(max(s, 1e-6), 1 - 1e-6)
+    # Interior scores only; boundary handling lives in fmt_elo (never a clamped number).
+    s = min(max(s, 1e-9), 1 - 1e-9)
     return -400.0 * math.log10(1.0 / s - 1.0)
 
 
 def fmt_elo(s: float) -> str:
-    # Boundary scores carry no finite Elo estimate: report the boundary, not a fake +2400.
+    # Boundary scores carry NO finite Elo estimate: report the boundary, never a clamped
+    # number. Applies equally to point estimates and bootstrap interval endpoints.
     if s <= 0.0:
-        return "<= -2400 (boundary: zero score, true value unbounded below)"
+        return "boundary: zero observed score, true value unbounded below (no finite estimate)"
     if s >= 1.0:
-        return ">= +2400 (boundary: perfect score, true value unbounded above)"
+        return "boundary: perfect observed score, true value unbounded above (no finite estimate)"
     return f"{elo_from_score(s):+.0f}" 
 
 
@@ -94,10 +96,15 @@ def bootstrap_ci(clusters, n_boot: int, seed: int):
             ts += sums[i]
             tg += ns[i]
         s_boot.append(ts / tg if tg else 0.5)
+    # Standard deviation of the bootstrap distribution (Elo inference uses SDs, not
+    # CI half-widths); also returned for downstream anchor math.
+    mean = sum(s_boot) / len(s_boot)
+    var = sum((x - mean) ** 2 for x in s_boot) / len(s_boot)
+    s_sd = math.sqrt(var)
     s_boot.sort()
     lo = s_boot[int(0.025 * n_boot)]
     hi = s_boot[int(0.975 * n_boot) - 1]
-    return point, lo, hi
+    return point, lo, hi, s_sd
 
 
 def main() -> int:
@@ -119,10 +126,10 @@ def main() -> int:
     by_opening, clusters = analyze(games, args.focus)
     total_games = sum(c[1] for c in clusters)
     total_score = sum(c[0] for c in clusters)
-    s, s_lo, s_hi = bootstrap_ci(clusters, args.bootstrap, args.seed)
+    s, s_lo, s_hi, s_sd = bootstrap_ci(clusters, args.bootstrap, args.seed)
     print(f"games: {total_games}   openings (clusters): {len(clusters)}")
     print(f"score: {total_score:.1f}/{total_games}  = {s:.3f}")
-    print(f"opening-clustered 95% bootstrap CI for score: [{s_lo:.3f}, {s_hi:.3f}]")
+    print(f"opening-clustered 95% bootstrap CI for score: [{s_lo:.3f}, {s_hi:.3f}]   bootstrap SD of score: {s_sd:.4f}")
     print(f"Elo difference (logistic): {fmt_elo(s)}   CI: [{fmt_elo(s_lo)}, {fmt_elo(s_hi)}]")
     print("NOTE: descriptive internal statistic, not a CCRL/CEGT rating. Do not present as official.")
     return 0

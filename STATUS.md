@@ -24,7 +24,7 @@
 - [x] Identity migration to Flawless (ADR-0002) — historical evidence kept under old identifiers
 - [x] Correctness audit pass 1 + 2 (mate>draw precedence, quiesce/RFP terminals, searchmoves MultiPV=1, clock_limits panic, panic-fallback plumbing) — all reproduced by regression tests; bench signature `d790483532d87af0` → `3086f65159758c9d`
 - [x] UCI integration smoke + seeded deterministic fuzz (`tests/uci_smoke.rs`)
-- [ ] Absolute rating ≥ 2,000 (two-sided 95% CI lower bound ≥ 2,000) — NOT MEASURED, NOT MET (no calibrated pool reachable from sandbox; see "Rating status")
+- [ ] Absolute rating > 2,000 (two-sided 95% CI lower bound STRICTLY GREATER THAN 2,000, per docs/RATING_PROTOCOL.md §9 amendment) — NOT MEASURED, NOT MET (no calibrated pool reachable from sandbox; see "Rating status")
 - [ ] Reviews: CodeRabbit FINISHED/finding closure pending its completion; Copilot BLOCKED (quota, lower-effort retry needs web UI); Codex RATE_LIMITED; Qodo BLOCKED (trial ended); Kilo BLOCKED (credits)
 - [ ] Correctness, reliability, documentation, release gates (see TESTING.md)
 - [ ] v1.0.0 stable release (**NOT AUTHORIZED — gate not passed**)
@@ -44,7 +44,7 @@ committed under `benches/probe-*`.
 
 | Probe | SF setting | Ours W/D/L | Score | 95% opening-clustered CI | Logistic Elo diff vs this setting |
 |-------|-----------|------------|-------|---------------------------|-----------------------------------|
-| probe-001 | Skill 0 | 40/0/0 | 1.000 | [1.000, 1.000] | +2400 (degenerate clamp) |
+| probe-001 | Skill 0 | 40/0/0 | 1.000 | [1.000, 1.000] | boundary: perfect observed score; no finite estimate (unbounded above) |
 | probe-003 | Skill 5 (pre-RFP/CE) | 11/13/16 | 0.438 | [0.325, 0.550] | −44 (CI [−127, +35]) |
 | probe-002 | Skill 10 | 1/7/32 | 0.113 | [0.050, 0.175] | −359 (CI [−512, −269]) |
 | probe-004 | Skill 5 (RFP+CE build) | 14/14/12 | 0.525 | [0.412, 0.637] | +17 (CI [−61, +98]) |
@@ -73,9 +73,11 @@ estimate = **INCONCLUSIVE**. Do not present these numbers as official ratings.
 - **Absolute rating: UNKNOWN.** The in-sandbox probes (SF Skill 0/5/10 WASM) are relative comparisons
   vs one unrated-for-our-purposes opponent configuration, not a calibrated absolute scale, and are NOT
   a CCRL/CEGT rating. Stockfish Skill Level is not a calibrated Elo anchor.
-- **The V1 release gate (two-sided 95% CI of calibrated absolute rating, lower endpoint ≥ 2,000 Elo,
+- **The V1 release gate (two-sided 95% CI of calibrated absolute rating, lower endpoint STRICTLY
+  GREATER THAN 2,000 Elo — amended from ≥ 2,000 on 2026-11-14, docs/RATING_PROTOCOL.md §9;
   vs a credible pool with documented methodology, pinned opponents, paired openings, ≥2 independent
-  confirmation batches, preregistered) is NOT measured and NOT met. Nothing may be claimed otherwise.**
+  confirmation batches with ≥2,000 games per anchor per batch, preregistered) is NOT measured and
+  NOT met. Nothing may be claimed otherwise.**
 - Blocker (exact): no reachable calibrated pool from this sandbox. CCRL/CEGT listings are pages with
   documented methodology but match execution at scale (thousands of games, 40/15-class time controls,
   ratable opponent binaries with known CCRL Elo) cannot be downloaded/run here; crates.io/static
@@ -93,7 +95,7 @@ Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, not draft.
 
 | Reviewer | State | Notes |
 |----------|-------|-------|
-| CodeRabbit | IN_PROGRESS (triggered 2026-11-14T05:46Z on head bbb31f9) | auto-skip: repo <10 stars; manual trigger `review triggered`; incremental system (does not re-review already-reviewed commits). Findings, if any, will be fixed and re-reviewed. |
+| CodeRabbit | COMPLETED on head f07c463 (review 5903125228, 2026-11-14T08:24Z): 11 inline + 2 outside-diff findings, all being dispositioned in source; re-review pending on the fixing head | incremental system; fresh review requested after material changes (REVIEW: do not claim pass before the bot completes on the exact final SHA) |
 | GitHub Copilot | BLOCKED | quota insufficient at default effort (2026-11-14). Retry at LOWER effort requested by task but requires the web UI reviewers panel (effort selection); API re-request rejected (`422: not a collaborator`); docs.github.com unreachable from sandbox. No findings recorded. |
 | Codex | RATE_LIMITED | documented retry (`@codex review`) attempted 2026-11-14T05:47Z → "You have reached your Codex usage limits for code reviews." Prior run at 05a36c0: code review FAILED (usage limit), no findings available. |
 | Qodo | BLOCKED | "Qodo reviews are paused because your trial has ended." (billing-blocked, 2026-11-14). No code findings. |

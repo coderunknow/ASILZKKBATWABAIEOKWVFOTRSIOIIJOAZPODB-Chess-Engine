@@ -50,7 +50,29 @@ jobs:
 
       - name: Bench (informational — prints fixed-depth-10 signature)
         continue-on-error: true
-        run: ./target/release/flawless bench
+        shell: bash
+        run: |
+          ./target/release/flawless bench | tee "bench-signature-${{ matrix.os }}.txt"
+
+      - name: Stage release binary evidence (SHA-256 + commit)
+        continue-on-error: true
+        shell: bash
+        run: |
+          sha256sum target/release/flawless > "release-binary-${{ matrix.os }}.sha256"
+          printf 'git_commit=%s\nbinary=%s\n'             "${{ github.sha }}" "target/release/flawless" > "release-manifest-${{ matrix.os }}.txt"
+
+      - name: Upload evidence artifacts (bench signature, binary SHA-256, manifest)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-evidence-${{ matrix.os }}
+          path: |
+            bench-signature-${{ matrix.os }}.txt
+            release-binary-${{ matrix.os }}.sha256
+            release-manifest-${{ matrix.os }}.txt
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: UCI handshake smoke test
         shell: bash

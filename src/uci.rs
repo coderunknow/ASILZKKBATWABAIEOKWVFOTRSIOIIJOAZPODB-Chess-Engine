@@ -64,6 +64,9 @@ struct WorkerHandle {
     /// Result was already received (via ponderhit's try_recv); stop_and_join should not
     /// treat a later channel disconnect as an error.
     consumed: Arc<AtomicBool>,
+    /// Serializes "release the hold" with "publish the result" between the worker thread
+    /// and `ponderhit`, so exactly one of them prints the bestmove regardless of order.
+    flush: Arc<Mutex<()>>,
 }
 
 impl UciEngine {
@@ -316,6 +319,7 @@ impl UciEngine {
         // go infinite / go ponder / bare go: bestmove is held until stop/ponderhit.
         let hold = Arc::new(AtomicBool::new(limits.infinite));
         let printed = Arc::new(AtomicBool::new(false));
+        let flush = Arc::new(Mutex::new(()));
         let stop = Arc::new(AtomicBool::new(false));
         let consumed = Arc::new(AtomicBool::new(false));
         let tt = self
@@ -331,6 +335,7 @@ impl UciEngine {
         let limits_for_thread = shared_limits.clone();
         let hold_for_thread = hold.clone();
         let printed_for_thread = printed.clone();
+        let flush_for_thread = flush.clone();
         let handle = thread::spawn(move || {
             let mut tt = tt;
             let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -357,9 +362,13 @@ impl UciEngine {
             // search ends, even if the GUI sends no further commands (UCI protocol).
             match searched {
                 Ok(result) => {
+                    // One critical section covers the hold-check/print AND the channel
+                    // publish, so a concurrent ponderhit can never see "not printed yet"
+                    // and "no message yet" at the same time: exactly one side prints.
+                    let _g = flush_for_thread.lock().unwrap();
                     // For infinite/ponder searches the main thread prints bestmove
                     // after stop/ponderhit; otherwise we print as soon as we're done.
-                    if !hold_for_thread.load(Ordering::Relaxed)
+                    if !hold_for_thread.load(Ordering::Acquire)
                         && !printed_for_thread.swap(true, Ordering::AcqRel)
                     {
                         print_bestmove(&result);
@@ -372,7 +381,8 @@ impl UciEngine {
                     // The marker goes to stdout so GUIs and the match runner can see it.
                     println!("info string search thread panicked; emitting fallback bestmove");
                     eprintln!("info string search thread panicked; emitting fallback bestmove");
-                    if !hold_for_thread.load(Ordering::Relaxed)
+                    let _g = flush_for_thread.lock().unwrap();
+                    if !hold_for_thread.load(Ordering::Acquire)
                         && !printed_for_thread.swap(true, Ordering::AcqRel)
                     {
                         match fallback_move {
@@ -395,6 +405,7 @@ impl UciEngine {
             printed,
             fallback: fallback_move,
             consumed,
+            flush,
         });
     }
 
@@ -412,11 +423,13 @@ impl UciEngine {
                     lim.ponder = false;
                 }
             }
-            worker.hold.store(false, Ordering::Relaxed);
-        }
-        // If the search already ended while bestmove was held (rare, e.g. hit max_depth
-        // territory before the GUI reacted), flush the suppressed result now.
-        if let Some(worker) = self.worker.as_ref() {
+            // Synchronize with the worker's end-of-search flush: whichever side gets the
+            // mutex first decides, so the bestmove is printed exactly once regardless of
+            // ordering. `hold` is cleared inside the critical section.
+            let _g = worker.flush.lock().unwrap();
+            worker.hold.store(false, Ordering::Release);
+            // If the search already ended while bestmove was held (rare, e.g. hit max_depth
+            // territory before the GUI reacted), flush the suppressed result now.
             match worker.done.try_recv() {
                 Ok((result, tt)) => {
                     worker.consumed.store(true, Ordering::Relaxed);

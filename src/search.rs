@@ -308,7 +308,7 @@ impl<'a> Searcher<'a> {
                         beta = (beta + (beta - alpha) * 3 + 20).min(INF_SCORE);
                         continue;
                     }
-                    let pv = self.extract_pv(pos, depth);
+                    let pv = self.extract_pv(pos, depth, true);
                     let best_move = pv.first().copied().unwrap_or(roots[0]);
                     let ponder_move = pv.get(1).copied();
                     best = SearchResult {
@@ -376,7 +376,7 @@ impl<'a> Searcher<'a> {
             let mut pv = vec![*mv];
             let mut child = pos.clone();
             child.make_move(*mv);
-            let tail = self.extract_pv(&child, depth.saturating_sub(1));
+            let tail = self.extract_pv(&child, depth.saturating_sub(1), false);
             pv.extend_from_slice(&tail);
             cb(&SearchProgress {
                 depth,
@@ -391,11 +391,13 @@ impl<'a> Searcher<'a> {
     }
 
     /// Walk the TT to recover a principal variation. Does not mutate `pos`.
-    fn extract_pv(&self, pos: &Position, max_len: i32) -> Vec<Move> {
+    /// `from_root` marks the PV head extraction for the actual root position; for child
+    /// continuations (MultiPV tails) the restricted-root override must not apply.
+    fn extract_pv(&self, pos: &Position, max_len: i32, from_root: bool) -> Vec<Move> {
         let mut pos = pos.clone();
         let mut pv = Vec::with_capacity(16);
         for i in 0..max_len.clamp(0, MAX_PLY) {
-            if i == 0 {
+            if i == 0 && from_root {
                 if let Some(ref only) = self.root_moves {
                     // Root PV head must come from the restricted set, never a stale TT hit.
                     match self.root_best {
@@ -445,6 +447,23 @@ impl<'a> Searcher<'a> {
         if !in_chk && (pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material()) {
             return DRAW_SCORE;
         }
+        if in_chk {
+            // A checked node that is a dead/claimable draw must be scored BEFORE any TT
+            // score cutoff. Checkmate takes precedence over claimable draws (FIDE 9.2/9.3),
+            // so for repetition/fifty-move confirm legal evasions exist first; mate is
+            // impossible with insufficient material (dead position, FIDE 5.2.2), which can
+            // be scored without movegen.
+            if pos.insufficient_material() {
+                return DRAW_SCORE;
+            }
+            if pos.is_repetition() || pos.is_fifty_move() {
+                let legal = generate_legal(pos);
+                if legal.len == 0 {
+                    return -MATE_SCORE + ply;
+                }
+                return DRAW_SCORE;
+            }
+        }
         let mut alpha = alpha;
         let alpha_entry = alpha;
         let is_pv = beta - alpha > 1;
@@ -452,15 +471,15 @@ impl<'a> Searcher<'a> {
         // Transposition table probe first: terminal nodes are deterministic, so a
         // sufficient-depth entry is equally valid there — and this keeps TT-cutoff
         // nodes off the movegen path.
-        // Zobrist excludes the halfmove clock; a score cached away from the fifty-move
-        // boundary can misdescribe the same board near it, so score CUTOFFS are disabled
-        // past the horizon. Move ordering via TT move is always safe.
-        const TT_DRAW_HORIZON: u16 = 90;
+        // Zobrist excludes the halfmove clock; entries whose stored subtree can reach the
+        // fifty-move horizon are flagged CLOCK-UNSAFE at store time and never provide a
+        // score here, so score cutoffs are always clock-context-compatible. Move ordering
+        // via the TT move is always safe.
         let key = pos.hash;
         let probe = self.tt.probe(key, ply);
         let tt_move = probe.best_move;
         if let Some(score) = probe.score {
-            if pos.halfmove < TT_DRAW_HORIZON && probe.depth >= depth && !is_pv {
+            if probe.depth >= depth && !is_pv {
                 match probe.bound {
                     BOUND_EXACT => return score,
                     BOUND_LOWER if score >= beta => return score,
@@ -512,10 +531,11 @@ impl<'a> Searcher<'a> {
             && !is_pv
         {
             let prev_ep = pos.ep;
+            let prev_ep_included = pos.ep_included;
             pos.make_null_move();
             let reduction = 2 + depth / 4;
             let score = -self.search(pos, depth - 1 - reduction, -beta, -beta + 1, ply + 1);
-            pos.unmake_null_move(prev_ep);
+            pos.unmake_null_move(prev_ep, prev_ep_included);
             if self.stop.load(Ordering::Relaxed) {
                 return alpha;
             }
@@ -635,7 +655,8 @@ impl<'a> Searcher<'a> {
         // restriction — never store them as unrestricted bounds. The TT move itself may
         // still be recorded for ordering, but extract_pv bypasses it at ply 0.
         if !(ply == 0 && self.root_moves.is_some()) {
-            self.tt.store(key, best_move, best_score, depth, flag, ply);
+            self.tt
+                .store(key, best_move, best_score, depth, flag, ply, pos.halfmove);
         }
         best_score
     }

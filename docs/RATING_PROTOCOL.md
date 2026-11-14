@@ -123,3 +123,104 @@ those points and changes nothing else.
    implements exactly this for descriptive statistics; the gate computation in §4 inherits the rule.
 4. **Everything else in §§1–7 is unchanged.** In particular the two-sided 95% CI lower-endpoint
    ≥ 2,000 requirement and the no-official-rating labeling remain absolute.
+
+## 9. Amendment (2026-11-14) — acceptance-gate hardening + estimator corrections
+
+Append-only amendment per the amendment rule at the top of this file. The original
+preregistration (§§1–7, pre-registered 2026-11-14) and Amendment §8 are preserved verbatim and
+remain in force except where this section explicitly supersedes them. Two reasons for this
+amendment:
+
+- **Reason 1 (governance).** The release-gate owner hardened the acceptance criteria for the
+  V1 > 2,000 Elo mission: the pass threshold is now strictly greater than 2,000 Elo on the
+  lower bound of a two-sided 95% confidence interval, both confirmation batches must pass, the
+  combined estimate must pass, and each batch must include at least 2,000 completed games per
+  anchor. The original §1/§4 wording ("≥ 2,000", and a 1,000-game screening tier) is superseded
+  by items 1–4 below.
+- **Reason 2 (methodology).** CodeRabbit review 5903125228 (2026-11-14T08:24Z, head
+  `f07c46337e6cafd84cd73357145810c3b017ce15`) identified three defects in the estimator
+  definitions, adopted here as items 6–8: (i) σ_matched was defined via the bootstrap CI
+  half-width instead of a standard deviation; (ii) anchor estimates were combined as
+  independent despite sharing the opening-suite difficulty; (iii) batch combination ignored the
+  fact that both batches reuse the same published anchor ratings, so their calibration errors
+  are shared and must not be inverse-variance-pooled away.
+
+Superseded text, in full, and its replacements:
+
+1. **Acceptance threshold: strictly greater than 2,000.** §1 and §4 pass conditions now read
+   "> 2,000 Elo", not "≥ 2,000 Elo". A lower confidence endpoint exactly at 2,000.0 Elo is NOT
+   a pass. All acceptance decisions use unrounded values; rounding is never applied to a
+   pass/fail decision.
+2. **Both batches and the combined estimate must pass.** The gate requires ALL THREE:
+   Batch A two-sided 95% CI lower bound > 2,000; Batch B two-sided 95% CI lower bound >
+   2,000; combined estimate two-sided 95% CI lower bound > 2,000 — each including
+   anchor-calibration uncertainty. Failure of any one is FAIL/INCONCLUSIVE. §4's decision rule
+   (i)–(iv) is amended accordingly and remains a conjunction, never a summary.
+3. **Minimum evidence per batch.** Each confirmation batch must contain at least **2,000
+   completed games per eligible anchor** (≥ 6,000 games per batch with the three-anchor pool).
+   The "≥ 1,000 games (screening-grade)" tier in §4 is void. Anchors must be verified per
+   §2 before contributing games; an anchor failing verification cannot contribute to either
+   batch and cannot be replaced mid-batch after seeing its results (§6).
+4. **No predictions; no boundary clamping.** A rating may be reported only from completed,
+   adjudicated games. Predicted, extrapolated, pattern-estimated, or clamped values (e.g.
+   "1.000 score → +2400") are never estimates and never appear as point estimates or interval
+   endpoints. Boundary outcomes (score exactly 0 or exactly 1) are recorded as
+   non-finite/uninformative results; the anchor is then ineligible for gate evidence and must
+   be replaced by a nearer calibrated anchor. This restates §8.3 and extends it to every
+   reported number, including batch-level and combined summaries.
+5. **Sequential stopping and sample extension.** The sample size per anchor per batch (≥ 2,000)
+   is fixed before Batch A starts and does not move during collection. If either batch fails
+   the gate, the remedy is a NEW pre-registered batch on fresh openings with its own seed —
+   never "more games until the interval clears" on the same batch with the same decision rule.
+   Any optional interim analysis uses an error-spending (Lan–DeMets alpha-spending)
+   sequential procedure fixed in advance, or Bonferroni correction across the planned number
+   of looks; naive repeated testing at nominal 95% is invalid and invalidates the batch.
+   After an amended plan with an explicit error-spend schedule is committed, the batch may
+   extend in fixed increments (e.g. +200 games per anchor) with always-valid p-values
+   (mixture methods); unplanned extensions keep the original 95% gate and are reported as
+   exploratory, never as the confirmatory result. Engine binaries, openings, anchors,
+   time controls, and seeds never change between the interim look and the extension except as
+   committed in that pre-registered amendment.
+6. **σ_matched is a standard deviation, not a CI half-width.** For anchor *a*, from the joint
+   cluster bootstrap replicate set of the Flawless−anchor Elo differences
+   d_a^(1..B):  σ_matched,a = SD(d_a^(1..B)) (sample standard deviation across the B joint
+   replicates; B ≥ 10,000, fixed seed). Published anchor errors ε_a are expressed on the same
+   SD scale: an error published as a 95% normal half-width is divided by 1.96; an error
+   already published as a standard deviation or standard error is used as-is; any other
+   published coverage convention is converted with the matching quantile (e.g. /1.645 for 90%,
+   /2.576 for 99%) and the convention is documented per anchor. σ_a² = σ_matched,a² + ε_a²
+   (quadrature), superseding the half-width construction in §8.2.
+7. **Covariance-aware anchor combination.** Anchor estimates d_a share the opening-suite
+   difficulty, so their match-noise components are correlated even though the anchors'
+   published-rating errors are independent. Combine anchors with generalized least squares
+   over the joint bootstrap: in each joint replicate, resample opening clusters ONCE and
+   recompute every anchor's d_a, yielding the B×A replicate matrix D and the match-noise
+   covariance matrix Σ_m = Cov(D) (A = number of anchors). Calibration covariance
+   Σ_c = diag(ε_a²) (published anchor errors treated as mutually independent across lists;
+   if two anchors share one list and overlap its uncertainty, record and add that covariance
+   off-diagonal). Total covariance Σ = Σ_m + Σ_c. The absolute estimate is
+   Flawless = (1ᵀ Σ⁺ (R + d)) / (1ᵀ Σ⁺ 1) with pseudo-inverse Σ⁺ (Σ is positive-definite in
+   practice; use an explicit check and fall back to the diagonal WLS of §8.2 with a printed
+   warning if the joint bootstrap is degenerate). Var(Flawless) = 1 / (1ᵀ Σ⁺ 1). Report
+   match-only and match+calibration intervals separately. Supersedes the diagonal-weighting
+   sentence of §4 and the weight definition w_a = 1/σ_a² in §8.2.
+8. **Batch combination retains shared calibration uncertainty.** §4's "Combined estimate =
+   inverse-variance weighted mean of the batch estimates" is void as written. Both batches
+   reuse the same published anchor ratings, so their calibration-error component is shared and
+   does not decrease by pooling. Compute per batch b ∈ {A, B}: estimate θ_b, match-only
+   variance v_b (anchor-calibration excluded), and the common calibration variance c (from
+   item 7's GLS, identical anchors). Combined match-only variance
+   v = (1/v_A + 1/v_B)⁻¹; combined estimate
+   θ = (θ_A/v_A + θ_B/v_B) / (1/v_A + 1/v_B). Combined interval: θ ± 1.96·sqrt(v + c).
+   The match-noise components pool inverse-variance; the calibration component is added ONCE.
+   Batch A and Batch B are always reported separately as well.
+9. **Records.** Every gate run appends: SHA-256 of the engine binary and of every anchor
+   binary, git commit, full anchor references with retrieval dates, hardware/OS, time control,
+   suite name + hash, game counts, W/D/L, bootstrap seed, and the null-control outcomes —
+   committed under `benches/rating-<batch>/` with raw PGN and JSONL. A third party must be
+   able to recompute every reported number from the committed evidence alone.
+
+Everything else in §§1–8 stands unamended. In particular §5 null controls
+(opponent-vs-opponent within ±75 Elo of the published difference; engine self-match with
+reversed colors consistent with 0.5; any failed null control invalidates the affected batch)
+and the exclusions of §6 remain absolute.

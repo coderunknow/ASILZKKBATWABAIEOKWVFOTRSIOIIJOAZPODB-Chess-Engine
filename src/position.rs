@@ -794,20 +794,25 @@ impl Position {
     /// Apply a null move (side to move passes). MUST be undone with `unmake_null_move`.
     /// Not recorded in `history` (repetition detection across null moves is not meaningful here).
     pub fn make_null_move(&mut self) {
-        if self.ep >= 0 {
+        // The ep file lives in the hash only when it was actually included
+        // (FIDE same-position semantics); remove it only then.
+        if self.ep >= 0 && self.ep_included {
             self.hash ^= zob_ep(file_of(self.ep as Square));
         }
         self.ep = -1;
+        self.ep_included = false;
         self.hash ^= zob_side();
         self.side = 1 - self.side;
     }
 
-    /// Undo a null move. `prev_ep` is the ep square saved before `make_null_move`.
-    pub fn unmake_null_move(&mut self, prev_ep: i8) {
+    /// Undo a null move. `prev_ep` and `prev_ep_included` are the ep state saved
+    /// before `make_null_move` (the caller keeps both).
+    pub fn unmake_null_move(&mut self, prev_ep: i8, prev_ep_included: bool) {
         self.side = 1 - self.side;
         self.ep = prev_ep;
+        self.ep_included = prev_ep_included;
         self.hash ^= zob_side();
-        if prev_ep >= 0 {
+        if prev_ep >= 0 && prev_ep_included {
             self.hash ^= zob_ep(file_of(prev_ep as Square));
         }
     }

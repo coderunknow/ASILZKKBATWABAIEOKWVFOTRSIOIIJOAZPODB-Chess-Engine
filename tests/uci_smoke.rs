@@ -100,6 +100,19 @@ fn wait_for(
     }
 }
 
+/// After the bounded child has exited, the reader thread reaches EOF and the channel
+/// disconnects. Drain everything the engine printed (not just up to the first token)
+/// so panic markers late in the session are not silently missed.
+fn drain_reader(rx: &Receiver<String>, timeout: Duration) -> Vec<String> {
+    let mut lines = Vec::new();
+    loop {
+        match rx.recv_timeout(timeout) {
+            Ok(line) => lines.push(line.trim_end().to_string()),
+            Err(_) => return lines,
+        }
+    }
+}
+
 /// Any line we are willing to discard must at least not contain the engine's
 /// explicit panic marker, or we would silently swallow a broken search.
 fn assert_no_panic_markers(lines: &[String]) {
@@ -152,9 +165,10 @@ fn unknown_commands_do_not_crash() {
     writeln!(stdin, "isready").unwrap();
     writeln!(stdin, "quit").unwrap();
     stdin.flush().unwrap();
-    let lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(10));
-    assert_no_panic_markers(&lines);
+    let mut lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(10));
     let status = wait_child(child, Duration::from_secs(10));
+    lines.extend(drain_reader(&reader, Duration::from_secs(5)));
+    assert_no_panic_markers(&lines);
     assert!(status.success());
 }
 
@@ -203,9 +217,10 @@ fn seeded_fuzz_command_sequences() {
         writeln!(stdin, "isready").unwrap();
         writeln!(stdin, "quit").unwrap();
         stdin.flush().unwrap();
-        let lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(30));
-        assert_no_panic_markers(&lines);
+        let mut lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(30));
         let status = wait_child(child, Duration::from_secs(10));
+        lines.extend(drain_reader(&reader, Duration::from_secs(5)));
+        assert_no_panic_markers(&lines);
         assert!(status.success(), "trial {trial}: nonzero exit");
     }
 }

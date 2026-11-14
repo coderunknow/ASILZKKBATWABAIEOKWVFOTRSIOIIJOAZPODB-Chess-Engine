@@ -8,14 +8,19 @@ Usage example:
   python3 scripts/match.py --white-cmd "./target/release/flawless uci" \
       --black-cmd "node /path/to/stockfish-19-lite-single.js" \
       --movetime 100 --openings openings.txt --out benches/<id> [--games 20]
+
+FLAWLESS_MATCH_ARTIFACTS: os.pathsep-separated extra files hashed into artifacts
+(e.g. the .wasm next to the stockfish .js launcher) so swapping them invalidates
+the recorded batch identity.
 """
 import argparse
 import hashlib
 import json
 import os
-import select
+import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 
@@ -47,6 +52,16 @@ class UciEngine:
         )
         self.engine_error_events: list[str] = []
         self._buf = b""
+        self._buf_lock = threading.Lock()
+        self._wake = threading.Event()
+        self._eof = False
+        # Stdout is drained by a dedicated reader thread; consumers take lines from the
+        # shared buffer under a lock with a hard deadline. select() is NOT usable on
+        # Windows pipes, so all waiting goes through the event.
+        self._reader = threading.Thread(
+            target=self._reader_loop, name=f"{spec.name}-stdout-reader", daemon=True
+        )
+        self._reader.start()
         self._send("uci")
         self._wait_for("uciok", timeout=60.0)
         if hash_mb is not None:
@@ -66,28 +81,40 @@ class UciEngine:
             # loop records an engine-error loss instead of crashing the whole batch.
             raise EngineExited(f"engine {self.spec.name}: pipe broken while sending {s!r}: {e}") from e
 
+    def _reader_loop(self) -> None:
+        try:
+            out = self.proc.stdout
+            assert out is not None
+            while True:
+                chunk = out.read(65536)  # blocks until >=1 byte or EOF; Windows-safe
+                if not chunk:
+                    break
+                with self._buf_lock:
+                    self._buf += chunk
+                self._wake.set()
+        except Exception:
+            pass
+        finally:
+            with self._buf_lock:
+                self._eof = True
+            self._wake.set()
+
     def _readline(self, timeout: float) -> bytes:
-        # Line reassembly from raw chunks: select() only promises *some* bytes, never a
-        # complete line — readline() after a readable select() could block forever on a
-        # partial line, so we do the split ourselves under a hard deadline.
-        assert self.proc.stdout is not None
-        fd = self.proc.stdout.fileno()
         deadline = time.time() + timeout
         while True:
-            idx = self._buf.find(b"\n")
-            if idx != -1:
-                line, self._buf = self._buf[: idx + 1], self._buf[idx + 1 :]
-                return line
+            with self._buf_lock:
+                idx = self._buf.find(b"\n")
+                if idx != -1:
+                    line, self._buf = self._buf[: idx + 1], self._buf[idx + 1 :]
+                    return line
+                eof = self._eof
+            if eof:
+                raise EngineExited(f"engine {self.spec.name} exited (stdout EOF, code {self.proc.poll()})")
             remaining = deadline - time.time()
             if remaining <= 0:
                 raise TimeoutError(f"engine {self.spec.name}: no complete line for {timeout}s")
-            r, _, _ = select.select([fd], [], [], remaining)
-            if not r:
-                raise TimeoutError(f"engine {self.spec.name}: no output for {timeout}s")
-            chunk = os.read(fd, 65536)
-            if not chunk:
-                raise EngineExited(f"engine {self.spec.name} exited (stdout EOF, code {self.proc.poll()})")
-            self._buf += chunk
+            self._wake.wait(remaining)
+            self._wake.clear()
 
     def _wait_for(self, token: str, timeout: float) -> None:
         t0 = time.time()
@@ -141,22 +168,52 @@ def file_sha256(path: str) -> str | None:
 
 
 def probe_artifact(cmd_line: str) -> dict:
-    """Record which binary (sha256) actually produced a batch — probe archaeology."""
-    first = cmd_line.split()[0] if cmd_line.split() else ""
-    target = None
-    if first and os.path.isfile(first):
-        target = first
-    else:
-        which = os.path.join(os.getcwd(), first)
-        if os.path.isfile(which):
-            target = which
-        else:
-            import shutil
+    """Record which exact binaries/scripts produced a batch — probe archaeology.
 
-            which = shutil.which(first) if first else None
+    Hashes (a) the PATH-resolved launcher (first token) and (b) EVERY command token that
+    resolves to an existing file (e.g. the Stockfish .js next to a `node` launcher), plus
+    (c) any explicit artifacts in FLAWLESS_MATCH_ARTIFACTS (os.pathsep-separated paths,
+    e.g. `node_modules/stockfish/bin/stockfish-19-lite-single.wasm` — files a wrapper
+    loads dynamically cannot be discovered from the command line alone). Replacing the
+    launcher OR the engine script changes the recorded hashes.
+    """
+    parts = cmd_line.split() if cmd_line else []
+    artifacts: list[dict] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        real = os.path.realpath(path)
+        if real in seen:
+            return
+        seen.add(real)
+        artifacts.append({"path": path, "sha256": file_sha256(path)})
+
+    for i, tok in enumerate(parts):
+        if tok.startswith("-"):
+            continue
+        if os.path.isfile(tok):
+            add(tok)
+            continue
+        cand = os.path.join(os.getcwd(), tok)
+        if os.path.isfile(cand):
+            add(cand)
+            continue
+        if i == 0:
+            which = shutil.which(tok)
             if which:
-                target = which
-    return {"cmd": cmd_line, "binary_path": target, "sha256": file_sha256(target) if target else None}
+                add(which)
+    for extra in os.environ.get("FLAWLESS_MATCH_ARTIFACTS", "").split(os.pathsep):
+        extra = extra.strip()
+        if extra and os.path.isfile(extra):
+            add(extra)
+    first = artifacts[0] if artifacts else {"path": None, "sha256": None}
+    return {
+        "cmd": cmd_line,
+        "artifacts": artifacts,
+        # Back-compat convenience fields; auditors must use "artifacts" (full coverage).
+        "binary_path": first["path"],
+        "sha256": first["sha256"],
+    }
 
 
 def git_head() -> str | None:
@@ -346,12 +403,18 @@ def main() -> int:
 
     openings = load_openings(args.openings)
     os.makedirs(args.out, exist_ok=True)
-    # Single overwrite policy for ALL batch artifacts (games.pgn used to append while
-    # games.jsonl/meta.json truncated): refuse to touch a previously-written batch.
-    for name in ("games.pgn", "games.jsonl", "meta.json"):
-        p = os.path.join(args.out, name)
-        if os.path.exists(p) and os.path.getsize(p) > 0:
-            ap.error(f"output artifact exists: {p} — choose a fresh --out directory (refusing to overwrite a batch)")
+    # Reserve the batch output atomically BEFORE starting any engine: exclusive creation
+    # of the three artifacts. Two concurrent invocations in the same --out (or a rerun
+    # over a partial batch) fail here instead of mixing or truncating each other's files.
+    try:
+        for name in ("games.pgn", "games.jsonl", "meta.json"):
+            fd = os.open(os.path.join(args.out, name), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            os.close(fd)
+    except FileExistsError as e:
+        ap.error(
+            f"batch output already reserved/exists: {e.filename} — choose a fresh --out directory "
+            f"(never overwriting or mixing a batch; if it is an empty crash remnant, remove it explicitly)"
+        )
 
     pairs = [(o, p) for o in openings for p in ("AB", "BA")]
     if args.games is not None:
