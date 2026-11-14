@@ -25,6 +25,14 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   clamped rather than overflowing.
 - Score 13/12 cp found at depth 6 from startpos (b1c3); ~900k nps in-sandbox (2 vCPU).
 - No claim of playing strength yet; perft/diftest gates unchanged (14/14 tests pass).
+- UCI worker now catches search-thread panics and always emits a bestmove (GUI never hangs);
+  LMR table sized to worst case ([MAX_PLY+1][256]) — fixes move-30 search-thread panic on
+  high-material/mate positions.
+- Match harness: `scripts/match.py` (UCI game runner: paired openings, color reversal,
+  adjudication, PGN+JSONL evidence) + `scripts/stats.py` (logistic Elo diff, opening-clustered
+  95% bootstrap CI) + `benches/openings-20.txt` (20 openings, both colors).
+- GitHub Actions CI (`.github/workflows/ci.yml`): Ubuntu + Windows, fmt, clippy -D warnings,
+  release tests, release build, UCI handshake, perft d3 sanity — green on PR #1.
 - Not committed tags; v1.0.0 NOT authorized.
 
 ## [0.1.0-dev.1] — 2026-11-14

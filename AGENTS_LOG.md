@@ -24,3 +24,14 @@
   (UCI protocol violation) → worker now prints bestmove directly; (2) mate-score formatting could
   overflow (`mate 499`) → clamped; (3) aborted root scores were used to build result → discarded.
 - Committed: pending (this checkpoint not yet committed — see STATUS.md "Next preregistered task").
+
+## 2026-11-14 — CI + benchmark harness + LMR panic fix
+
+- Set up `.github/workflows/ci.yml` (Ubuntu+Windows: fmt, clippy -D warnings, release tests,
+  release build, UCI handshake, perft d3). CI green on PR #1 (both OSs). Kilo bot: insufficient
+  credits (not a code issue).
+- Smoke match exposed LMR table out-of-bounds panic → engine silently lost on time.
+  Fixed table bounds + worker catch_unwind fallback bestmove. 2-game smoke: engine wins both.
+- Wrote match.py/stats.py + 20 verified openings; launched probe-001 (40 games vs SF 19 WASM,
+  Skill 0, movetime 100ms) in background.
+- Raw evidence committed to benches/ for reproducibility.

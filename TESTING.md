@@ -31,9 +31,13 @@ K+B v K+B same color bishops) · stalemate · checkmate · search state restorat
 
 ## UCI / reliability
 
-`scripts/uci_test.py`: `uci` handshake, `isready`, `position` variants, `go depth/nodes/movetime/wtime`,
-`stop` mid-search (response < 100 ms), `quit`, repeated cycles, malformed commands (no crash),
-large/small Hash, MultiPV=1/3, `ucinewgame` state reset.
+Covered today (all verified locally on Rust 1.99.0): `uci` handshake (`id`/`uciok`), `isready`,
+`position startpos`/`fen`/`moves`, `go depth`/`movetime`/`infinite`/`wtime,btime,winc,binc,movestogo`,
+`stop` mid-search, `ponderhit` (ponder→clock conversion), `ucinewgame`, `setoption Hash/Threads/MultiPV`
+(unknown options ignored), `quit`. Randomized command-sequence fuzz: 6 trials × 25 commands from a
+30-command grammar — 0 crashes, 0 hangs (2026-11-14). Panic resilience: search thread wrapped in
+`catch_unwind`; on internal panic the engine emits a legal fallback `bestmove` (GUI never hangs).
+CI additionally runs a UCI handshake + perft d3 sanity on every push/PR (both OSs).
 
 ## Static quality
 
@@ -43,7 +47,8 @@ license scan (zero deps + Apache-2.0 headers).
 
 ## CI
 
-`.github/workflows/ci.yml` — ubuntu-latest & windows-latest: fmt, clippy, test, release build, perft 4.
+`.github/workflows/ci.yml` — ubuntu-latest & windows-latest: fmt, clippy -D warnings, release tests,
+release build, UCI handshake, perft d3 sanity — green on PR #1 (runs 43549500632, 43550978076).
 
 ## Evidence policy
 

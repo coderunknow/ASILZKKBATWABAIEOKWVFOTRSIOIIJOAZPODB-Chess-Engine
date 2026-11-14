@@ -18,8 +18,8 @@
 - [x] UCI protocol implemented and smoke-tested (async stop via worker thread + AtomicBool, clocks, MultiPV, ponder/ponderhit) — not yet fuzzed
 - [x] Search baseline: iterative deepening + alpha-beta + TT (8-byte) + quiescence + null-move + LMR + aspiration + MultiPV (uncommitted until this phase checkpoint; see below)
 - [x] Classical evaluation baseline (tapered PSTs, mobility, bishop pair, king zone, tempo); NNUE interface deferred, NNUE NOT default
-- [ ] Benchmark harness (fixed-node + fixed-time) reproducible — partial (`bench_eval` works; full match runner not yet written)
-- [ ] CI green on Linux + Windows (fmt, clippy -D warnings, tests, release build) — not started
+- [x] Benchmark harness (fixed-time `movetime`/`depth`, paired openings, color reversal, opening-clustered CI) — `scripts/match.py` + `scripts/stats.py` + `benches/openings-20.txt`; verified end-to-end (smoke-match 2/2 wins vs SF 19 WASM Skill 0)
+- [x] CI green on Linux + Windows (fmt, clippy -D warnings, release tests, release build, UCI handshake, perft d3 sanity) — PR #1, runs 43549500632; Kilo Code Review bot fails for account credits (not a code issue)
 - [ ] Match infrastructure: paired openings, color reversal, opening-clustered CIs — partial (planned scripts; not implemented)
 - [ ] Rating estimate ≥ 2000 with opening-clustered 95% CI lower bound ≥ 2000 over ≥2 batches (**NOT MET / NOT MEASURED**)
 - [ ] Correctness, reliability, documentation, release gates (see TESTING.md)
@@ -34,4 +34,7 @@
 
 ## Next preregistered task
 
-Phase 3 checkpoint (eval + TT + search + UCI) is built and smoke-tested but UNCOMMITTED as of this writing. Next preregistered task: (1) commit Phase 3 checkpoint (eval+search+tt+uci+main wiring, with UCI bestmove-worker fix); (2) set up GitHub Actions CI (fmt, clippy -D warnings, tests, release build, Windows+Linux) and get it actually green; (3) write match/benchmark harness (paired openings + reversed colors + opening-clustered CI) or honestly record INCONCLUSIVE strength evidence. Do NOT claim playing strength or touch v1.0.0 gates until measured.
+1. Finish probe-001 (40 games vs Stockfish 19 WASM pinned, Skill 0, movetime 100ms); record raw evidence (PGN/JSONL), compute score + opening-clustered 95% bootstrap CI via `scripts/stats.py`, and label it an internal in-sandbox estimate — NOT a CCRL/CEGT rating.
+2. Run a second probe at a stronger pinned setting (e.g. Skill 5-10) to bound where our strength lies; do not tune the engine to the probe.
+3. UCI robustness fuzzing (stop/ponder/hash/threads churn, malformed lines).
+4. Do NOT claim playing strength beyond the measured estimate; v1.0.0 gates unchanged.
