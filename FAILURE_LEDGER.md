@@ -88,3 +88,30 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   removed in f0a2a55 (.gitignore now covers node_modules/). History keeps the blobs (no
   force-push — PR head stability); no further node_modules may be committed. Opponent remains
   pinned OUTSIDE the repo (/home/user/opponents, hash-verified).
+
+## 2026-11-14 — Rating-anchor verification investigation (gate remains BLOCKED)
+
+- Attempt: determine whether ANY eligible calibrated anchor (CCRL 40/15 preferred, CEGT 40/20,
+  or another recognized list) can be verified from this sandbox.
+- Commands and ACTUAL outputs:
+  - `curl -I https://www.computerchess.org.uk/ccrl/40-15/` → 000 (blocked)
+  - `curl -I https://www.cegt.net/40-15-chessengine-rating-list-6/` → 000 (blocked)
+  - `curl -I https://ccrl40-15.herokuapp.com/` → 000 (blocked)
+  - `gh api "search/repositories?q=ccrl+40%2F15"` → derivative mirrors only
+    (`ahmad-luqman/chess-engine-nnue` scripts/anchors-ccrl.txt: user-maintained CCRL *Blitz*
+    roster — cinnamon2.2a 2071, cinnamon2.3 2212, blunder7.4 2532, akimbo0.4 2723 — NOT the
+    authoritative list, wrong scale (Blitz ≠ 40/15), ratings unverifiable, binaries local-only)
+  - `gh api "search/repositories?q=cegt+chess"` → no usable rating list
+  - `gh api "search/code?q=CCRL+40%2F15"` → index files only (CPWOffline/exported/CCRL.html is a
+    hub page, wgArticleId 32, revision 24555 — no rating table; "Engine Rating Lists.html" is an
+    index of external lists, external links all point to blocked hosts)
+- Consequence: no anchor satisfies §2/§9 eligibility — verified name, version, SHA-256, published
+  rating + error with convention, list publication date, retrieval date, and matching TC — so no
+  gate batch may run and no absolute rating may be claimed. Anchoring from memory or from derivative
+  GitHub files would be fabrication and is refused.
+- Additional blocker (unchanged): ≥ 2,000 games × ≥ 3 anchors × 2 batches at 40/15-class TC
+  (≥ 12,000 games; at CCRL 40/15 that is 40 moves per 15 minutes per game — infeasible on 2 vCPU).
+- Next action for the gate (unchanged): execute RATING_PROTOCOL §§3–9 on a machine with access to
+  the authoritative CCRL/CEGT lists and ratable opponent binaries (or their licensed redistribution),
+  then commit benches/rating-batchA and benches/rating-batchB and update STATUS.md with the
+  measured result and CIs.

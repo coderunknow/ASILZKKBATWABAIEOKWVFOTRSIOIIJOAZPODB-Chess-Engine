@@ -202,3 +202,45 @@ Process honesty:
   RATING_PROTOCOL Amendment §9: strict > 2,000 gate, both batches + combined must pass,
   ≥ 2,000 games/anchor/batch, no predictions/clamping, sequential-stopping rules, SD-based
   σ_matched, covariance-aware GLS combination, batch combination retaining shared calibration).
+
+2026-11-14 (CodeRabbit 5903125228 disposition — 13 findings, all verified against current code):
+Recorded here so the review trail is complete; each fix is in db174e4 (source/docs) plus CI
+evidence-artifacts work in 45f8507 (suites + manifest). Verification: `cargo test --release`
+29/29, DIFTEST PASSED (2295/2295), clippy clean, UCI smoke 2-game live match vs pinned SF-lite
+Skill 0/5 ran clean through the rewritten handshake (meta.json shows per-side artifact hashes,
+hardware/OS, git commit).
+1.  RATING_PROTOCOL σ_matched CI-half-width → fixed as Amendment §9 item 6 (SD of joint bootstrap
+    replicates; published errors converted to SD via 1/1.96 for 95% half-widths, quantiles otherwise).
+2.  RATING_PROTOCOL independent anchor weighting → §9 item 7 (joint opening-cluster bootstrap;
+    Σ = Σ_match + diag(ε²); GLS with pseudo-inverse fallback; separate match-only / match+calib CIs).
+3.  match.py select() Windows-hostility → reader thread + Condition-free wake event; hard deadline
+    per line; EOF surfaces as EngineExited; verified on Linux handshake + quit path.
+4.  match.py artifact fingerprinting → launcher (PATH-resolved) + every file-like token hashed;
+    --white-artifact/--black-artifact for wrapper-loaded WASM; meta.json "artifacts" list +
+    back-compat binary_path/sha256 (first artifact).
+5.  match.py output reservation → O_CREAT|O_EXCL on games.pgn/games.jsonl/meta.json BEFORE any
+    engine starts; concurrent/rerun invocations fail fast instead of mixing or truncating.
+6.  stats.py boundary clamping → fmt_elo reports "boundary: ... no finite estimate" for 0/1 scores
+    at point AND interval endpoints; bootstrap SD now printed for downstream anchor math.
+7.  search.rs restricted-root override leaking into child continuations → extract_pv(pos, depth,
+    from_root); override only when from_root; MultiPV tails bypass it entirely.
+8.  search.rs checked repetition/fifty-move vs TT cutoff → in-check draws (insufficient-material
+    outright; repetition/fifty-move after confirming legal evasions — mate precedence) resolved
+    BEFORE the TT probe; post-movegen guard kept.
+9.  search.rs TT clock-context reuse → tt.rs entries whose stored subtree can reach the fifty-move
+    horizon (halfmove+depth ≥ 100) store bit-7 CLOCK-UNSAFE in the depth byte; probe never reuses
+    their score; move ordering preserved; unit test at 99/1 boundary; horizon self-describes so the
+    old current-clock-only 90 constant was removed.
+10. uci.rs ponderhit/worker bestmove race → one flush Arc<Mutex<()>> serializes hold-clear with the
+    publish/print decision on BOTH sides; send inside the critical section; exactly one bestmove
+    prints regardless of order; stop_and_join unchanged (join+recv, swap-guarded).
+11. tests/uci_smoke.rs early stop at first readyok → drain_reader collects post-exit lines until
+    channel disconnect (bounded) in unknown_commands_do_not_crash and seeded_fuzz trials; all
+    collected lines go through assert_no_panic_markers.
+12. RATING_PROTOCOL shared calibration across batches → §9 item 8 (batch match-noise pooled by
+    inverse variance; calibration variance added ONCE; combined CI reports θ ± 1.96√(v+c)).
+13. position.rs null-move ep-hash drift → make_null_move XORs the ep file only when ep_included;
+    clears ep_included/ep to -1 consistently; unmake_null_move(prev_ep, prev_ep_included) restores
+    both; search.rs call site passes both.
+None of the 13 were invalid on inspection; three were documentation-of-method corrections (1,2,12),
+ten were implementation defects/footguns fixed in code or its tests.
