@@ -91,9 +91,10 @@ jobs:
           PY
           if [ "$RC" -ne 0 ]; then echo "::error::anchor_build.sh failed rc=$RC"; exit "$RC"; fi
           # License presence is a hard requirement (fail closed).
-          ls /tmp/anchor/${{ matrix.anchor }}.src/LICENSE* /tmp/anchor/${{ matrix.anchor }}.src/COPYING* \
-            /tmp/anchor/${{ matrix.anchor }}.src/license* >/dev/null 2>&1 \
-            || { echo "::error::no LICENSE file in anchor source"; exit 6; }
+          shopt -s nullglob
+          lic=(/tmp/anchor/${{ matrix.anchor }}.src/LICENSE* /tmp/anchor/${{ matrix.anchor }}.src/COPYING* /tmp/anchor/${{ matrix.anchor }}.src/license*)
+          [ ${#lic[@]} -gt 0 ] || { echo "::error::no LICENSE file in anchor source"; exit 6; }
+          shopt -u nullglob
           # Stable path for the built binary (used by the artifact upload).
           python3 -c "import json,sys; print(json.load(open('/tmp/anchor.json'))['binary'])" > /tmp/binpath
           cp "/tmp/anchor/${{ matrix.anchor }}.src/$(cat /tmp/binpath)" /tmp/anchor-binary
@@ -188,6 +189,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          trap 'echo "::error::sf10 build step failed at line $LINENO rc=$?"' ERR
           AUTH=(); [ -n "${GITHUB_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer $GITHUB_TOKEN")
           curl -sSL --fail --max-time 300 "${AUTH[@]}" -o /tmp/sf10.tar.gz \
             "https://codeload.github.com/official-stockfish/Stockfish/tar.gz/refs/tags/sf_10"
@@ -200,12 +202,18 @@ jobs:
       - name: Measure SF10 bench (3 runs) and compute i7-4770K factor
         run: |
           set -u
+          trap 'echo "::error::sf10 measure step failed at line $LINENO rc=$?"' ERR
           # CCRL reference machine (i7-4770K): SF10 bench = 3,939,338 nodes in 2054 ms.
           REF_NODES=3939338
           REF_MS=2054.0
           TIMES=""
           for i in 1 2 3; do
+            set +e
             OUT=$(/tmp/sf10/src/stockfish bench 2>&1)
+            SRC=$?
+            set -e
+            [ "$SRC" -eq 0 ] || { echo "::error::stockfish bench rc=$SRC"; echo "$OUT" | tail -3; exit 10; }
+            set +e
             NODES=$(echo "$OUT" | grep -oE "Nodes searched:[ ]*[0-9]+" | grep -oE "[0-9]+")
             MS=$(echo "$OUT" | grep -oE "Total time[^:]*:[ ]*[0-9.]+" | sed -E 's/.*: *//')
             if [ -z "$MS" ]; then
