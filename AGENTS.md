@@ -22,13 +22,17 @@
 ## Build & test
 
 ```bash
-# Toolchain: Rust 1.99.0 in /home/user/.toolchain/sysroot (see docs/ENVIRONMENT.md)
-export PATH=/home/user/.toolchain/sysroot/bin:$PATH
-cargo test                # unit + integration tests
-cargo build --release     # release binary
-cargo run --release -- perft 5          # perft
-cargo run --release -- bench            # fixed-node benchmark
-python3 scripts/diftest.py --games 2000 # differential test vs python-chess (needs .venv)
+# Toolchain: Rust 1.99.0 in /home/user/.toolchain/sysroot (see docs/ENVIRONMENT.md;
+# after any sandbox restore, reinstall toolchain + venv + opponents and chmod 755
+# the npm-extracted rust-lld/gcc-ld files first — see docs/ENVIRONMENT.md)
+source /home/user/.toolchain/env
+cargo test --release        # unit + integration tests (perft gates need --release)
+cargo build --release       # release binary (target/release/flawless)
+./target/release/flawless uci                       # UCI mode
+./target/release/flawless perft 5                   # perft
+./target/release/flawless bench                     # depth-10 signature benchmark
+/home/user/.venv/bin/python scripts/diftest.py      # differential test vs python-chess (needs .venv)
+/home/user/.venv/bin/python scripts/match.py ...    # pinned-opponent match runner
 ```
 
 ## Repository layout
