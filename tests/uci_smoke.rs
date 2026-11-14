@@ -131,7 +131,7 @@ fn seeded_fuzz_command_sequences() {
     for trial in 0..6 {
         let (mut child, mut reader) = start();
         let stdin = child.stdin.as_mut().unwrap();
-        write!(stdin, "uci\n").unwrap();
+        writeln!(stdin, "uci").unwrap();
         for _ in 0..25 {
             let idx = (next() % grammar.len() as u64) as usize;
             writeln!(stdin, "{}", grammar[idx]).unwrap();
