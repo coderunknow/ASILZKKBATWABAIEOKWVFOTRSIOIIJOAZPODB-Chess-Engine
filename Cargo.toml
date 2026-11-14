@@ -1,0 +1,21 @@
+[package]
+name = "asilzkkbbatwabaieokwvfotrsioiij"
+version = "0.1.0-dev.1"
+edition = "2021"
+rust-version = "1.75"
+description = "ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB — an independent chess engine written in Rust (not a Stockfish derivative)"
+license = "Apache-2.0"
+repository = "https://github.com/coderunknow/ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB-Chess-Engine"
+publish = false
+
+[dependencies]
+# Zero external dependencies by design (offline build; minimal audit surface).
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+debug = false
+panic = "unwind"
+
+[profile.bench]
+inherits = "release"
