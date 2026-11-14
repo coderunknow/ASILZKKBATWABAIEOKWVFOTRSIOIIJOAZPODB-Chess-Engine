@@ -1,15 +1,15 @@
 {
   "schema": 1,
-  "revision": 5,
+  "revision": 6,
   "purpose": "control",
-  "description": "CTRL-2 flawless self-match null control: identical binary both sides, acceptance 0.5 within 95% binomial CI (PREREGISTRATION.md); 240 games, 120 shards x 2",
-  "preregistration": "PREREGISTRATION.md#ctrl-2",
+  "description": "CTRL-1 anchor-vs-anchor null control (RE-DISPATCH of rev 4, whose push event was dropped by GitHub; identical config): white topple-0.1.1 (2324) vs black topple-0.2.1 (2439), published diff -115 Elo, acceptance |d_hat+115|<=75 (PREREGISTRATION.md); 240 games, 120 shards x 2",
+  "preregistration": "PREREGISTRATION.md#ctrl-1",
   "target_commit": "auto",
   "engine_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
   "batch": "CTRL",
-  "anchor_id": "flawless-self",
-  "white_engine": "flawless",
-  "black_engine": "flawless",
+  "anchor_id": "topple-0.1.1-vs-topple-0.2.1",
+  "white_engine": "topple-0.1.1",
+  "black_engine": "topple-0.2.1",
   "shard_count": 120,
   "shard_indices": [
     0,
@@ -136,6 +136,6 @@
   "opening_suite": "benches/rating-openings-batchA.txt",
   "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
   "repetitions": 2,
-  "seed": 20261116,
+  "seed": 20261115,
   "tc": "40/15"
 }

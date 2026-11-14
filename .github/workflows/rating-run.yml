@@ -81,6 +81,7 @@ jobs:
     outputs:
       config: ${{ steps.res.outputs.config }}
       indices: ${{ steps.res.outputs.indices }}
+      run: ${{ steps.res.outputs.run }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,6 +116,30 @@ jobs:
 
           ev = os.environ["EVENT_NAME"]
           head = os.environ["HEAD_SHA"]
+
+          # Deliberate-dispatch gate: the TOP commit of the push must move the
+          # marker file. pull_request paths filters match the whole PR diff on
+          # GitHub, so without this gate every docs push would re-dispatch
+          # whatever config the marker currently holds (including confirmatory
+          # batches). A push whose top commit does not touch benches/dispatch.json
+          # is NOT a dispatch: resolve succeeds with run=false and the shard
+          # matrix is skipped. A dispatch push is therefore exactly one commit
+          # whose diff touches benches/dispatch.json.
+          run = "true"
+          if ev == "pull_request":
+              diff = subprocess.run(
+                  ["git", "diff", "--name-only", "HEAD~1", "HEAD", "--",
+                   "benches/dispatch.json"],
+                  capture_output=True, text=True)
+              if not diff.stdout.strip():
+                  run = "false"
+                  print("top commit does not touch benches/dispatch.json — NOT a dispatch; skipping shards")
+                  out = os.environ["GITHUB_OUTPUT"]
+                  with open(out, "a") as f:
+                      f.write(f"run={run}\n")
+                      f.write("indices=[]\n")
+                      f.write("config={}\n")
+                  sys.exit(0)
 
           if ev == "pull_request":
               if not os.path.exists("benches/dispatch.json"):
@@ -224,6 +249,7 @@ jobs:
 
           out = os.environ["GITHUB_OUTPUT"]
           with open(out, "a") as f:
+              f.write(f"run={run}\n")
               f.write(f"indices={json.dumps(indices)}\n")
               f.write(f"config={json.dumps(cfg)}\n")
           PY
@@ -231,6 +257,7 @@ jobs:
   shard:
     name: ${{ fromJson(needs.resolve.outputs.config).purpose }}-${{ fromJson(needs.resolve.outputs.config).batch }}-${{ fromJson(needs.resolve.outputs.config).anchor_id }}-shard${{ matrix.shard_index }}
     needs: resolve
+    if: needs.resolve.outputs.run == 'true' || needs.resolve.outputs.run == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 330
     strategy:
