@@ -32,9 +32,29 @@
 - Reference machine (target): Windows 10 LTSC 2021, i5-7300U (4 threads), 8 GB RAM. This dev sandbox: 2 vCPU, ~4 GB RAM, Linux.
 - Opponent binaries for anchored rating testing are limited; see BENCHMARKING.md for the honest state of rating evidence.
 
+## Measured strength probes (internal, in-sandbox; NOT a CCRL/CEGT rating)
+
+Pinned opponent: Stockfish 19 WASM `stockfish-19-lite-single` (npm `stockfish@19.0.1`, single-threaded,
+hashes recorded in BENCHMARKING.md). TC: 100 ms/move fixed; 20 openings ×2 colors paired; output
+committed under `benches/probe-*`.
+
+| Probe | SF setting | Ours W/D/L | Score | 95% opening-clustered CI | Logistic Elo diff vs this setting |
+|-------|-----------|------------|-------|---------------------------|-----------------------------------|
+| probe-001 | Skill 0 | 40/0/0 | 1.000 | [1.000, 1.000] | +2400 (degenerate clamp) |
+| probe-003 | Skill 5 | 11/13/16 | 0.438 | [0.325, 0.550] | −44 (CI [−127, +35]) |
+| probe-002 | Skill 10 | 1/7/32 | 0.113 | [0.050, 0.175] | −359 (CI [−512, −269]) |
+
+Conclusion (honest): our strength is bracketed between pinned SF-Skill-5 and SF-Skill-10 at
+movetime 100 ms on this hardware. Absolute Elo is UNKNOWN and unverifiable from this sandbox —
+certainly NOT 2,000+; v1.0.0 gates NOT met; rating estimate = **INCONCLUSIVE / far below gate**.
+Do not present these numbers as official ratings; no CCRL anchor was available.
+
 ## Next preregistered task
 
-1. Finish probe-001 (40 games vs Stockfish 19 WASM pinned, Skill 0, movetime 100ms); record raw evidence (PGN/JSONL), compute score + opening-clustered 95% bootstrap CI via `scripts/stats.py`, and label it an internal in-sandbox estimate — NOT a CCRL/CEGT rating.
-2. Run a second probe at a stronger pinned setting (e.g. Skill 5-10) to bound where our strength lies; do not tune the engine to the probe.
-3. UCI robustness fuzzing (stop/ponder/hash/threads churn, malformed lines).
-4. Do NOT claim playing strength beyond the measured estimate; v1.0.0 gates unchanged.
+1. Keep engine development evidence-based: if time permits, probe skill 3/7 to tighten the bracket, or run
+   longer-TC probes; do not tune to the probe opponent.
+2. NPS / bench regression tracking (`cargo run --release -- bench_eval`; add `bench` for search
+   fixed-node signature) and document.
+3. Remaining V1 gaps: benchmark CLI `bench`, time-management validation vs clocks, EF RN search-consistency
+   checks, Windows-specific verification (CI covers build only), and documentation of the release gates.
+4. NEVER claim v1.0.0 status; never present in-sandbox numbers as CCRL/CEGT.

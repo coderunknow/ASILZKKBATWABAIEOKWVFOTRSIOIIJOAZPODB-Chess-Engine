@@ -35,3 +35,13 @@
 - Wrote match.py/stats.py + 20 verified openings; launched probe-001 (40 games vs SF 19 WASM,
   Skill 0, movetime 100ms) in background.
 - Raw evidence committed to benches/ for reproducibility.
+
+## 2026-11-14 — CI + probes session (cont.)
+
+- PR #1 opened (branch pushed). CI: ubuntu-latest + windows-latest both green (fmt/clippy/tests/
+  release build/UCI handshake/perft d3). Third-party Kilo bot: insufficient credits — reported as
+  not a code issue.
+- probes 001/002/003 committed with raw PGN/JSONL evidence.
+- UCI fuzz (6 trials × 25 random commands, grammar of 30) — 0 crashes/hangs.
+- Engine bracket: between SF-Skill-5 and SF-Skill-10 (pinned SF 19 WASM, 100 ms/move). No absolute
+  rating claim; v1.0.0 gates untouched.

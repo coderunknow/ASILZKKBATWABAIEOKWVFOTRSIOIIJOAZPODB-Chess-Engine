@@ -34,3 +34,19 @@
   single-threaded in sandbox.
 - Known gaps (honest): no strength measurement yet; no match/CI; `Threads` hard-capped at 1;
   UCI not fuzzed; see STATUS.md / FAILURE_LEDGER.md (no rating claims).
+
+## 2026-11-14 — First strength probes + CI + match infrastructure
+
+- GitHub Actions CI (Windows+Linux: fmt, clippy -D warnings, release tests, release build, UCI
+  handshake, perft d3) — green on PR #1. Kilo review bot fails (insufficient account credits);
+  not a code verdict.
+- Match infrastructure implemented (`scripts/match.py`, `scripts/stats.py`); 20 verified openings;
+  paired games with color reversal; opening-clustered bootstrap 95% CIs.
+- Two engine bugs found by benchmarking and fixed: (1) LMR table out-of-bounds panic at depth 64 /
+  move-count 64+ (thread died, GUI starved → timeout loss); (2) no fallback bestmove on thread
+  panic (worker now wraps search in catch_unwind and emits legal fallback; main thread rebuilds TT).
+- Probes vs pinned Stockfish 19 WASM (movetime 100 ms): SF Skill 0 → 40/40 wins (checkmates);
+  SF Skill 5 → 11/13/16 (≈ −44 Elo diff); SF Skill 10 → 1/7/32 (≈ −359). Engine is between
+  pinned Skill 5 and Skill 10; far from any 2000-Elo gate; results are in-sandbox internal
+  estimates only, never to be presented as official ratings.
+- NNUE still NOT built; classical eval unchanged pending measured need.

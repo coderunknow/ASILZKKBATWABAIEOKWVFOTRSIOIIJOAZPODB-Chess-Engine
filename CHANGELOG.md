@@ -33,6 +33,10 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   95% bootstrap CI) + `benches/openings-20.txt` (20 openings, both colors).
 - GitHub Actions CI (`.github/workflows/ci.yml`): Ubuntu + Windows, fmt, clippy -D warnings,
   release tests, release build, UCI handshake, perft d3 sanity — green on PR #1.
+- Strength probes vs pinned Stockfish 19 WASM (Skill 0/5/10, movetime 100 ms, 20 paired openings ×2 colors):
+  40/40 checkmate wins vs Skill 0; 11/13/16 vs Skill 5 (Elo diff −44, CI [−127,+35]); 1/7/32 vs Skill 10
+  (Elo diff −359, CI [−512,−269]). Internal in-sandbox bracket; not a CCRL/CEGT rating.
+- UCI fuzz: 6 trials × 25 commands — 0 crashes, 0 hangs.
 - Not committed tags; v1.0.0 NOT authorized.
 
 ## [0.1.0-dev.1] — 2026-11-14
