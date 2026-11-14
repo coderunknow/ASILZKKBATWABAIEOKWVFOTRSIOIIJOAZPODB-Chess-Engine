@@ -1,0 +1,233 @@
+//! Transposition table.
+//!
+//! - Zobrist-keyed, depth-preferred replacement with generation aging.
+//! - 8-byte entries; power-of-two entry count; aligned u64 access.
+//! - Mate scores are stored ply-relative (added on store, subtracted on load).
+
+use crate::types::Move;
+
+pub const BOUND_NONE: u8 = 0;
+pub const BOUND_EXACT: u8 = 1;
+pub const BOUND_LOWER: u8 = 2; // fail-high: true score >= stored score
+pub const BOUND_UPPER: u8 = 3; // fail-low:  true score <= stored score
+
+#[derive(Clone, Copy, Default)]
+struct Entry {
+    key16: u16,
+    move16: u16,
+    score: i16,
+    depth: i8,
+    bound_gen: u8, // bound(2 bits) | gen(6 bits)
+}
+
+impl Entry {
+    fn bound(&self) -> u8 {
+        self.bound_gen & 0b11
+    }
+    fn generation(&self) -> u8 {
+        self.bound_gen >> 2
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ProbeResult {
+    pub best_move: Option<Move>,
+    pub score: Option<i32>,
+    pub depth: i32,
+    pub bound: u8,
+}
+
+pub struct TranspositionTable {
+    entries: Box<[u64]>,
+    len_mask: usize,
+    generation: u8,
+    pub stores: u64,
+    pub probes: u64,
+    pub hits: u64,
+}
+
+const MATE_BOUND: i32 = crate::eval::MATE_SCORE - 100;
+
+impl TranspositionTable {
+    pub fn new(size_mb: usize) -> Self {
+        let mut tt = TranspositionTable {
+            entries: Box::new([]),
+            len_mask: 0,
+            generation: 1,
+            stores: 0,
+            probes: 0,
+            hits: 0,
+        };
+        tt.resize(size_mb);
+        tt
+    }
+
+    pub fn resize(&mut self, size_mb: usize) {
+        let bytes = size_mb.max(1) * 1024 * 1024;
+        let want_entries = bytes / 8;
+        // Keep a reasonable bound: at least 1024 entries, at most 2^27 entries (1 GiB).
+        let entries = want_entries.clamp(1024, 1 << 27).next_power_of_two();
+        self.entries = vec![0u64; entries].into_boxed_slice();
+        self.len_mask = entries - 1;
+        self.clear();
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.fill(0);
+        self.generation = 1;
+        self.stores = 0;
+        self.probes = 0;
+        self.hits = 0;
+    }
+
+    /// Called at the start of a new search: age entries into the next generation.
+    pub fn new_search(&mut self) {
+        self.generation = (self.generation + 1) & 0b111111;
+        if self.generation == 0 {
+            self.clear();
+        }
+    }
+
+    #[inline]
+    fn pack(e: &Entry) -> u64 {
+        (e.key16 as u64)
+            | ((e.move16 as u64) << 16)
+            | (((e.score as u16) as u64) << 32)
+            | (((e.depth as u8) as u64) << 48)
+            | ((e.bound_gen as u64) << 56)
+    }
+
+    #[inline]
+    fn unpack(v: u64) -> Entry {
+        Entry {
+            key16: (v & 0xFFFF) as u16,
+            move16: ((v >> 16) & 0xFFFF) as u16,
+            score: ((v >> 32) & 0xFFFF) as u16 as i16,
+            depth: ((v >> 48) & 0xFF) as u8 as i8,
+            bound_gen: ((v >> 56) & 0xFF) as u8,
+        }
+    }
+
+    #[inline]
+    fn index(&self, key: u64) -> usize {
+        (key as usize) & self.len_mask
+    }
+
+    #[inline]
+    fn adjust_score_to_tt(score: i32, ply: i32) -> i16 {
+        let s = if score > MATE_BOUND {
+            score + ply
+        } else if score < -MATE_BOUND {
+            score - ply
+        } else {
+            score
+        };
+        s.clamp(i16::MIN as i32, i16::MAX as i32) as i16
+    }
+
+    #[inline]
+    fn adjust_score_from_tt(score: i16, ply: i32) -> i32 {
+        let s = score as i32;
+        if s > MATE_BOUND {
+            s - ply
+        } else if s < -MATE_BOUND {
+            s + ply
+        } else {
+            s
+        }
+    }
+
+    pub fn probe(&mut self, key: u64, ply: i32) -> ProbeResult {
+        self.probes += 1;
+        let e = Self::unpack(self.entries[self.index(key)]);
+        if e.bound() == BOUND_NONE || e.key16 != (key >> 48) as u16 {
+            return ProbeResult { best_move: None, score: None, depth: 0, bound: BOUND_NONE };
+        }
+        self.hits += 1;
+        let best_move = if e.move16 != 0 { Some(Move::from_u16(e.move16)) } else { None };
+        ProbeResult {
+            best_move,
+            score: Some(Self::adjust_score_from_tt(e.score, ply)),
+            depth: e.depth as i32,
+            bound: e.bound(),
+        }
+    }
+
+    /// Cheap best-move probe (no stats, for move ordering / PV extraction).
+    pub fn probe_move(&self, key: u64) -> Option<Move> {
+        let e = Self::unpack(self.entries[self.index(key)]);
+        if e.bound() == BOUND_NONE || e.key16 != (key >> 48) as u16 || e.move16 == 0 {
+            None
+        } else {
+            Some(Move::from_u16(e.move16))
+        }
+    }
+
+    pub fn store(&mut self, key: u64, best_move: Option<Move>, score: i32, depth: i32, bound: u8, ply: i32) {
+        let idx = self.index(key);
+        let old = Self::unpack(self.entries[idx]);
+        let replace = old.bound() == BOUND_NONE
+            || depth >= old.depth as i32
+            || old.generation() != self.generation;
+        if !replace {
+            return;
+        }
+        let entry = Entry {
+            key16: (key >> 48) as u16,
+            move16: best_move.map(|m| m.to_u16()).unwrap_or(0),
+            score: Self::adjust_score_to_tt(score, ply),
+            depth: depth.clamp(i8::MIN as i32, i8::MAX as i32) as i8,
+            bound_gen: (bound & 0b11) | ((self.generation & 0b111111) << 2),
+        };
+        self.entries[idx] = Self::pack(&entry);
+        self.stores += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_and_probe_roundtrip() {
+        let mut tt = TranspositionTable::new(1);
+        let key = 0xDEADBEEFCAFEBABEu64;
+        tt.store(key, Some(Move::new(12, 28)), 150, 7, BOUND_EXACT, 0);
+        let p = tt.probe(key, 0);
+        assert_eq!(p.score, Some(150));
+        assert_eq!(p.depth, 7);
+        assert_eq!(p.best_move, Some(Move::new(12, 28)));
+    }
+
+    #[test]
+    fn mate_scores_are_ply_relative() {
+        let mut tt = TranspositionTable::new(1);
+        let key = 0x1122334455667788u64;
+        tt.store(key, None, MATE_BOUND + 5, 10, BOUND_EXACT, 10);
+        let p = tt.probe(key, 10);
+        assert_eq!(p.score, Some(MATE_BOUND + 5));
+        let p_other = tt.probe(key, 3);
+        assert_eq!(p_other.score, Some(MATE_BOUND + 5 + 7));
+    }
+
+    #[test]
+    fn wrong_key_misses() {
+        let mut tt = TranspositionTable::new(1);
+        tt.store(0xAAAABBBBCCCCDDDDu64, None, 42, 3, BOUND_LOWER, 0);
+        let p = tt.probe(0xBBBBCCCCDDDDEEEEu64, 0);
+        assert_eq!(p.score, None);
+    }
+
+    #[test]
+    fn depth_preferred_replacement() {
+        let mut tt = TranspositionTable::new(1);
+        let key = 0x123456789ABCDEF0u64;
+        tt.store(key, None, 100, 5, BOUND_EXACT, 0);
+        tt.store(key, None, 200, 3, BOUND_EXACT, 0); // shallower, must not replace
+        let p = tt.probe(key, 0);
+        assert_eq!(p.score, Some(100));
+        tt.store(key, None, 200, 6, BOUND_EXACT, 0); // deeper, replaces
+        let p = tt.probe(key, 0);
+        assert_eq!(p.score, Some(200));
+    }
+}

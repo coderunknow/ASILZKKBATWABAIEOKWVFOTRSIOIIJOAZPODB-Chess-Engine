@@ -1,5 +1,6 @@
 //! CLI entry point for ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB.
 
+use asilzkkbbatwabaieokwvfotrsioiij::eval::{ClassicalEvaluator, Evaluator};
 use asilzkkbbatwabaieokwvfotrsioiij::movegen;
 use asilzkkbbatwabaieokwvfotrsioiij::position::Position;
 use std::time::Instant;
@@ -18,10 +19,9 @@ fn main() {
         Some("perft") => cmd_perft(&args[2..]),
         Some("divide") => cmd_divide(&args[2..]),
         Some("bench") => cmd_bench(),
-        Some("uci") => {
-            eprintln!("{ENGINE_NAME} {ENGINE_VERSION} — uci mode not implemented yet");
-            std::process::exit(1);
-        }
+        Some("uci") => asilzkkbbatwabaieokwvfotrsioiij::uci::run_uci(),
+        Some("eval") => cmd_eval(&args[2..]),
+        Some("bench_eval") => cmd_bench_eval(),
         Some("moves") => cmd_moves(&args[2..]),
         Some("hash") => cmd_hash(&args[2..]),
         Some("--version") | Some("version") => println!("{ENGINE_NAME} {ENGINE_VERSION}"),
@@ -152,5 +152,50 @@ fn cmd_hash(args: &[String]) {
                 let _ = writeln!(out, "error {fen}");
             }
         }
+    }
+}
+
+
+fn cmd_eval(args: &[String]) {
+    let fen = args.first().map(|s| s.as_str());
+    let pos = match fen {
+        Some(f) => Position::from_fen(f).unwrap_or_else(|e| {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }),
+        None => Position::startpos(),
+    };
+    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    let mut eval = ClassicalEvaluator::default();
+    let b = eval.breakdown(&pos);
+    println!("total      {:>6} cp", b.total);
+    println!("material   {:>6}", b.material);
+    println!("pst        {:>6}", b.pst);
+    println!("mobility   {:>6}", b.mobility);
+    println!("pawns      {:>6}", b.pawns);
+    println!("king_safety{:>6}", b.king_safety);
+    println!("bishop_pair{:>6}", b.bishop_pair);
+    println!("rook_file  {:>6}", b.rook_file);
+    println!("tempo      {:>6}", b.tempo);
+}
+
+fn cmd_bench_eval() {
+    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    let fens = [
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+    ];
+    let mut eval = ClassicalEvaluator::default();
+    for fen in fens {
+        let pos = Position::from_fen(fen).unwrap();
+        let t = Instant::now();
+        let mut acc = 0i32;
+        let n = 1000;
+        for _ in 0..n {
+            acc = acc.saturating_add(eval.evaluate(&pos));
+        }
+        println!("{:>6} cp  avg over {} evals in {:.3}s ({} ns/eval, checksum {})", acc / n, n, t.elapsed().as_secs_f64(), t.elapsed().as_nanos() / n as u128, acc);
     }
 }

@@ -1,0 +1,419 @@
+//! UCI (Universal Chess Interface) protocol implementation — hand-rolled, no dependencies.
+//!
+//! Implemented commands: uci, isready, ucinewgame, position, go (depth/nodes/movetime/
+//! wtime..btime, winc/binc, movestogo, searchmoves, infinite, ponder), stop, ponderhit,
+//! quit, register, setoption (Hash, Threads, MultiPV), debug.
+//!
+//! Search runs on a worker thread; `go` returns immediately. `bestmove` is printed exactly
+//! once per `go`. `stop` / `ponderhit` act on the running search through shared, cheap
+//! primitives (AtomicBool + Arc<Mutex<SearchLimits>>).
+
+use crate::eval::MATE_SCORE;
+use crate::movegen::generate_legal;
+use crate::position::Position;
+use crate::search::{SearchLimits, SearchProgress, SearchResult, Searcher};
+use crate::tt::TranspositionTable;
+use crate::types::Move;
+use std::io::{BufRead, Write};
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+use std::thread;
+use std::time::Instant;
+
+const WHITE: usize = crate::types::WHITE;
+const ENGINE_NAME: &str = "ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB";
+const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub struct UciEngine {
+    pos: Position,
+    tt: Option<TranspositionTable>,
+    hash_mb: usize,
+    multi_pv: usize,
+    worker: Option<WorkerHandle>,
+    last_clocks: Option<(u64, u64, u64, u64, Option<u64>)>, // wtime btime winc binc movestogo
+    stderr_log: bool,
+}
+
+struct WorkerHandle {
+    join: thread::JoinHandle<()>,
+    done: Receiver<(SearchResult, TranspositionTable)>,
+    stop: Arc<AtomicBool>,
+    limits: Arc<Mutex<SearchLimits>>,
+}
+
+impl UciEngine {
+    pub fn new() -> Self {
+        UciEngine {
+            pos: Position::startpos(),
+            tt: Some(TranspositionTable::new(64)),
+            hash_mb: 64,
+            multi_pv: 1,
+            worker: None,
+            last_clocks: None,
+            stderr_log: false,
+        }
+    }
+
+    pub fn run(&mut self) {
+        let stdin = std::io::stdin();
+        let mut lines = stdin.lock().lines();
+        while let Some(Ok(line)) = lines.next() {
+            let line = line.trim().to_string();
+            if line.is_empty() {
+                continue;
+            }
+            if !self.handle_line(&line) {
+                break;
+            }
+        }
+        self.stop_and_join();
+    }
+
+    /// Returns false to quit.
+    fn handle_line(&mut self, line: &str) -> bool {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        let Some(&cmd) = tokens.first() else { return true };
+        match cmd {
+            "uci" => {
+                println!("id name {ENGINE_NAME}");
+                println!("id author ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB project v{ENGINE_VERSION} (Apache-2.0)");
+                println!("option name Hash type spin default 64 min 1 max 4096");
+                println!("option name Threads type spin default 1 min 1 max 1");
+                println!("option name MultiPV type spin default 1 min 1 max 256");
+                println!("uciok");
+                let _ = std::io::stdout().flush();
+            }
+            "isready" => {
+                println!("readyok");
+                let _ = std::io::stdout().flush();
+            }
+            "ucinewgame" => {
+                self.stop_and_join();
+                if let Some(tt) = self.tt.as_mut() {
+                    tt.clear();
+                }
+                self.pos = Position::startpos();
+            }
+            "position" => self.cmd_position(&tokens[1..]),
+            "go" => self.cmd_go(&tokens[1..]),
+            "stop" => self.stop_and_join(),
+            "ponderhit" => self.cmd_ponderhit(),
+            "setoption" => self.cmd_setoption(&tokens[1..]),
+            "register" => println!("registration ok"),
+            "debug" => {
+                self.stderr_log = tokens.get(1).map(|&s| s == "on").unwrap_or(false);
+            }
+            "quit" => {
+                self.stop_and_join();
+                return false;
+            }
+            other => {
+                if self.stderr_log {
+                    eprintln!("info string unknown command: {other}");
+                }
+            }
+        }
+        true
+    }
+
+    fn cmd_position(&mut self, args: &[&str]) {
+        self.stop_and_join();
+        if args.is_empty() {
+            return;
+        }
+        let moves_idx = args.iter().position(|&t| t == "moves");
+        let (fen_tokens, move_tokens): (&[&str], &[&str]) = match moves_idx {
+            Some(i) => (&args[..i], &args[i + 1..]),
+            None => (args, &[]),
+        };
+        let new_pos = if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
+            Some(Position::startpos())
+        } else {
+            let fen = if fen_tokens[0] == "fen" { fen_tokens[1..].join(" ") } else { fen_tokens.join(" ") };
+            match Position::from_fen(&fen) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    eprintln!("info string position error: {e}");
+                    None
+                }
+            }
+        };
+        let Some(mut pos) = new_pos else { return };
+        for mv in move_tokens {
+            match Move::from_uci(mv) {
+                Some(m) => {
+                    let legal = generate_legal(&mut pos);
+                    match legal.iter().find(|&&x| x == m) {
+                        Some(&legal_m) => {
+                            pos.make_move(legal_m);
+                        }
+                        None => {
+                            eprintln!("info string illegal move in position command: {mv}");
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("info string malformed move in position command: {mv}");
+                    break;
+                }
+            }
+        }
+        self.pos = pos;
+    }
+
+    fn cmd_go(&mut self, args: &[&str]) {
+        self.stop_and_join();
+        let mut movetime: Option<u64> = None;
+        let mut depth: Option<i32> = None;
+        let mut nodes: Option<u64> = None;
+        let mut wtime: Option<u64> = None;
+        let mut btime: Option<u64> = None;
+        let mut winc: u64 = 0;
+        let mut binc: u64 = 0;
+        let mut movestogo: Option<u64> = None;
+        let mut search_moves: Option<Vec<Move>> = None;
+        let mut ponder = false;
+        let mut infinite = false;
+
+        let mut i = 0;
+        while i < args.len() {
+            match args[i] {
+                "searchmoves" => {
+                    let mut list = Vec::new();
+                    i += 1;
+                    while i < args.len() && Move::from_uci(args[i]).is_some() {
+                        list.push(Move::from_uci(args[i]).unwrap());
+                        i += 1;
+                    }
+                    search_moves = Some(list);
+                    continue;
+                }
+                "ponder" => {
+                    ponder = true;
+                    i += 1;
+                }
+                "infinite" => {
+                    infinite = true;
+                    i += 1;
+                }
+                "wtime" => {
+                    wtime = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                }
+                "btime" => {
+                    btime = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                }
+                "winc" => {
+                    winc = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    i += 2;
+                }
+                "binc" => {
+                    binc = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    i += 2;
+                }
+                "movestogo" => {
+                    movestogo = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                }
+                "depth" => {
+                    depth = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                }
+                "nodes" => {
+                    nodes = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                }
+                "movetime" => {
+                    movetime = args.get(i + 1).and_then(|s| s.parse().ok());
+                    i += 2;
+                }
+                other => {
+                    if self.stderr_log {
+                        eprintln!("info string skipping unknown go token: {other}");
+                    }
+                    i += 1;
+                }
+            }
+        }
+
+        self.last_clocks = Some((wtime.unwrap_or(0), btime.unwrap_or(0), winc, binc, movestogo));
+
+        let (soft_ms, hard_ms) = if let Some(mt) = movetime {
+            (mt, mt)
+        } else if let (Some(wt), Some(bt)) = (wtime, btime) {
+            clock_limits(self.pos.side, wt, bt, winc, binc, movestogo)
+        } else {
+            (u64::MAX, u64::MAX)
+        };
+        let max_depth = depth.unwrap_or(64).clamp(1, 64);
+        let max_nodes = nodes.unwrap_or(u64::MAX);
+
+        let limits = SearchLimits {
+            max_depth,
+            max_nodes,
+            soft_ms,
+            hard_ms,
+            infinite: infinite || ponder || (wtime.is_none() && btime.is_none() && movetime.is_none() && depth.is_none() && nodes.is_none()),
+            ponder,
+        };
+        let shared_limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: limits.max_depth,
+            max_nodes: limits.max_nodes,
+            soft_ms: limits.soft_ms,
+            hard_ms: limits.hard_ms,
+            infinite: limits.infinite,
+            ponder: limits.ponder,
+        }));
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let tt = self.tt.take().unwrap_or_else(|| TranspositionTable::new(self.hash_mb));
+        let mut pos = self.pos.clone();
+        let stop_for_search = stop.clone();
+        let multi_pv = self.multi_pv;
+        let start_instant = Instant::now();
+        let (tx, rx) = channel();
+
+        let limits_for_thread = shared_limits.clone();
+        let handle = thread::spawn(move || {
+            let mut tt = tt;
+            let result = {
+                let mut searcher = Searcher::new(&mut tt, &stop_for_search, limits_for_thread.clone());
+                searcher.search_root(&mut pos, search_moves, multi_pv, &mut |progress: &SearchProgress| {
+                    let elapsed = start_instant.elapsed().as_millis() as u64;
+                    let nps = if elapsed > 0 { progress.nodes.saturating_mul(1000) / elapsed } else { progress.nodes };
+                    println!(
+                        "info depth {} seldepth {} multipv {} score {} nodes {} nps {} time {} pv {}",
+                        progress.depth,
+                        progress.seldepth,
+                        progress.multipv,
+                        format_score(progress.score_cp),
+                        progress.nodes,
+                        nps,
+                        elapsed,
+                        progress.pv.iter().map(|m| m.to_uci()).collect::<Vec<_>>().join(" ")
+                    );
+                    let _ = std::io::stdout().flush();
+                })
+            };
+            // Print bestmove directly from the worker so it appears as soon as the
+            // search ends, even if the GUI sends no further commands (UCI protocol).
+            match result.ponder_move {
+                Some(p) => println!("bestmove {} ponder {}", result.best_move, p),
+                None => println!("bestmove {}", result.best_move),
+            }
+            let _ = std::io::stdout().flush();
+            let _ = tx.send((result, tt));
+        });
+
+        self.worker = Some(WorkerHandle { join: handle, done: rx, stop, limits: shared_limits });
+    }
+
+    fn cmd_ponderhit(&mut self) {
+        if let Some(worker) = self.worker.as_ref() {
+            if let Ok(mut lim) = worker.limits.lock() {
+                if lim.ponder {
+                    if let Some((wt, bt, winc, binc, movestogo)) = self.last_clocks {
+                        let (soft, hard) = clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
+                        lim.soft_ms = soft;
+                        lim.hard_ms = hard;
+                        lim.infinite = false;
+                    }
+                    lim.ponder = false;
+                }
+            }
+        }
+    }
+
+    fn cmd_setoption(&mut self, args: &[&str]) {
+        if args.is_empty() || args[0] != "name" {
+            return;
+        }
+        let value_idx = args.iter().position(|&t| t == "value");
+        let (name_tokens, value_tokens): (&[&str], &[&str]) = match value_idx {
+            Some(i) => (&args[1..i], &args[i + 1..]),
+            None => (&args[1..], &[]),
+        };
+        let name = name_tokens.join(" ").to_ascii_lowercase();
+        let value = value_tokens.join(" ");
+        match name.as_str() {
+            "hash" => match value.parse::<usize>().ok().filter(|&v| (1..=4096).contains(&v)) {
+                Some(mb) => {
+                    self.stop_and_join();
+                    self.hash_mb = mb;
+                    self.tt = Some(TranspositionTable::new(mb));
+                }
+                None => eprintln!("info string option Hash expects 1..4096 MiB, got {value:?}"),
+            },
+            "threads" => {
+                if value != "1" {
+                    eprintln!("info string option Threads: this build is single-threaded; value {value:?} ignored (1 thread used)");
+                }
+            }
+            "multipv" => match value.parse::<usize>().ok().filter(|&v| (1..=256).contains(&v)) {
+                Some(n) => self.multi_pv = n,
+                None => eprintln!("info string option MultiPV expects 1..256, got {value:?}"),
+            },
+            other => {
+                if self.stderr_log {
+                    eprintln!("info string unknown option: {other}");
+                }
+            }
+        }
+    }
+
+    fn stop_and_join(&mut self) {
+        if self.worker.is_none() {
+            return;
+        }
+        self.worker.as_ref().unwrap().stop.store(true, Ordering::Relaxed);
+        let worker = self.worker.take().unwrap();
+        let _ = worker.join.join();
+        match worker.done.recv() {
+            Ok((result, tt)) => {
+                // bestmove already printed by the search worker; keep only the TT handoff.
+                let _ = result;
+                self.tt = Some(tt);
+            }
+            Err(_) => {
+                eprintln!("info string search thread ended without result");
+                if self.tt.is_none() {
+                    self.tt = Some(TranspositionTable::new(self.hash_mb));
+                }
+            }
+        }
+        let _ = std::io::stdout().flush();
+    }
+}
+
+pub fn clock_limits(side: usize, wtime: u64, btime: u64, winc: u64, binc: u64, movestogo: Option<u64>) -> (u64, u64) {
+    let (t, inc) = if side == WHITE { (wtime, winc) } else { (btime, binc) };
+    let mtg = movestogo.unwrap_or(40).max(1);
+    let soft = (t / mtg + inc / 2).clamp(20, 30_000);
+    let hard = (soft * 6).clamp(soft, t.saturating_sub(30));
+    (soft, hard)
+}
+
+fn format_score(score: i32) -> String {
+    // Scores at/above MATE_SCORE are forced-mate scores; anything beyond MATE_SCORE
+    // (or far below) is clamped — it cannot represent a real position evaluation.
+    if score >= MATE_SCORE - 100 {
+        let d = ((MATE_SCORE - score + 1) / 2).max(0);
+        format!("mate {d}")
+    } else if score <= -(MATE_SCORE - 100) {
+        let d = ((MATE_SCORE + score + 1) / 2).max(0);
+        format!("mate -{d}")
+    } else {
+        format!("cp {score}")
+    }
+}
+
+/// Entry point: run the UCI loop on stdin/stdout.
+pub fn run_uci() {
+    let mut engine = UciEngine::new();
+    engine.run();
+}

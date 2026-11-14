@@ -647,6 +647,37 @@ impl Position {
         self.debug_assert_restored_hash();
     }
 
+    /// Apply a null move (side to move passes). MUST be undone with `unmake_null_move`.
+    /// Not recorded in `history` (repetition detection across null moves is not meaningful here).
+    pub fn make_null_move(&mut self) {
+        if self.ep >= 0 {
+            self.hash ^= zob_ep(file_of(self.ep as Square));
+        }
+        self.ep = -1;
+        self.hash ^= zob_side();
+        self.side = 1 - self.side;
+    }
+
+    /// Undo a null move. `prev_ep` is the ep square saved before `make_null_move`.
+    pub fn unmake_null_move(&mut self, prev_ep: i8) {
+        self.side = 1 - self.side;
+        self.ep = prev_ep;
+        self.hash ^= zob_side();
+        if prev_ep >= 0 {
+            self.hash ^= zob_ep(file_of(prev_ep as Square));
+        }
+    }
+
+    /// True if `color` has non-pawn material (used to guard null-move pruning).
+    pub fn has_non_pawn_material(&self, color: usize) -> bool {
+        let b = color * 6;
+        let occ = self.pieces[b + KNIGHT]
+            | self.pieces[b + BISHOP]
+            | self.pieces[b + ROOK]
+            | self.pieces[b + QUEEN];
+        occ != 0
+    }
+
     /// King square of a color.
     pub fn king_sq(&self, color: usize) -> Square {
         lsb(self.pieces[color * 6 + KING])

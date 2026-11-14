@@ -12,15 +12,15 @@
 - [x] Repository recon complete (Phase 0)
 - [x] Starting commit / remote state verified and recorded
 - [x] Rust toolchain available (1.99.0, installed from npm `@toolchain-bin/*` because static.rust-lang.org is unreachable; see `docs/ENVIRONMENT.md`)
-- [ ] Architecture RFC published (Phase 1) — in progress
-- [ ] Chess foundation correct: perft gates pass (startpos, Kiwipete, positions 3–5)
-- [ ] Differential testing vs python-chess (pinned 1.11.2, GPL-3.0+, test-only oracle)
-- [ ] UCI protocol implemented and tested (async stop, clocks, MultiPV, ponder)
-- [ ] Search baseline: iterative deepening + alpha-beta + TT + quiescence
-- [ ] Classical evaluation baseline; NNUE interface designed, NNUE NOT default
-- [ ] Benchmark harness (fixed-node + fixed-time) reproducible
-- [ ] CI green on Linux + Windows (fmt, clippy -D warnings, tests, release build)
-- [ ] Match infrastructure: paired openings, color reversal, opening-clustered CIs
+- [x] Architecture RFC published (Phase 1) — see ARCHITECTURE.md (accepted for v1 scope)
+- [x] Chess foundation correct: perft gates pass (startpos, Kiwipete, positions 3–5; pos4 d6 = 706045033)
+- [x] Differential testing vs python-chess (pinned 1.999, GPL-3.0+, test-only oracle) — DIFTEST PASSED, 76,240 positions, 305 d3 perft comparisons, 0 mismatches
+- [x] UCI protocol implemented and smoke-tested (async stop via worker thread + AtomicBool, clocks, MultiPV, ponder/ponderhit) — not yet fuzzed
+- [x] Search baseline: iterative deepening + alpha-beta + TT (8-byte) + quiescence + null-move + LMR + aspiration + MultiPV (uncommitted until this phase checkpoint; see below)
+- [x] Classical evaluation baseline (tapered PSTs, mobility, bishop pair, king zone, tempo); NNUE interface deferred, NNUE NOT default
+- [ ] Benchmark harness (fixed-node + fixed-time) reproducible — partial (`bench_eval` works; full match runner not yet written)
+- [ ] CI green on Linux + Windows (fmt, clippy -D warnings, tests, release build) — not started
+- [ ] Match infrastructure: paired openings, color reversal, opening-clustered CIs — partial (planned scripts; not implemented)
 - [ ] Rating estimate ≥ 2000 with opening-clustered 95% CI lower bound ≥ 2000 over ≥2 batches (**NOT MET / NOT MEASURED**)
 - [ ] Correctness, reliability, documentation, release gates (see TESTING.md)
 - [ ] v1.0.0 stable release (**NOT AUTHORIZED — gate not passed**)
@@ -34,4 +34,4 @@
 
 ## Next preregistered task
 
-Complete Phase 1 architecture RFC (ARCHITECTURE.md), then Phase 2 foundation: Cargo project, bitboards, movegen, FEN, make/unmake, perft — and get perft gates passing.
+Phase 3 checkpoint (eval + TT + search + UCI) is built and smoke-tested but UNCOMMITTED as of this writing. Next preregistered task: (1) commit Phase 3 checkpoint (eval+search+tt+uci+main wiring, with UCI bestmove-worker fix); (2) set up GitHub Actions CI (fmt, clippy -D warnings, tests, release build, Windows+Linux) and get it actually green; (3) write match/benchmark harness (paired openings + reversed colors + opening-clustered CI) or honestly record INCONCLUSIVE strength evidence. Do NOT claim playing strength or touch v1.0.0 gates until measured.
