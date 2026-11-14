@@ -92,3 +92,9 @@
   rustfmt (rustfmt@0.1.0) + CI; DIFTEST/bench re-verification PENDING until toolchain returns.
 - 2026-11-14 MSRV job green with RUSTUP_TOOLCHAIN=1.80.0 + --locked (msrv job: 1.80.0 accepted
   the ep-hash/UCI changes without code changes).
+- 2026-11-14 CI root cause via annotations-only channel: clippy `-D` driver args need the
+  `cargo clippy ... -- -D warnings` separator; removing it produced `unexpected argument '-D'
+  found`, masked as a clippy failure until json→`::error::` annotations surfaced it; real error
+  was clippy::manual_range_contains @ src/position.rs:699 (fixed 2c777b5). CI fully green since
+  2c777b5 / cd9b7d9 (msrv + ubuntu + windows). When logs are blocked, use the
+  check-runs annotations API; do NOT retry gh run view --log / gh run download (blob storage EOF).

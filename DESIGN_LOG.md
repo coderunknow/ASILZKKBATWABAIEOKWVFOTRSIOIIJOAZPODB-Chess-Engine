@@ -150,3 +150,27 @@ Process honesty:
 - DIFTEST/bench local verification NOT re-run (needs toolchain + venv, both gone) — PENDING.
 - Kilo ACTION_REQUIRED remains a billing limitation, not a code issue. CodeRabbit SKIPPED (bot
   auto-skip); its findings are being addressed commit-by-commit regardless.
+
+2026-11-14 (clippy root cause + CI diagnostics channel):
+- CI clippy (deny warnings) failed on ubuntu-latest and windows-latest for several pushes with
+  no retrievable log (`gh run view --log*`, `gh api .../actions/jobs/<id>/logs`, and
+  `gh run download` all EOF against productionresults*.blob.core.windows.net). Root cause was
+  isolated by temporarily rewriting the clippy step to `--message-format=json` piped through an
+  embedded python3 converter that re-emitted each level=error compiler-message as an `::error>`
+  check annotation (plus a raw head/tail dump in `::notice::`/`::error::`); the annotations API
+  (`gh api repos/<owner>/<repo>/commits/<sha>/check-runs` + `/check-runs/<id>/annotations` on
+  api.github.com) is the only working diagnostics channel this environment has. The converter's
+  first run surfaced `error: unexpected argument '-D' found` — the edit had dropped the `--`
+  separator before driver args (`cargo clippy -- -D warnings`, not `cargo clippy ... -D warnings`);
+  annotations then showed the true error: `src/position.rs:699` `clippy::manual_range_contains`
+  (`if f < 0 || f > 7` → `if !(0..=7).contains(&f)`, fixed in 2c777b5). A prior speculative
+  `needless_range_loop` fix (da178a6, `legal.iter()`) was real but not the failure.
+- With the fix in place the whole workflow is green (msrv, ubuntu-latest, windows-latest, run
+  43574593496 on 2c777b5). The temporary clippy scaffold (continue-on-error + tee + artifact
+  upload + verdict step) was removed and the plain step restored (cd9b7d9); run 43574700347
+  confirms green with the restored simple step. The JSON→annotations converter remains documented
+  here for future log-blocked episodes.
+- apt-get is unusable (deb.debian.org unreachable, partial lists root-owned); local toolchain
+  remains unavailable. CI is the build oracle. Bench signature still requires a real build;
+  informational CI bench step remains the channel, but its output is not machine-readable here
+  without log access — re-measurement remains PENDING until toolchain or log access returns.
