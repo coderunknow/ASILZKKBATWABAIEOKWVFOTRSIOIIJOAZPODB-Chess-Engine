@@ -82,3 +82,31 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 ### CTRL-1 / CTRL-2 results (filled after execution)
 
 - status: PENDING EXECUTION
+
+---
+
+## SCREENING-1 / SCREENING-2 — anchor-selection screening estimates (registered 2026-11-14, before dispatch)
+
+- **Purpose:** screening (exploratory; NEVER gate evidence; used ONLY to choose the
+  confirmatory anchor set within §2's span/±400 rules — the protocol's prescribed use of a
+  brief screening estimate). Pilot/CTRL data are likewise excluded from gate counts.
+- **Objective:** bound the absolute estimate well enough to select ≥ 3 confirmatory anchors
+  that are non-saturating (|d| ≤ 400 expected) and satisfy §2's span/coverage rules as the
+  frozen pool allows (KNOWN TENSION: the pool gap 1849 → 2324 may make the literal
+  [est−200, est+200] span rule unsatisfiable for est > 2249; the chosen interpretation will
+  be documented explicitly at registration of the batches).
+- **Methodology:** Flawless (engine_sha256 fd75726d…) vs topple-0.1.1 (published 2324±17,
+  SCREENING-1) and vs topple-0.2.1 (2439±14, SCREENING-2): 60 openings
+  (`benches/rating-openings-batchA.txt`, 2c4a54d8…) × 1 paired repetition × AB/BA = **120
+  games each** (15 shards × 8 games); TC 40/15; seeds 20261119 (S-1) / 20261120 (S-2).
+- **Analysis (pre-defined):** d̂ = −400·log10(1/s̄−1) per anchor from counted games; est =
+  mean of (R_a + d̂_a) across the two anchors; uncertainty ~ binomial/cluster bootstrap (for
+  SELECTION only — never reported as a rating). Selection rule: pick ≥ 3 pool anchors with
+  expected |d| ≤ 400 around the screening estimate and straddling it within ±200 where the
+  pool permits; include the widest low/high discriminators available.
+- **Expected evidence:** `benches/evidence/screening/topple-0.1.1/` and `.../topple-0.2.1/`
+  via the in-run evidence job.
+
+### SCREENING results (filled after execution)
+
+- status: PENDING EXECUTION
