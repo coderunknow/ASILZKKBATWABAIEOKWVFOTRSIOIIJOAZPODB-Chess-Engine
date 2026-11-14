@@ -48,6 +48,10 @@ jobs:
       - name: Release build
         run: cargo build --release --locked
 
+      - name: Bench (informational — prints fixed-depth-10 signature)
+        continue-on-error: true
+        run: ./target/release/flawless bench
+
       - name: UCI handshake smoke test
         shell: bash
         run: |
@@ -82,6 +86,7 @@ jobs:
           toolchain: 1.80.0
 
       - name: Check on MSRV
-        run: cargo check --release
+        run: cargo check --release --locked
         env:
+          RUSTUP_TOOLCHAIN: "1.80.0"
           CARGO_NET_OFFLINE: "false"

@@ -10,8 +10,10 @@ Usage example:
       --movetime 100 --openings openings.txt --out benches/<id> [--games 20]
 """
 import argparse
+import hashlib
 import json
 import os
+import select
 import subprocess
 import sys
 import time
@@ -44,6 +46,7 @@ class UciEngine:
             bufsize=0,
         )
         self.engine_error_events: list[str] = []
+        self._buf = b""
         self._send("uci")
         self._wait_for("uciok", timeout=60.0)
         if hash_mb is not None:
@@ -55,23 +58,36 @@ class UciEngine:
 
     def _send(self, s: str) -> None:
         assert self.proc.stdin is not None
-        self.proc.stdin.write((s + "\n").encode())
-        self.proc.stdin.flush()
+        try:
+            self.proc.stdin.write((s + "\n").encode())
+            self.proc.stdin.flush()
+        except (BrokenPipeError, OSError) as e:
+            # Engine died (or its stdin closed) — surface as EngineExited so the game
+            # loop records an engine-error loss instead of crashing the whole batch.
+            raise EngineExited(f"engine {self.spec.name}: pipe broken while sending {s!r}: {e}") from e
 
     def _readline(self, timeout: float) -> bytes:
-        import select as _select
-
+        # Line reassembly from raw chunks: select() only promises *some* bytes, never a
+        # complete line — readline() after a readable select() could block forever on a
+        # partial line, so we do the split ourselves under a hard deadline.
         assert self.proc.stdout is not None
         fd = self.proc.stdout.fileno()
+        deadline = time.time() + timeout
         while True:
-            r, _, _ = _select.select([fd], [], [], timeout)
+            idx = self._buf.find(b"\n")
+            if idx != -1:
+                line, self._buf = self._buf[: idx + 1], self._buf[idx + 1 :]
+                return line
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise TimeoutError(f"engine {self.spec.name}: no complete line for {timeout}s")
+            r, _, _ = select.select([fd], [], [], remaining)
             if not r:
                 raise TimeoutError(f"engine {self.spec.name}: no output for {timeout}s")
-            line = self.proc.stdout.readline()
-            if line:
-                return line
-            if self.proc.poll() is not None:
-                raise EngineExited(f"engine {self.spec.name} exited with code {self.proc.returncode}")
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                raise EngineExited(f"engine {self.spec.name} exited (stdout EOF, code {self.proc.poll()})")
+            self._buf += chunk
 
     def _wait_for(self, token: str, timeout: float) -> None:
         t0 = time.time()
@@ -82,7 +98,13 @@ class UciEngine:
         raise TimeoutError(f"engine {self.spec.name}: expected {token}")
 
     def set_position(self, board: chess.Board) -> None:
-        self._send(f"position fen {board.fen()}")
+        # Full move history from the initial position (openings included) so the engine's
+        # repetition detection has the whole game context — FEN alone hides prior occurrences.
+        moves = " ".join(m.uci() for m in board.move_stack)
+        if moves:
+            self._send(f"position startpos moves {moves}")
+        else:
+            self._send("position startpos")
 
     def go(self, movetime_ms: int | None = None, depth: int | None = None) -> str:
         args = ["go"]
@@ -105,6 +127,50 @@ class UciEngine:
             self.proc.wait(timeout=5.0)
         except Exception:
             self.proc.kill()
+
+
+def file_sha256(path: str) -> str | None:
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def probe_artifact(cmd_line: str) -> dict:
+    """Record which binary (sha256) actually produced a batch — probe archaeology."""
+    first = cmd_line.split()[0] if cmd_line.split() else ""
+    target = None
+    if first and os.path.isfile(first):
+        target = first
+    else:
+        which = os.path.join(os.getcwd(), first)
+        if os.path.isfile(which):
+            target = which
+        else:
+            import shutil
+
+            which = shutil.which(first) if first else None
+            if which:
+                target = which
+    return {"cmd": cmd_line, "binary_path": target, "sha256": file_sha256(target) if target else None}
+
+
+def git_head() -> str | None:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return out.stdout.strip() if out.returncode == 0 else None
+    except Exception:
+        return None
 
 
 def parse_opening_moves(text: str) -> list[str]:
@@ -170,9 +236,9 @@ def play_game(
         if board.fullmove_number > max_moves:
             break
         mover = white if board.turn == chess.WHITE else black
-        mover.set_position(board)
         t0 = time.time()
         try:
+            mover.set_position(board)
             move_uci = mover.go(movetime_ms=movetime_ms, depth=depth)
         except EngineExited:
             harvest_engine_errors(mover, len(board.move_stack) + 1, engine_error_turns)
@@ -233,6 +299,8 @@ def play_game(
                 "moves": [m.uci() for m in board.move_stack],
                 "fen": board.fen(),
                 "move_count": len(board.move_stack),
+                "engine_error": True,
+                "engine_error_turns": engine_error_turns,
             }
         board.push(move)
         harvest_engine_errors(mover, len(board.move_stack), engine_error_turns)
@@ -278,6 +346,12 @@ def main() -> int:
 
     openings = load_openings(args.openings)
     os.makedirs(args.out, exist_ok=True)
+    # Single overwrite policy for ALL batch artifacts (games.pgn used to append while
+    # games.jsonl/meta.json truncated): refuse to touch a previously-written batch.
+    for name in ("games.pgn", "games.jsonl", "meta.json"):
+        p = os.path.join(args.out, name)
+        if os.path.exists(p) and os.path.getsize(p) > 0:
+            ap.error(f"output artifact exists: {p} — choose a fresh --out directory (refusing to overwrite a batch)")
 
     pairs = [(o, p) for o in openings for p in ("AB", "BA")]
     if args.games is not None:
@@ -301,8 +375,12 @@ def main() -> int:
         "openings_file": os.path.abspath(args.openings),
         "n_games_planned": len(pairs),
         "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # Probe archaeology: which exact binaries produced this batch, and which commit.
+        "white_artifact": probe_artifact(args.white_cmd),
+        "black_artifact": probe_artifact(args.black_cmd),
+        "git_commit": git_head(),
     }
-    with open(jsonl_path, "w") as jf, open(pgn_path, "a") as pgn, open(os.path.join(args.out, "meta.json"), "w") as mf:
+    with open(jsonl_path, "w") as jf, open(pgn_path, "w") as pgn, open(os.path.join(args.out, "meta.json"), "w") as mf:
         json.dump(meta, mf, indent=2)
         for idx, (opening, pair) in enumerate(pairs, 1):
             if pair == "AB":
@@ -316,9 +394,11 @@ def main() -> int:
             w = UciEngine(w_spec.spec, hash_mb=args.hash, skill=w_skill)
             b = UciEngine(b_spec.spec, hash_mb=args.hash, skill=b_skill)
             t0 = time.time()
-            result = play_game(w, b, opening, args.movetime, args.depth, wname, bname, args.max_moves)
-            w.quit()
-            b.quit()
+            try:
+                result = play_game(w, b, opening, args.movetime, args.depth, wname, bname, args.max_moves)
+            finally:
+                w.quit()
+                b.quit()
             result["wall_seconds"] = round(time.time() - t0, 3)
             result["color_pair"] = pair
             result["game_index"] = idx

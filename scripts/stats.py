@@ -39,6 +39,15 @@ def elo_from_score(s: float) -> float:
     return -400.0 * math.log10(1.0 / s - 1.0)
 
 
+def fmt_elo(s: float) -> str:
+    # Boundary scores carry no finite Elo estimate: report the boundary, not a fake +2400.
+    if s <= 0.0:
+        return "<= -2400 (boundary: zero score, true value unbounded below)"
+    if s >= 1.0:
+        return ">= +2400 (boundary: perfect score, true value unbounded above)"
+    return f"{elo_from_score(s):+.0f}" 
+
+
 def score_of(result: str, perspective: str) -> float:
     if result == "1/2-1/2":
         return 0.5
@@ -114,7 +123,7 @@ def main() -> int:
     print(f"games: {total_games}   openings (clusters): {len(clusters)}")
     print(f"score: {total_score:.1f}/{total_games}  = {s:.3f}")
     print(f"opening-clustered 95% bootstrap CI for score: [{s_lo:.3f}, {s_hi:.3f}]")
-    print(f"Elo difference (logistic): {elo_from_score(s):+.0f}   CI: [{elo_from_score(s_lo):+.0f}, {elo_from_score(s_hi):+.0f}]")
+    print(f"Elo difference (logistic): {fmt_elo(s)}   CI: [{fmt_elo(s_lo)}, {fmt_elo(s_hi)}]")
     print("NOTE: descriptive internal statistic, not a CCRL/CEGT rating. Do not present as official.")
     return 0
 

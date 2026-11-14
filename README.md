@@ -4,15 +4,17 @@ An independent, from-scratch chess engine written in Rust. **Not a Stockfish der
 
 - **Engine name (UCI):** `Flawless`
 - **License:** Apache-2.0 (see `LICENSE`)
-- **Status:** development (`0.x`). V1 gates NOT met — engine strength is **far below the 2,000-Elo
-  V1 target** (see `STATUS.md` probe table; in-sandbox estimates vs pinned Stockfish 19 WASM:
-  ~0.44–0.53 score vs Skill 5, ~0.11 vs Skill 10). No official CCRL/CEGT rating exists.
-  See `STATUS.md` for the live checklist and `CHANGELOG.md` for releases.
+- **Status:** development (`0.x`). V1 gates NOT met — and **no calibrated absolute rating exists in
+  either direction** (it has not been measured; see `STATUS.md`). In-sandbox relative probes vs pinned
+  Stockfish 19 WASM (e.g. ~0.44–0.53 score vs Skill 5) are internal trend signals only, never an Elo
+  rating. No official CCRL/CEGT rating exists. See `STATUS.md` for the live checklist and
+  `CHANGELOG.md` for releases.
 
 ## Quick start
 
 ```bash
-cargo build --release   # any Rust ≥ 1.80 works (this sandbox used npm-redistributed 1.99.0; see docs/ENVIRONMENT.md)
+cargo build --release   # Rust ≥ 1.80 (MSRV); rust-toolchain.toml pins 1.99.0
+cargo +1.80 build --release   # force the MSRV toolchain instead of the pinned one
 ./target/release/flawless uci              # UCI mode on stdin/stdout
 ./target/release/flawless perft 6          # perft from startpos
 ./target/release/flawless bench            # fixed-depth-10 search benchmark + signature
@@ -22,7 +24,8 @@ Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `b
 
 ## What works (V1 scope)
 
-Standard chess legal move generation · FEN · PGN (basic) · UCI (MultiPV, Hash, Threads=1, ponder) ·
+Standard chess legal move generation · FEN · PGN export from match tooling (no PGN reader exists) ·
+UCI (MultiPV, Hash, Threads=1, ponder) ·
 perft · iterative-deepening alpha-beta with aspiration windows, transposition table, quiescence search,
 move ordering, null-move pruning, late-move reductions · classical tapered evaluation · benchmark CLI ·
 Windows + Linux release builds · CI.

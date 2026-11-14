@@ -21,7 +21,10 @@
 - Primary reference scale: CCRL 40/15 (i7-4770k equivalence; Stockfish 10 calibration reference;
   ponder disabled; same hash policy; generic opening books). As close as resources permit locally.
 - Secondary: CEGT 40/20. **No cross-scale subtraction.**
-- All local results are labeled *private estimate, CCRL-anchored*; never official ratings.
+- No batch has yet been run against documented-Elo anchors, so **every result to date is a private
+  relative estimate** (opening-clustered CI), NOT "CCRL-anchored" and never an official rating. Only a
+  batch meeting all of RATING_PROTOCOL §2–§6 (documented anchors, verified binary SHA-256, null
+  controls) may carry a *CCRL-anchored (private)* label.
 - Paired openings, reversed colors, opening-clustered bootstrap CIs, ≥2 confirmation batches,
   staged sample sizes (200–500 / 1,000–2,000 / 4,000–6,600).
 - Null controls included (e.g., baseline vs itself must score ≈ 50%).
@@ -30,9 +33,13 @@
 
 - `cargo run --release -- bench` — fixed-depth-10 search benchmark over 12 fixed positions; prints
   per-position depth/score/nodes and a total + FNV-1a `bench signature` (deterministic for identical
-  engine code; node counts are the regression signal). Current signature: `3086f65159758c9d`
-  (2,317,474 nodes @ depth 10; changed 2026-11-14 by the terminal/draw precedence audit fix),
-  2,326,103 nodes in ~3.1 s (~760k nps, 2 vCPU sandbox).
+  engine code; node counts are the regression signal). Signature history (all 2026-11-14):
+  `d790483532d87af0` → `3086f65159758c9d` (2,317,474 nodes; audit fixes) → `f1aceef5a9dbc812`
+  (2,367,196 nodes; FIDE ep-hash semantics + castling-origin-king guard) → `fc907eba40b7869f`
+  (3,899,001 nodes; draw/TT/delta-prune corrections — NPS cost accepted for soundness) → **current
+  tree pending re-measurement** (per-capture delta pruning replaced the blanket 1,700-node margin;
+  CI runs an informational bench step and the signature is reported in the run log). The stale
+  "2,326,103 nodes in ~3.1 s" line was a mixed-build measurement error and has been removed.
 - `cargo run --release -- bench_eval` — fixed-node eval micro-benchmark (1000 evals/FEN, ~100–500 ns/eval in sandbox).
 - `cargo run --release -- perft <depth> [fen]`.
 - `cargo run --release -- uci [uci|perft ...]` — full UCI engine; `go movetime/depth/clocks`, `ucinewgame`, MultiPV, ponder.
@@ -58,9 +65,15 @@
 ## Completed probes (2026-11-14)
 
 See STATUS.md "Measured strength probes" for the table. Raw evidence: `benches/probe-001-sf19lite-skill0/`
-(40 games), `benches/probe-003-sf19lite-skill5/` (40, pre-RFP/CE build), `benches/probe-002-sf19lite-skill10/`
-(40), `benches/probe-004-sf19lite-skill5-rfp/` (40, RFP+CE build), `benches/ab-004-rfp-checkext/`
-(40 A/B vs pre-change build, movetime 50 ms) — PGN + games.jsonl + meta.json committed. Method limitations (honest): fixed 100 ms/move, single pinned
+(40 games), `benches/probe-003-sf19lite-skill5/` (40, pre-RFP/CE build, 2026-11-14T03:28:59Z),
+`benches/probe-002-sf19lite-skill10/` (40), `benches/probe-004-sf19lite-skill5-rfp/` (40, RFP+CE
+build, 2026-11-14T04:26:01Z), `benches/ab-004-rfp-checkext/`
+(40 A/B vs pre-change build, movetime 50 ms) — PGN + games.jsonl + meta.json committed.
+**Binary-hash caveat:** probe-003 and probe-004 meta.json predate the binary-hashing instrumentation
+(added 2026-11-14); they record the probe command line but NOT the probed binary's SHA-256 or the
+git commit — their engine identity rests on the recorded cmd + timestamps, not a verifiable hash.
+New batches record `white_artifact`/`black_artifact` ({binary path, sha256}) and `git_commit` in
+meta.json (see `scripts/match.py`). Method limitations (honest): fixed 100 ms/move, single pinned
 WASM opponent, no CCRL-equivalent TC, Skill Level ≠ Elo, 2 vCPU sandbox, bootstrap CIs over 20 opening
 clusters only.
 
@@ -74,5 +87,6 @@ Any Elo number produced here is an in-sandbox estimate with stated uncertainty, 
 
 ## Raw evidence retention
 
-`benches/<experiment-id>/` contains: PGN, JSONL, match config, engine logs, stats output, binary hashes.
-Never overwrite; new batches go in new directories.
+`benches/<experiment-id>/` contains: PGN, JSONL, match config (meta.json incl. binary SHA-256 +
+git commit for new batches), engine logs, stats output. Never overwrite; `scripts/match.py` refuses
+to write into a directory holding non-empty batch artifacts, and new batches go in new directories.

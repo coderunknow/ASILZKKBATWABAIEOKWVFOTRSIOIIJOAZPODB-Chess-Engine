@@ -13,8 +13,8 @@
 - [x] Starting commit / remote state verified and recorded
 - [x] Rust toolchain available (1.99.0, installed from npm `@toolchain-bin/*` because static.rust-lang.org is unreachable; see `docs/ENVIRONMENT.md`)
 - [x] Architecture RFC published (Phase 1) — see ARCHITECTURE.md (accepted for v1 scope)
-- [x] Chess foundation correct: perft gates pass (startpos, Kiwipete, positions 3–5; pos4 d6 = 706045033)
-- [x] Differential testing vs python-chess (pinned 1.999, GPL-3.0+, test-only oracle) — DIFTEST PASSED, 76,240 positions, 305 d3 perft comparisons, 0 mismatches
+- [~] Chess foundation: perft claims scoped to evidence — pos4 d6 = 706045033 PASS (committed `benches/perft_pos4_d6.*`); startpos d3 = 8902 PASS (CI every push/PR, both OSs); full-depth cells for startpos/Kiwipete/pos3/pos5 remain PENDING in TESTING.md (earlier wording here overstated; corrected 2026-11-14)
+- [x] Differential testing vs python-chess (pinned 1.11.2, GPL-3.0+, test-only oracle) — DIFTEST PASSED, 76,240 positions, 305 d3 perft comparisons, 0 mismatches
 - [x] UCI protocol implemented and smoke-tested (async stop via worker thread + AtomicBool, clocks, MultiPV, ponder/ponderhit) — fuzzed smoke-level (seeded, deterministic; tests/uci_smoke.rs) — see TESTING.md; deep fuzzing NOT performed
 - [x] Search baseline: iterative deepening + alpha-beta + TT (8-byte) + quiescence + null-move + LMR + aspiration + MultiPV (uncommitted until this phase checkpoint; see below)
 - [x] Classical evaluation baseline (tapered PSTs, mobility, bishop pair, king zone, tempo); NNUE interface deferred, NNUE NOT default
@@ -52,9 +52,10 @@ committed under `benches/probe-*`.
 
 Conclusion (honest): our strength is bracketed between pinned SF-Skill-5 and SF-Skill-10 at
 movetime 100 ms on this hardware. The RFP+check-extension change moved the needle in the right
-direction (+80 in the A/B, +17 vs Skill 5, both CIs wide and overlapping zero at 40–120 games). Absolute Elo is UNKNOWN and unverifiable from this sandbox —
-certainly NOT 2,000+; v1.0.0 gates NOT met; rating estimate = **INCONCLUSIVE / far below gate**.
-Do not present these numbers as official ratings; no CCRL anchor was available.
+direction (+80 in the A/B, +17 vs Skill 5, both CIs wide and overlapping zero at 40–120 games).
+Absolute Elo is UNKNOWN and unverifiable from this sandbox — no calibrated anchor was available, so
+no absolute number in either direction is supported by evidence; v1.0.0 gates NOT met; rating
+estimate = **INCONCLUSIVE**. Do not present these numbers as official ratings.
 
 ## Next preregistered task
 

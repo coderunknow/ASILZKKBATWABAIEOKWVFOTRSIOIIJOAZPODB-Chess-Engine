@@ -169,9 +169,10 @@ Asynchronous search on a worker thread; `go` returns immediately; `bestmove` pri
 - Subcommands (as implemented): `uci`, `perft <depth> [fen]`, `divide <depth> [fen]`, `bench`
   (fixed-depth-10 signature benchmark), `eval [fen]`, `bench_eval`, `moves`. No `pgn` subcommand exists
   yet; `makefen` does not exist.
-- PGN: minimal read support (tag pairs + movetext tokenizer + SAN via python-chess for validation in tests);
-  full SAN output for `bench`/debug. python-chess (pinned 1.11.2, GPL-3.0+, **test-only**, never linked)
-  is the differential oracle in `scripts/`.
+- PGN: **write-only**, from `scripts/match.py` (game evidence records). The engine has no PGN reader
+  and none exists anywhere in this repository; there is no `pgn` subcommand and no SAN output.
+  python-chess (pinned 1.11.2, GPL-3.0+, **test-only**, never linked) is the differential oracle in
+  `scripts/` (in particular `scripts/perft_oracle.py`, `scripts/diftest.py`).
 
 ## 11. Rejected alternatives (kept for the record)
 

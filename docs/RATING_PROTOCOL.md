@@ -89,3 +89,37 @@ Next action: run §3–§6 on a machine with access to ratable opponents (e.g. C
 their official distributed packages, or CCRL-anchored opponents distributed with documented Elo), then
 commit `benches/rating-batchA/` and `benches/rating-batchB/`, update STATUS.md with exact numbers and
 CIs, and only then reconsider release authorization.
+
+## 8. Amendment (2026-11-14) — pre-registration clarifications, no methodology change
+
+Append-only amendment per the amendment rule above. Reasons: CodeRabbit review on `13a316e`
+identified two §3↔§4 contradictions and an under-specified equation; this section supersedes only
+those points and changes nothing else.
+
+1. **Openings: identical within a batch, disjoint across batches.** §3's "Opening list identical
+   across batches and opponents" is superseded and contradicted by §4; the governing rule is:
+   - Within one batch, every anchor and the null controls face the **same** pre-registered suite,
+     playing the **same** AB/BA pairs (required for anchor comparability and for the
+     opponent-vs-opponent control in §5).
+   - **Batch B uses a disjoint, pre-registered opening suite** (no line shared with batch A), with a
+     different fixed bootstrap seed. The combined estimate is then not suite-specific. Amended §4
+     text stands; amended §3 text is void to this extent.
+2. **Absolute-anchoring equations, made explicit.** For anchor *a* with published rating R_a ± ε_a
+   (published error, same control), per-anchor score s_a (0 < s_a < 1):
+     d_a = −400 · log10(1/s_a − 1)                       (Flawless − a, Elo points)
+     σ_a² = σ²_matched,a + ε_a²                           (quadrature; σ_matched from the clustered
+                                                           bootstrap CI of d_a, i.e. transform both
+                                                           CI endpoints through the logistic and use
+                                                           the half-width)
+     Flawless ≈ Σ_a w_a (R_a + d_a) / Σ_a w_a,            w_a = 1/σ_a²
+     Var(Flawless) ≈ 1 / Σ_a w_a.
+   Report both CI variants of §4. Anchors with |d_a| > 400 saturate and are excluded from the gate
+   (they remain valid for screening, labeled as such).
+3. **Zero and perfect scores.** s_a = 0 or s_a = 1 carries **no finite estimate**: record the anchor
+   as a boundary result (unbounded d_a), exclude it from the WLS (no finite point exists), and treat
+   the anchor as ineligible for gate evidence; replace it with an anchor nearer the current
+   estimate. Never report clamped values (e.g. "+2400") as point estimates. Bootstrap CIs that
+   include 0 or 1 are reported as boundary endpoints, not clamped numbers. `scripts/stats.py`
+   implements exactly this for descriptive statistics; the gate computation in §4 inherits the rule.
+4. **Everything else in §§1–7 is unchanged.** In particular the two-sided 95% CI lower-endpoint
+   ≥ 2,000 requirement and the no-official-rating labeling remain absolute.
