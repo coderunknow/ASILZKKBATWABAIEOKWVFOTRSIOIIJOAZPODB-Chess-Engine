@@ -40,7 +40,24 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --release --all-targets -- -D warnings
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        run: cargo clippy --release --all-targets -- -D warnings 2>&1 | tee clippy.log
+
+      - name: Upload clippy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-log-${{ matrix.os }}
+          path: clippy.log
+          if-no-files-found: ignore
+
+      - name: Clippy verdict
+        if: steps.clippy.outcome == 'failure'
+        run: |
+          echo "::error::clippy failed — see artifact clippy-log-${{ matrix.os }}"
+          exit 1
 
       - name: Tests (release)
         run: cargo test --release --locked
