@@ -321,6 +321,76 @@ def test_anchor_label_key_matching():
     check(math.isfinite(cr["error"]),
           "anchor-vs-anchor control scores via key labels (not display names)")
 
+def test_verify_evidence_fail_closed():
+    import verify_evidence as ve
+    import shutil, hashlib, os
+    td = tempfile.mkdtemp()
+    try:
+        # Build a minimal committed-evidence fixture for one batch/anchor + one control.
+        def mk_evidence(base, records, suite="s" * 64, eng="e" * 64, anc="a" * 64):
+            os.makedirs(base, exist_ok=True)
+            gp = os.path.join(base, "games.jsonl")
+            with open(gp, "w") as f:
+                for r in records:
+                    f.write(json.dumps(r) + "\n")
+            man = {"engine_sha256": eng, "anchor_sha256": anc,
+                   "opening_suite_sha256": suite,
+                   "n_counted": sum(1 for r in records if r.get("counted")),
+                   "merged_sha256": hashlib.sha256(open(gp, "rb").read()).hexdigest()}
+            with open(os.path.join(base, "manifest.json"), "w") as f:
+                json.dump(man, f)
+            return man
+
+        rec = [{"moves": "e2e4 e7e5", "result": "1-0", "counted": True,
+                "engine_error": False, "_shard_id": "s0", "schedule_index": 0,
+                "replay_depth": 0}]
+        eng = "e" * 64
+        anc = "a" * 64
+        mk_evidence(f"{td}/benches/evidence/batchA/topple-x", rec, eng=eng, anc=anc)
+        mk_evidence(f"{td}/benches/evidence/control/pair", rec, eng=eng, anc=anc)
+        pool = {"engines": [{"key": "topple-x", "name": "Topple", "sha256": anc}]}
+        plan = {"schema": 1, "engine_sha256": eng, "min_games": 1,
+                "batches": {"A": {"suite_sha256": "s" * 64, "anchors": ["topple-x"]}},
+                "controls": {"pair": {"evidence": f"{td}/benches/evidence/control/pair/games.jsonl",
+                                      "suite_sha256": "s" * 64,
+                                      "white_sha256": eng,
+                                      "black_sha256": anc,
+                                      "min_counted": 1}}}
+        pp = f"{td}/pool.json"; json.dump(pool, open(pp, "w"))
+        pl = f"{td}/plan.json"; json.dump(plan, open(pl, "w"))
+
+        cwd = os.getcwd()
+        os.chdir(td)
+        try:
+            rep = ve.verify_all(pl, pp)
+            check(rep["batches"]["A"]["anchors"][0]["n_counted"] == 1,
+                  "verify_evidence accepts intact committed evidence")
+            # Corrupt the committed games bytes -> merged_sha256 must fail closed.
+            gp = f"{td}/benches/evidence/batchA/topple-x/games.jsonl"
+            open(gp, "a").write(json.dumps({"moves": "d2d4", "result": "*", "counted": False,
+                                            "engine_error": False, "_shard_id": "s0",
+                                            "schedule_index": 1, "replay_depth": 0}) + "\n")
+            try:
+                ve.verify_all(pl, pp)
+                check(False, "tampered games.jsonl must fail closed")
+            except ve.EvidenceError:
+                check(True, "tampered games.jsonl must fail closed")
+            # Wrong suite hash in the plan -> fail closed.
+            plan["batches"]["A"]["suite_sha256"] = "x" * 64
+            json.dump(plan, open(pl, "w"))
+            # restore games file
+            mk_evidence(f"{td}/benches/evidence/batchA/topple-x", rec, eng=eng, anc=anc)
+            try:
+                ve.verify_all(pl, pp)
+                check(False, "suite-hash divergence must fail closed")
+            except ve.EvidenceError:
+                check(True, "suite-hash divergence must fail closed")
+        finally:
+            os.chdir(cwd)
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Full gate end-to-end (subprocess, fail closed both ways)
 # ---------------------------------------------------------------------------
@@ -426,6 +496,7 @@ def main():
     test_missing_invalid_evidence()
     test_null_controls()
     test_anchor_label_key_matching()
+    test_verify_evidence_fail_closed()
     test_gate_full()
     print(f"\n{PASS} checks passed, {FAIL} failed")
     return 1 if FAIL else 0

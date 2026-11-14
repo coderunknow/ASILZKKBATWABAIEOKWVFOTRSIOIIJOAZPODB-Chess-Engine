@@ -1,21 +1,26 @@
 # rating-gate.yml — the FAIL-CLOSED gate check for the >2,000 Elo mission
 # (docs/RATING_PROTOCOL.md §9). Job name `rating-gate` is stable.
 #
-# It may return SUCCESS only when ALL of: every shard artifact exists and
-# verifies (scripts/aggregate_shards.py rejects missing/duplicate shards,
-# duplicate games, wrong engine/anchor hashes, divergent opening-suite hashes,
-# wrong time controls, incomplete games, missing metadata, inconsistent
-# hardware); >= 3 verified anchors; >= 2,000 counted games per anchor per batch;
-# both batches and the combined estimate have two-sided 95% calibrated CI lower
-# bounds STRICTLY > 2000 (unrounded); both null controls pass. The estimator
-# RECOMPUTES everything from raw games.jsonl evidence — it never trusts a
-# manually entered rating number. Missing evidence fails closed. No step uses
-# continue-on-error.
+# It evaluates COMMITTED raw evidence (benches/evidence/**, produced by the
+# rating-run `evidence` job / evidence-bridge from hash-verified runner
+# artifacts) against the PREREGISTERED machine plan (benches/gate-plan.json,
+# committed together with the Batch A/B preregistration). It may return
+# SUCCESS only when ALL of:
+#   * scripts/verify_evidence.py verifies every planned (batch, anchor) and
+#     control evidence directory: frozen binary hashes, opening-suite hash,
+#     merged_sha256 vs the committed bytes, game-record integrity, counted
+#     totals >= the plan minimum (fail closed on ANY mismatch)
+#   * >= 3 eligible anchors; >= 2,000 counted games per anchor per batch
+#   * Batch A, Batch B and the combined estimate all have two-sided 95%
+#     calibrated CI lower bounds STRICTLY > 2,000 (unrounded)
+#   * both null controls pass their registered thresholds
+# The estimator RECOMPUTES everything from the raw games.jsonl evidence — it
+# never trusts a manually entered rating number. Missing evidence fails closed.
+# No step uses continue-on-error. Until benches/gate-plan.json exists (batch
+# preregistration), this check FAILS CLOSED by design.
 #
-# Trigger notes (main has no workflows yet): workflow_dispatch / workflow_run
-# are delivered only to workflow files on the default branch; until this file
-# is on `main`, the pull_request paths trigger below is the only remote path.
-# The same gate runs locally via:
+# Local reproducibility (any checkout of this branch):
+#   python3 scripts/verify_evidence.py --plan benches/gate-plan.json
 #   python3 scripts/rating_estimator.py gate --anchor-json benches/anchor-pool.json ...
 
 name: rating-gate
@@ -28,11 +33,20 @@ on:
   pull_request:
     paths:
       - ".github/workflows/rating-gate.yml"
+      - "benches/evidence/**"
+      - "benches/gate-plan.json"
+      - "benches/anchor-pool.json"
+      - "scripts/rating_estimator.py"
+      - "scripts/verify_evidence.py"
+      - "scripts/aggregate_shards.py"
+
+permissions:
+  contents: read
 
 jobs:
   rating-gate:
     name: rating-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -40,63 +54,50 @@ jobs:
       - name: Install Python + python-chess (pinned)
         run: python3 -m pip install --user chess==1.11.2
 
-      - name: Download all rating shard artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: evidence/
-          merge-multiple: true
-
-      # Aggregation is fail-closed: any missing/duplicate/mismatched shard, any
-      # hash divergence, any incomplete record exits non-zero and the gate FAILS.
-      - name: Aggregate + verify shard evidence (fail closed)
+      - name: Verify committed evidence against the preregistered plan (fail closed)
         run: |
-          set -e
-          echo "Expected: per (batch, anchor) shard sets per the preregistered plan."
-          echo "Current state: no verified anchor pool exists yet -> gate FAILS CLOSED."
-          if [ ! -f benches/anchor-pool.json ]; then
-            echo "rating-gate: FAIL — benches/anchor-pool.json (verified anchor pool) is missing."
-            echo "The template (anchor-pool.template.json) is NOT a valid pool and never validates."
+          set -euo pipefail
+          if [ ! -f benches/gate-plan.json ]; then
+            echo "rating-gate: FAIL — benches/gate-plan.json missing (batches not yet preregistered)."
+            echo "This check fails closed until Batch A/B are registered and their evidence is committed."
             exit 1
           fi
-          for batch in A B; do
-            for anchor in $(python3 -c "import json;print(' '.join(e['name'] for e in json.load(open('benches/anchor-pool.json'))['engines']))"); do
-              root="evidence/rating-${batch}-${anchor}"
-              [ -d "$root" ] || { echo "rating-gate: FAIL — missing shard root $root"; exit 1; }
-              python3 scripts/aggregate_shards.py \
-                --shards-root "$root" --batch "$batch" --anchor "$anchor" \
-                --engine-sha256 "$(python3 -c "import json;print(json.load(open('benches/anchor-pool.json'))['flawless_engine_sha256'])")" \
-                --anchor-sha256 "$(python3 -c "import json;print([e['sha256'] for e in json.load(open('benches/anchor-pool.json'))['engines'] if e['name']=='$anchor'][0])")" \
-                --opening-suite-sha256 "$(python3 -c "import json,sys;print(json.load(open('benches/anchor-pool.json'))['opening_suites']['$batch']['sha256'])")" \
-                --tc-moves 40 --tc-seconds 900 --expected-shards 8 \
-                --out "merged/${batch}-${anchor}.games.jsonl" \
-                --manifest "merged/${batch}-${anchor}.manifest.json"
-            done
-          done
+          python3 scripts/verify_evidence.py --plan benches/gate-plan.json --pool benches/anchor-pool.json
 
       # Independent recomputation from raw evidence. Exits non-zero unless all
       # three lower CI bounds (A, B, combined) are strictly > 2000, every anchor
-      # is within the saturation limit with >= 2000 counted games per batch, and
+      # is within the saturation limit with >= min_games counted per batch, and
       # both null controls pass.
       - name: rating estimator gate (independent recomputation, fail closed)
         run: |
-          python3 scripts/rating_estimator.py gate \
-            --anchor-json benches/anchor-pool.json \
-            --focus Flawless \
-            --batch-a $(python3 -c "import json;es=[e['name'] for e in json.load(open('benches/anchor-pool.json'))['engines']];print(' '.join(f'{n}=merged/A-{n}.games.jsonl' for n in es))") \
-            --batch-b $(python3 -c "import json;es=[e['name'] for e in json.load(open('benches/anchor-pool.json'))['engines']];print(' '.join(f'{n}=merged/B-{n}.games.jsonl' for n in es))") \
-            --control-anchor evidence/controls/anchor-vs-anchor.jsonl \
-            --control-anchor-names "$(python3 -c "import json;es=json.load(open('benches/anchor-pool.json'))['engines'];print(es[0]['name'], es[1]['name'])")" \
-            --control-self evidence/controls/self-match.jsonl \
-            --min-games 2000 --threshold 2000 --bootstrap 10000 --seed 20261114 \
-            --out merged/rating-gate-result.json
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/gate-args.txt
+          import json
+          plan = json.load(open("benches/gate-plan.json"))
+          def pair(b):
+              return " ".join(f"{a}=benches/evidence/batch{b}/{a}/games.jsonl"
+                              for a in plan["batches"][b]["anchors"])
+          ctl = plan["controls"]
+          print(f"--anchor-json benches/anchor-pool.json")
+          print(f"--focus {plan['focus']}")
+          print(f"--batch-a {pair('A')}")
+          print(f"--batch-b {pair('B')}")
+          print(f"--control-anchor {ctl['anchor_vs_anchor']['evidence']}")
+          print(f"--control-anchor-names {ctl['anchor_vs_anchor']['names'][0]} {ctl['anchor_vs_anchor']['names'][1]}")
+          print(f"--control-self {ctl['self_match']['evidence']}")
+          print(f"--min-games {plan['min_games']}")
+          print(f"--threshold {plan['threshold']}")
+          print(f"--bootstrap {plan.get('bootstrap', 10000)}")
+          print(f"--seed {plan.get('bootstrap_seed', 20261114)}")
+          print("--out benches/evidence/rating-gate-result.json")
+          PY
+          python3 scripts/rating_estimator.py gate $(tr '\n' ' ' < /tmp/gate-args.txt)
 
       - name: Upload machine-readable summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rating-gate-result-${{ github.run_id }}
-          path: |
-            merged/
-            evidence/
+          path: benches/evidence/rating-gate-result.json
           if-no-files-found: warn
           retention-days: 90
