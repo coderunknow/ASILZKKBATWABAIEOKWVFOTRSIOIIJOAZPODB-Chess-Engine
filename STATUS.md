@@ -75,6 +75,23 @@ Toolchain (npm @toolchain-bin @1.99.0 pins) rebuilt per docs/ENVIRONMENT.md; DIF
 29/29 green; clippy clean (1 latent too_many_arguments fixed via StoreRequest); bench re-measured:
 signature unchanged `fc907eba40b7869f`, 2,221,199 nodes @ d10 (43% reduction; 259,619 nps).
 
+## CI status on current head (2026-11-14, verified via gh run list/view)
+
+- Head `e769d9a` (PR #1): CI run **43578826380 — SUCCESS** (ubuntu-latest, windows-latest, msrv rust 1.80 all green).
+- Head `45f8507`: CI run 43578590768 — SUCCESS (all three jobs).
+- Head `1fb14ae`: CI run 43578036659 — SUCCESS (all three jobs).
+- (Failures 43577034924 on db174e4 and 43577274974 on 4aa7f06 were the clippy `too_many_arguments`
+  episode — fixed by StoreRequest in d6dc221; remote annotations then confirmed the root cause.)
+- CodeRabbit re-review requested 2026-11-14T~09:25Z on head `e769d9a` (previous review 5903125228
+  covered db174e4-era code; its 13 findings are dispositioned in DESIGN_LOG.md). Result pending —
+  see "Reviews" below. PR #1 stays OPEN, unmerged, never marked ready on CI alone.
+- Evidence pipeline: scripts/match.py now records hardware/OS, per-side artifact SHA-256 (incl.
+  dynamically loaded WASM), git commit, adjudication and color-pairing text in meta.json; pre-
+  registered ≥60-line opening suites for batch A/B (`benches/rating-openings-batchA.txt`,
+  `batchB.txt`, FEN-verified, mutually disjoint); value-free anchor descriptor template
+  (`benches/anchor-pool.template.json`). Manifest is now written and closed before the first game
+  so provenance survives an interrupted batch.
+
 ## Rating status (absolute; release-gate relevant)
 
 - **Absolute rating: UNKNOWN.** The in-sandbox probes (SF Skill 0/5/10 WASM) are relative comparisons
@@ -102,7 +119,7 @@ Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, not draft.
 
 | Reviewer | State | Notes |
 |----------|-------|-------|
-| CodeRabbit | COMPLETED on head f07c463 (review 5903125228, 2026-11-14T08:24Z): 11 inline + 2 outside-diff findings, all being dispositioned in source; re-review pending on the fixing head | incremental system; fresh review requested after material changes (REVIEW: do not claim pass before the bot completes on the exact final SHA) |
+| CodeRabbit | re-review requested 2026-11-14T~09:25Z on head e769d9a (previous: COMPLETED on db174e4-fix era as review 5903125228, 13/13 findings dispositioned in DESIGN_LOG.md; see `git log` for 50adb09/e769d9a) | REVIEW: do not claim pass before the bot completes on this exact final SHA — verify `gh pr view 1 --json reviews` and map the reviewed SHA; CodeRabbit reviews the SHA current at completion, not at request time |
 | GitHub Copilot | BLOCKED | quota insufficient at default effort (2026-11-14). Retry at LOWER effort requested by task but requires the web UI reviewers panel (effort selection); API re-request rejected (`422: not a collaborator`); docs.github.com unreachable from sandbox. No findings recorded. |
 | Codex | RATE_LIMITED | documented retry (`@codex review`) attempted 2026-11-14T05:47Z → "You have reached your Codex usage limits for code reviews." Prior run at 05a36c0: code review FAILED (usage limit), no findings available. |
 | Qodo | BLOCKED | "Qodo reviews are paused because your trial has ended." (billing-blocked, 2026-11-14). No code findings. |
