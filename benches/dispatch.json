@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "revision": 2,
   "purpose": "pilot",
   "description": "PILOT-1: pipeline/throughput pilot, 4 games (2 shards x 2), games excluded from gate evidence (see PREREGISTRATION.md#pilot-1)",
   "preregistration": "PREREGISTRATION.md#pilot-1",

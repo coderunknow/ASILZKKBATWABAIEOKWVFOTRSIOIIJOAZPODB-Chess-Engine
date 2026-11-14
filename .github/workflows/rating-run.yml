@@ -212,7 +212,7 @@ jobs:
           out = os.environ["GITHUB_OUTPUT"]
           with open(out, "a") as f:
               f.write(f"indices={json.dumps(indices)}\n")
-              f.write(f"config={json.dumps(json.dumps(cfg))}\n")
+              f.write(f"config={json.dumps(cfg)}\n")
           PY
 
   shard:
