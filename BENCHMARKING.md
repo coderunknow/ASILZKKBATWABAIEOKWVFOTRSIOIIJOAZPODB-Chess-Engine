@@ -93,3 +93,18 @@ Any Elo number produced here is an in-sandbox estimate with stated uncertainty, 
 `benches/<experiment-id>/` contains: PGN, JSONL, match config (meta.json incl. binary SHA-256 +
 git commit for new batches), engine logs, stats output. Never overwrite; `scripts/match.py` refuses
 to write into a directory holding non-empty batch artifacts, and new batches go in new directories.
+
+## Rating batch pre-registration (2026-11-14)
+
+- `benches/rating-openings-batchA.txt`, `benches/rating-openings-batchB.txt` — 60 distinct,
+  FEN-legality-verified opening lines each, curated 2026-11-14 from standard opening theory,
+  **mutually disjoint**; every line is played as an AB/BA pair (exact color reversal). Batch B is
+  used for the independent confirmation batch.
+- `benches/anchor-pool.template.json` — schema template for the anchor descriptor embedded in
+  batch manifests via `scripts/match.py --anchor-json`. Contains NO anchor values; filling it with
+  independently verified CCRL 40/15 or CEGT 40/20 data is a prerequisite for any gate run.
+- Batch manifest (`meta.json`) now records: binary SHA-256 for launcher AND every hashed artifact
+  (including WASM loaded dynamically, via `--white-artifact`/`--black-artifact`), git commit, CPU/RAM/OS,
+  hostname, python version, full adjudication rules, color-pairing rule, and (with `--anchor-json`)
+  the complete anchor-pool descriptor. `scripts/match.py` refuses to start unless the anchor pool
+  passes the schema check.

@@ -9,9 +9,9 @@ Usage example:
       --black-cmd "node /path/to/stockfish-19-lite-single.js" \
       --movetime 100 --openings openings.txt --out benches/<id> [--games 20]
 
-FLAWLESS_MATCH_ARTIFACTS: os.pathsep-separated extra files hashed into artifacts
-(e.g. the .wasm next to the stockfish .js launcher) so swapping them invalidates
-the recorded batch identity.
+--white-artifact / --black-artifact: os.pathsep-separated extra files hashed into
+the respective artifact record (e.g. the .wasm next to the stockfish .js launcher)
+so swapping them invalidates the recorded batch identity.
 """
 import argparse
 import hashlib
@@ -167,15 +167,15 @@ def file_sha256(path: str) -> str | None:
         return None
 
 
-def probe_artifact(cmd_line: str) -> dict:
+def probe_artifact(cmd_line: str, extra_paths: str = "") -> dict:
     """Record which exact binaries/scripts produced a batch — probe archaeology.
 
     Hashes (a) the PATH-resolved launcher (first token) and (b) EVERY command token that
     resolves to an existing file (e.g. the Stockfish .js next to a `node` launcher), plus
-    (c) any explicit artifacts in FLAWLESS_MATCH_ARTIFACTS (os.pathsep-separated paths,
-    e.g. `node_modules/stockfish/bin/stockfish-19-lite-single.wasm` — files a wrapper
-    loads dynamically cannot be discovered from the command line alone). Replacing the
-    launcher OR the engine script changes the recorded hashes.
+    (c) any explicit artifacts passed via `extra_paths` (os.pathsep-separated, from
+    --white-artifact / --black-artifact — e.g. `stockfish-19-lite-single.wasm`, which a
+    wrapper loads dynamically and cannot be discovered from the command line alone).
+    Replacing the launcher OR the engine script changes the recorded hashes.
     """
     parts = cmd_line.split() if cmd_line else []
     artifacts: list[dict] = []
@@ -202,7 +202,7 @@ def probe_artifact(cmd_line: str) -> dict:
             which = shutil.which(tok)
             if which:
                 add(which)
-    for extra in os.environ.get("FLAWLESS_MATCH_ARTIFACTS", "").split(os.pathsep):
+    for extra in (extra_paths or "").split(os.pathsep):
         extra = extra.strip()
         if extra and os.path.isfile(extra):
             add(extra)
@@ -214,6 +214,46 @@ def probe_artifact(cmd_line: str) -> dict:
         "binary_path": first["path"],
         "sha256": first["sha256"],
     }
+
+
+def hardware_info() -> dict:
+    """Hardware/OS fingerprint for the match manifest (audit requirement)."""
+    info = {
+        "platform": None,
+        "os": None,
+        "kernel": None,
+        "cpu_model": None,
+        "cpu_count": os.cpu_count(),
+        "ram_bytes": None,
+        "hostname": None,
+        "python": sys.version.split()[0],
+    }
+    try:
+        import platform as _pl
+
+        info["platform"] = _pl.platform()
+        info["os"] = f"{_pl.system()} {_pl.release()}"
+        info["kernel"] = _pl.version()
+        info["hostname"] = _pl.node()
+        info["machine"] = _pl.machine()
+    except Exception:
+        pass
+    try:
+        with open("/proc/cpuinfo", "rb") as f:
+            cpuinfo = f.read().decode(errors="replace")
+        for line in cpuinfo.splitlines():
+            if line.lower().startswith("model name"):
+                info["cpu_model"] = line.split(":", 1)[1].strip()
+                break
+    except OSError:
+        import platform as _pl
+
+        info["cpu_model"] = _pl.processor() or None
+    try:
+        info["ram_bytes"] = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError, AttributeError):
+        pass
+    return info
 
 
 def git_head() -> str | None:
@@ -384,6 +424,32 @@ def color_pair_games(n: int) -> list[str]:
     return ["AB" if i % 2 == 0 else "BA" for i in range(n)]
 
 
+REQUIRED_ANCHOR_KEYS = (
+    "rating_source",      # e.g. "CCRL 40/15 list" or "CEGT 40/20 list"
+    "list_publication_date",
+    "retrieval_date",
+    "time_control",
+    "engines",            # list of anchor engines
+)
+REQUIRED_ANCHOR_ENGINE_KEYS = ("name", "version", "sha256", "published_elo", "published_error")
+
+
+def _require_anchor_schema(pool) -> None:
+    """Fail fast unless the anchor descriptor is complete enough for the rating gate."""
+    if not isinstance(pool, dict):
+        raise SystemExit("anchor-json: top level must be an object")
+    missing = [k for k in REQUIRED_ANCHOR_KEYS if k not in pool]
+    if missing:
+        raise SystemExit(f"anchor-json: missing keys: {', '.join(missing)}")
+    engines = pool["engines"]
+    if not isinstance(engines, list) or not engines:
+        raise SystemExit("anchor-json: 'engines' must be a non-empty list")
+    for i, eng in enumerate(engines):
+        miss = [k for k in REQUIRED_ANCHOR_ENGINE_KEYS if k not in eng]
+        if miss:
+            raise SystemExit(f"anchor-json: engines[{i}] missing keys: {', '.join(miss)}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--white-cmd", required=True)
@@ -399,7 +465,21 @@ def main() -> int:
     ap.add_argument("--skill-white", type=int, default=None)
     ap.add_argument("--skill-black", type=int, default=None)
     ap.add_argument("--max-moves", type=int, default=300)
+    ap.add_argument("--anchor-json", default=None,
+                    help="path to JSON anchor-pool descriptor (rating source, published Elo±error, "
+                         "list publication/retrieval dates, TC); embedded verbatim into meta.json")
+    ap.add_argument("--white-artifact", default="",
+                    help="os.pathsep-separated extra files hashed into the WHITE artifact "
+                         "(e.g. WASM a wrapper loads dynamically)")
+    ap.add_argument("--black-artifact", default="",
+                    help="os.pathsep-separated extra files hashed into the BLACK artifact")
     args = ap.parse_args()
+
+    anchor_pool = None
+    if args.anchor_json:
+        with open(args.anchor_json) as f:
+            anchor_pool = json.load(f)
+        _require_anchor_schema(anchor_pool)
 
     openings = load_openings(args.openings)
     os.makedirs(args.out, exist_ok=True)
@@ -439,9 +519,14 @@ def main() -> int:
         "n_games_planned": len(pairs),
         "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         # Probe archaeology: which exact binaries produced this batch, and which commit.
-        "white_artifact": probe_artifact(args.white_cmd),
-        "black_artifact": probe_artifact(args.black_cmd),
+        "white_artifact": probe_artifact(args.white_cmd, args.white_artifact),
+        "black_artifact": probe_artifact(args.black_cmd, args.black_artifact),
         "git_commit": git_head(),
+        "hardware": hardware_info(),
+        "anchor_pool": anchor_pool,
+        "match_utc_start": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "color_pairs": "AB/BA alternating per opening (exact color reversal)",
+        "adjudication": "FIDE termination via python-chess outcome(claim_draw=True); max_moves cap; flag/illegal/exit => forfeit",
     }
     with open(jsonl_path, "w") as jf, open(pgn_path, "w") as pgn, open(os.path.join(args.out, "meta.json"), "w") as mf:
         json.dump(meta, mf, indent=2)
