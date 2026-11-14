@@ -1,11 +1,9 @@
 {
   "schema": 1,
-  "revision": 1,
-  "description": "Collect PILOT-1 raw evidence (run 43602273258, completed success 2026-11-14T14:56Z)",
+  "revision": 2,
+  "description": "RE-DISPATCH of rev 1 (its push event was dropped by GitHub; same content) + duplicate-pilot collection (run 43603558950, completed success). Disjoint evidence dirs: pilot / pilot-dup.",
   "runs": [
     {
-      "run_id": 43602273258,
-      "evidence_purpose": "pilot",
       "purpose": "pilot",
       "batch": "A",
       "anchor_id": "topple-0.2.1",
@@ -19,7 +17,27 @@
       "shard_indices": [
         0,
         1
-      ]
+      ],
+      "run_id": 43602273258,
+      "evidence_purpose": "pilot"
+    },
+    {
+      "purpose": "pilot",
+      "batch": "A",
+      "anchor_id": "topple-0.2.1",
+      "white_engine": "flawless",
+      "black_engine": "topple-0.2.1",
+      "engine_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
+      "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+      "tc_moves": 40,
+      "tc_seconds": 900.0,
+      "shard_count": 1020,
+      "shard_indices": [
+        0,
+        1
+      ],
+      "run_id": 43603558950,
+      "evidence_purpose": "pilot-dup"
     }
   ]
 }
