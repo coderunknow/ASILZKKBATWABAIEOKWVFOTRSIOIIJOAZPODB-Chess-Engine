@@ -442,9 +442,7 @@ impl<'a> Searcher<'a> {
         // can never collide with mate precedence — and scoring them here keeps stale TT
         // scores out of drawn nodes. When in check we must count legal moves first
         // (mate precedence); see the block right after the terminal check below.
-        if !in_chk
-            && (pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material())
-        {
+        if !in_chk && (pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material()) {
             return DRAW_SCORE;
         }
         let mut alpha = alpha;

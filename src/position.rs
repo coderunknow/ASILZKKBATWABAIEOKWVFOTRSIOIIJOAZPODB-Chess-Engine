@@ -582,7 +582,11 @@ impl Position {
         if old_ep >= 0 && old_ep_included {
             self.hash ^= zob_ep(file_of(old_ep as Square));
         }
-        let new_ep_included = if self.ep >= 0 { self.hash_ep().is_some() } else { false };
+        let new_ep_included = if self.ep >= 0 {
+            self.hash_ep().is_some()
+        } else {
+            false
+        };
         if self.ep >= 0 && new_ep_included {
             self.hash ^= zob_ep(file_of(self.ep as Square));
         }
