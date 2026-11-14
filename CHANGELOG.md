@@ -37,6 +37,11 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   40/40 checkmate wins vs Skill 0; 11/13/16 vs Skill 5 (Elo diff −44, CI [−127,+35]); 1/7/32 vs Skill 10
   (Elo diff −359, CI [−512,−269]). Internal in-sandbox bracket; not a CCRL/CEGT rating.
 - UCI fuzz: 6 trials × 25 commands — 0 crashes, 0 hangs.
+- Search experiment (kept, directional): reverse futility pruning (depth ≤ 3, non-PV,
+  mate-bound-safe) + check extensions. A/B vs previous build: score 0.613 (Elo +80, CI overlapping 0);
+  vs pinned SF Skill 5 score improved 0.438 → 0.525 (CI overlapping). Not conclusive at 40 games.
+- `bench`: fixed-depth-10 search benchmark over 12 fixed positions; deterministic FNV-1a
+  `bench signature` (current: `d790483532d87af0`, 2,798,466 nodes); node count is the regression signal.
 - Not committed tags; v1.0.0 NOT authorized.
 
 ## [0.1.0-dev.1] — 2026-11-14

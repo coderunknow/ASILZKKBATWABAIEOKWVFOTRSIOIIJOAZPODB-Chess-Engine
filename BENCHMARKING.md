@@ -57,8 +57,9 @@
 ## Completed probes (2026-11-14)
 
 See STATUS.md "Measured strength probes" for the table. Raw evidence: `benches/probe-001-sf19lite-skill0/`
-(40 games), `benches/probe-003-sf19lite-skill5/` (40), `benches/probe-002-sf19lite-skill10/` (40) —
-PGN + games.jsonl + meta.json committed. Method limitations (honest): fixed 100 ms/move, single pinned
+(40 games), `benches/probe-003-sf19lite-skill5/` (40, pre-RFP/CE build), `benches/probe-002-sf19lite-skill10/`
+(40), `benches/probe-004-sf19lite-skill5-rfp/` (40, RFP+CE build), `benches/ab-004-rfp-checkext/`
+(40 A/B vs pre-change build, movetime 50 ms) — PGN + games.jsonl + meta.json committed. Method limitations (honest): fixed 100 ms/move, single pinned
 WASM opponent, no CCRL-equivalent TC, Skill Level ≠ Elo, 2 vCPU sandbox, bootstrap CIs over 20 opening
 clusters only.
 

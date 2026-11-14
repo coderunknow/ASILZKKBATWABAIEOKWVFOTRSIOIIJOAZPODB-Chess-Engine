@@ -41,11 +41,14 @@ committed under `benches/probe-*`.
 | Probe | SF setting | Ours W/D/L | Score | 95% opening-clustered CI | Logistic Elo diff vs this setting |
 |-------|-----------|------------|-------|---------------------------|-----------------------------------|
 | probe-001 | Skill 0 | 40/0/0 | 1.000 | [1.000, 1.000] | +2400 (degenerate clamp) |
-| probe-003 | Skill 5 | 11/13/16 | 0.438 | [0.325, 0.550] | −44 (CI [−127, +35]) |
+| probe-003 | Skill 5 (pre-RFP/CE) | 11/13/16 | 0.438 | [0.325, 0.550] | −44 (CI [−127, +35]) |
 | probe-002 | Skill 10 | 1/7/32 | 0.113 | [0.050, 0.175] | −359 (CI [−512, −269]) |
+| probe-004 | Skill 5 (RFP+CE build) | 14/14/12 | 0.525 | [0.412, 0.637] | +17 (CI [−61, +98]) |
+| A/B 004 | vs pre-change build, 50 ms | 18/13/9 | 0.613 | [0.487, 0.725] | +80 (CI [−9, +168]) |
 
 Conclusion (honest): our strength is bracketed between pinned SF-Skill-5 and SF-Skill-10 at
-movetime 100 ms on this hardware. Absolute Elo is UNKNOWN and unverifiable from this sandbox —
+movetime 100 ms on this hardware. The RFP+check-extension change moved the needle in the right
+direction (+80 in the A/B, +17 vs Skill 5, both CIs wide and overlapping zero at 40–120 games). Absolute Elo is UNKNOWN and unverifiable from this sandbox —
 certainly NOT 2,000+; v1.0.0 gates NOT met; rating estimate = **INCONCLUSIVE / far below gate**.
 Do not present these numbers as official ratings; no CCRL anchor was available.
 

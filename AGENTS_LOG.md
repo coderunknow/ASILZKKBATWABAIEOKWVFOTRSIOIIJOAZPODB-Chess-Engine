@@ -45,3 +45,14 @@
 - UCI fuzz (6 trials × 25 random commands, grammar of 30) — 0 crashes/hangs.
 - Engine bracket: between SF-Skill-5 and SF-Skill-10 (pinned SF 19 WASM, 100 ms/move). No absolute
   rating claim; v1.0.0 gates untouched.
+
+## 2026-11-14 — Environment rebuild + strength experiment
+
+- Sandbox workspace was re-materialized (git HEAD reverted to 98b1a00; toolchain/venv/opponents lost).
+  Restored branch ref + index from origin (tip 1dc2500) — working tree matched exactly, nothing lost.
+  Toolchain reinstalled from npm (same versions); venv + python-chess reinstalled; pinned SF WASM
+  re-fetched and hash-verified identical. FAILURE_LEDGER entry recorded.
+- Re-ran all gates post-rebuild: fmt/clippy/tests/diftest PASSED; CI still green (PR #1).
+- Implemented `cargo run --release -- bench` (fixed depth 10, 12 positions, deterministic signature).
+- Search experiment: RFP + check extensions. All gates pass. A/B: +80 Elo (CI [-9,+168], 40 games).
+- probe-004 (RFP+CE build) vs SF Skill 5, 40 games @100ms: 14/14/12 score 0.525 (CI [0.412,0.637]).
