@@ -1,15 +1,15 @@
 {
   "schema": 1,
-  "revision": 7,
+  "revision": 8,
   "purpose": "screening",
-  "description": "SCREENING-1: Flawless vs topple-0.1.1 anchor-selection estimate, 120 games (15 shards x 8), exploratory only (PREREGISTRATION.md)",
+  "description": "SCREENING-2: Flawless vs topple-0.2.1 anchor-selection estimate, 120 games (15 shards x 8), exploratory only (PREREGISTRATION.md)",
   "preregistration": "PREREGISTRATION.md#screening-1--screening-2",
   "target_commit": "auto",
   "engine_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
   "batch": "A",
-  "anchor_id": "topple-0.1.1",
+  "anchor_id": "topple-0.2.1",
   "white_engine": "flawless",
-  "black_engine": "topple-0.1.1",
+  "black_engine": "topple-0.2.1",
   "shard_count": 15,
   "shard_indices": [
     0,
@@ -31,6 +31,6 @@
   "opening_suite": "benches/rating-openings-batchA.txt",
   "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
   "repetitions": 1,
-  "seed": 20261119,
+  "seed": 20261120,
   "tc": "40/15"
 }
