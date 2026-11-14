@@ -456,14 +456,28 @@ def control_self_match(games: list[dict], focus: str, n_boot: int, seed: int) ->
 def run_gate(args) -> int:
     pool = json.load(open(args.anchor_json))
     entries = pool["engines"]
-    if len(entries) < 3:
-        raise EvidenceError("gate requires >= 3 verified anchors")
     focus = args.focus
 
+    # The gate covers the ELIGIBLE anchor set that actually has batch evidence in
+    # BOTH batches (the preregistered selection from the frozen pool) — not every
+    # pool entry. Pool anchors without batch evidence are reported, never required.
+    games_a = load_batch(args.batch_a, focus)
+    games_b = load_batch(args.batch_b, focus)
+    if set(games_a) != set(games_b):
+        raise EvidenceError(f"batch A/B anchor sets differ: {sorted(games_a)} vs {sorted(games_b)}")
+    used = [e for e in entries if anchor_label(e) in games_a]
+    if len(used) < 3:
+        raise EvidenceError(
+            f"gate requires >= 3 eligible anchors with evidence in both batches, got "
+            f"{[anchor_label(e) for e in used]}")
+    unused = [anchor_label(e) for e in entries if anchor_label(e) not in games_a]
+    if unused:
+        print(f"note: pool anchors without batch evidence (excluded from the gate): {unused}")
+
     results = {}
-    results["batch_a"] = batch_estimate(load_batch(args.batch_a, focus), entries, focus,
+    results["batch_a"] = batch_estimate(games_a, used, focus,
                                         args.bootstrap, args.seed)
-    results["batch_b"] = batch_estimate(load_batch(args.batch_b, focus), entries, focus,
+    results["batch_b"] = batch_estimate(games_b, used, focus,
                                         args.bootstrap, args.seed + 1)
     results["combined"] = combine_batches(results["batch_a"], results["batch_b"])
 
@@ -498,7 +512,7 @@ def run_gate(args) -> int:
          f"null control anchor-vs-anchor within +/-75 (err={results['control_anchor_vs_anchor']['error']})")
     need(results["control_self_match"]["pass"],
          f"null control self-match consistent with 0.5 (CI={results['control_self_match']['ci95_score']})")
-    need(len(entries) >= 3, ">= 3 eligible anchors")
+    need(len(used) >= 3, ">= 3 eligible anchors with evidence in both batches")
 
     ok = all(c["pass"] for c in checks)
     out = {

@@ -391,6 +391,65 @@ def test_verify_evidence_fail_closed():
         shutil.rmtree(td, ignore_errors=True)
 
 
+def test_gate_uses_eligible_subset_of_pool():
+    # Frozen pools may hold more anchors than the preregistered batch selection:
+    # the gate must run on exactly the anchors with evidence in BOTH batches.
+    import tempfile, os, json as _json
+    with tempfile.TemporaryDirectory() as td:
+        e = [pool_entry(f"P{i}", 2000 + 30 * i, 20) for i in range(6)]
+        for i, ent in enumerate(e):
+            ent["key"] = f"p{i}"
+        pj = os.path.join(td, "pool.json")
+        _json.dump({"engines": e}, open(pj, "w"))
+        sel = ["p1", "p2", "p4"]  # 3 of 6 anchors selected
+        files = {}
+        for b, pref in (("A", "a"), ("B", "b")):
+            for k in sel:
+                p = os.path.join(td, f"{pref}-{k}.jsonl")
+                # SAME opening clusters within a batch (joint bootstrap requirement);
+                # disjoint prefixes across batches A/B.
+                write_jsonl(p, make_games(k, varied_openings(25, prefix=pref)))
+                files[b] = files.get(b, []) + [f"{k}={p}"]
+        # Dedicated anchor-vs-anchor control file (neither side is the focus).
+        ctrl = os.path.join(td, "ctrl-a1a2.jsonl")
+        rows = []
+        for oname, w, l, d in varied_openings(25, prefix="c"):
+            seq = ["1-0"] * w + ["0-1"] * l + ["1/2-1/2"] * d
+            for r_ in seq:
+                rows.append({"opening": oname, "white": "p1", "black": "p2", "result": r_,
+                             "counted": True, "engine_error": False})
+        write_jsonl(ctrl, rows)
+        selfp = files["B"][0].split("=", 1)[1]
+
+        def gate_argv(batch_a, out):
+            return ["rating_estimator.py", "gate", "--anchor-json", pj, "--focus", FOCUS,
+                    "--batch-a"] + batch_a + ["--batch-b"] + files["B"] + [
+                    "--control-anchor", ctrl, "--control-anchor-names", "p1", "p2",
+                    "--control-self", selfp,
+                    "--min-games", "10", "--threshold", "0", "--bootstrap", "100",
+                    "--seed", "1", "--out", out]
+
+        # A-only extra anchor in batch A -> sets differ -> fail closed.
+        extra = os.path.join(td, "x.jsonl")
+        write_jsonl(extra, make_games("p5", varied_openings(25, prefix="a")))
+        outp = os.path.join(td, "out.json")
+        sys.argv = gate_argv(files["A"] + [f"p5={extra}"], outp)
+        try:
+            re.main()
+            check(not os.path.exists(outp), "A/B anchor-set mismatch must fail closed")
+        except SystemExit:
+            check(True, "A/B anchor-set mismatch must fail closed")
+        # Matching 3-of-6 selection: gate runs on the subset and evaluates.
+        sys.argv = gate_argv(files["A"], outp)
+        try:
+            re.main()
+        except SystemExit:
+            pass  # exit code reflects the gate verdict
+        out = _json.load(open(outp))
+        used = {p["name"] for p in out["results"]["batch_a"]["per_anchor"]}
+        check(used == set(sel), f"gate evaluated exactly the eligible subset (got {used})")
+
+
 # ---------------------------------------------------------------------------
 # Full gate end-to-end (subprocess, fail closed both ways)
 # ---------------------------------------------------------------------------
@@ -497,6 +556,7 @@ def main():
     test_null_controls()
     test_anchor_label_key_matching()
     test_verify_evidence_fail_closed()
+    test_gate_uses_eligible_subset_of_pool()
     test_gate_full()
     print(f"\n{PASS} checks passed, {FAIL} failed")
     return 1 if FAIL else 0
