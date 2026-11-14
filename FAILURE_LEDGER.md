@@ -50,3 +50,18 @@ what was learned, next experiment.
 - Lesson: push every commit immediately; keep raw-evidence artifacts committed; document toolchain
   provenance so it can be rebuilt from npm without network to rust-lang.org; the branch on origin is
   the source of truth.
+
+## 2026-11-14 — Sandbox workspace re-materialized for the second time
+
+- Attempt: continue the project after an interruption (Phase 1 start).
+- What happened: git HEAD reverted to `98b1a00`; all tracked files showed as untracked;
+  `/home/user/.toolchain`, `/home/user/.venv`, `/home/user/opponents/` wiped. CI/PR state on origin
+  was unaffected.
+- Root cause (hypothesis): sandbox host recycles the writable overlay between sessions; only the
+  repository snapshot pushed to origin (and the mission-provided starting commit) are durable.
+- Recovery: `git update-ref` to origin tip + `git reset` (index rebuild) — worktree verified clean
+  vs a01fcaf; toolchain reinstalled from npm (same pinned versions); venv recreated; pinned SF
+  WASM reinstalled and hash-verified (ccb130d7…/ee4f115b…); lld execute bits restored for lld-backed
+  linking; full gate suite re-run.
+- Lesson: push early and often; everything not pushed is at risk; keep this rebuild sequence
+  documented (docs/ENVIRONMENT.md); verify gates after every restore.

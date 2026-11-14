@@ -16,7 +16,7 @@ import time
 import chess
 
 REPO_ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
-DEFAULT_BIN = REPO_ROOT / "target" / "release" / "asilzkkbbatwabaieokwvfotrsioiij"
+DEFAULT_BIN = REPO_ROOT / "target" / "release" / "flawless"
 START_FEN = chess.STARTING_FEN
 
 

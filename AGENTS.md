@@ -2,8 +2,8 @@
 
 ## Identity
 
-- Engine / UCI identity: **ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB**. Do not append `-Chess-Engine`.
-- GitHub repository: `coderunknow/ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB-Chess-Engine` (do not rename).
+- Engine / UCI identity: **Flawless**. Do not append `-Chess-Engine`.
+- GitHub repository: `coderunknow/Flawless-Chess-Engine` (do not rename).
 - License: Apache-2.0. Preserve it. New files must be compatible with Apache-2.0.
 
 ## Non-negotiable rules

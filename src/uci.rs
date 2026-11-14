@@ -24,8 +24,7 @@ use std::thread;
 use std::time::Instant;
 
 const WHITE: usize = crate::types::WHITE;
-const ENGINE_NAME: &str = "ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB";
-const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+const ENGINE_NAME: &str = "Flawless";
 
 impl Default for UciEngine {
     fn default() -> Self {
@@ -87,7 +86,7 @@ impl UciEngine {
         match cmd {
             "uci" => {
                 println!("id name {ENGINE_NAME}");
-                println!("id author ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB project v{ENGINE_VERSION} (Apache-2.0)");
+                println!("id author coderunknow (Apache-2.0)");
                 println!("option name Hash type spin default 64 min 1 max 4096");
                 println!("option name Threads type spin default 1 min 1 max 1");
                 println!("option name MultiPV type spin default 1 min 1 max 256");

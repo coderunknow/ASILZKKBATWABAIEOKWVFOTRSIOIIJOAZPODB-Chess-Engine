@@ -51,7 +51,7 @@ jobs:
       - name: UCI handshake smoke test
         shell: bash
         run: |
-          out=$(printf 'uci\nisready\nquit\n' | ./target/release/asilzkkbbatwabaieokwvfotrsioiij uci 2>/dev/null || true)
+          out=$(printf 'uci\nisready\nquit\n' | ./target/release/flawless uci)
           echo "$out"
           echo "$out" | grep -q '^uciok$' || { echo "missing uciok"; exit 1; }
           echo "$out" | grep -q '^readyok$' || { echo "missing readyok"; exit 1; }
@@ -59,6 +59,6 @@ jobs:
       - name: Perft sanity (depth 3 startpos)
         shell: bash
         run: |
-          out=$(./target/release/asilzkkbbatwabaieokwvfotrsioiij perft 3 2>/dev/null || true)
+          out=$(./target/release/flawless perft 3)
           echo "$out"
           echo "$out" | grep -q '8902' || { echo "perft d3 mismatch"; exit 1; }

@@ -1,10 +1,10 @@
 //! Integration tests: correctness gates for board, hashing, legality, and draws.
 //! Run: `cargo test --release` (perft cases) / `cargo test` (logic cases).
 
-use asilzkkbbatwabaieokwvfotrsioiij::attack;
-use asilzkkbbatwabaieokwvfotrsioiij::movegen;
-use asilzkkbbatwabaieokwvfotrsioiij::position::Position;
-use asilzkkbbatwabaieokwvfotrsioiij::types::*;
+use flawless::attack;
+use flawless::movegen;
+use flawless::position::Position;
+use flawless::types::*;
 
 fn rng(seed: &mut u64) -> u64 {
     *seed = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);

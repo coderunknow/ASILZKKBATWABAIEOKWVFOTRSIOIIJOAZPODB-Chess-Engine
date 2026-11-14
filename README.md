@@ -1,8 +1,8 @@
-# README — ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB Chess Engine
+# README — Flawless Chess Engine
 
 An independent, from-scratch chess engine written in Rust. **Not a Stockfish derivative.**
 
-- **Engine name (UCI):** `ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB`
+- **Engine name (UCI):** `Flawless`
 - **License:** Apache-2.0 (see `LICENSE`)
 - **Status:** development (`0.x`). V1 gates NOT met — engine strength is **far below the 2,000-Elo
   V1 target** (see `STATUS.md` probe table; in-sandbox estimates vs pinned Stockfish 19 WASM:
@@ -13,9 +13,9 @@ An independent, from-scratch chess engine written in Rust. **Not a Stockfish der
 
 ```bash
 cargo build --release   # any Rust ≥ 1.80 works (this sandbox used npm-redistributed 1.99.0; see docs/ENVIRONMENT.md)
-./target/release/asilzkkbbatwabaieokwvfotrsioiij uci              # UCI mode on stdin/stdout
-./target/release/asilzkkbbatwabaieokwvfotrsioiij perft 6          # perft from startpos
-./target/release/asilzkkbbatwabaieokwvfotrsioiij bench            # fixed-depth-10 search benchmark + signature
+./target/release/flawless uci              # UCI mode on stdin/stdout
+./target/release/flawless perft 6          # perft from startpos
+./target/release/flawless bench            # fixed-depth-10 search benchmark + signature
 ```
 
 Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `bench_eval` · `eval [fen]` · `moves` · `hash` · `uci`.

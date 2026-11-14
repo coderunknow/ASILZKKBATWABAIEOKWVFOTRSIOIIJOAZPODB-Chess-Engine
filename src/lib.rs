@@ -1,4 +1,4 @@
-//! ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB — an independent chess engine.
+//! Flawless — an independent chess engine.
 //!
 //! Library root: exposes modules for the binary and for integration tests.
 //! Zero external dependencies.

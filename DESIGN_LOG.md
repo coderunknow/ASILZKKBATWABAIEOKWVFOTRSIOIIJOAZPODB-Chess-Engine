@@ -63,3 +63,13 @@
   [0.487, 0.725], logistic Elo diff +80 (CI [−9, +168]). Positive direction; NOT conclusive at this
   sample size/TC; lesson: treat as directional only, keep change since standard and safe, verify
   no correctness regressions (all gates pass).
+
+## 2026-11-14 — Identity migration to Flawless
+
+- Engine public identity migrated from ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB to Flawless (user
+  decision; repo now exists as `coderunknow/Flawless-Chess-Engine`, old name auto-redirects).
+- Package/library/binary renamed to `flawless`; `flawless::` crate paths; `id name Flawless`;
+  `id author coderunknow (Apache-2.0)` keeps authorship (not the product name).
+- ADR-0002 recorded. Historical benchmark artifacts/PGNs/append-only logs NOT rewritten (old name
+  retained there deliberately). Branch name unchanged (mission: do not rename existing branch).
+- Verified: build OK, UCI id line reports Flawless, 18/18 tests pass.

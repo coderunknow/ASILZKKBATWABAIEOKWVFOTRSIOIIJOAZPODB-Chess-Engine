@@ -1,10 +1,10 @@
-# STATUS — ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB Chess Engine
+# STATUS — Flawless Chess Engine
 
 **Project state: `ACTIVE`** (V1 is NOT complete; the 2,000 Elo release gate has not been met and has not been measured)
 
 **Current branch:** `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij`
 **Starting commit (verified 2026-11-14):** `98b1a00203183d9c7ccb175f7d6eb8f5ef5eb429` (only an Apache-2.0 `LICENSE` present)
-**Engine identity (UCI):** `ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB`
+**Engine identity (UCI):** `Flawless`
 **License:** Apache-2.0 (preserved)
 
 ## Checklist (binary acceptance criteria — see TASK in prompt)

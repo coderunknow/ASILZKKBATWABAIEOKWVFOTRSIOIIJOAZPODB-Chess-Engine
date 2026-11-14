@@ -1,4 +1,4 @@
-# ARCHITECTURE RFC — ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB
+# ARCHITECTURE RFC — Flawless
 
 Status: **Accepted (v1 scope)** · Created: 2026-11-14 · Authors: engine team (agent)
 Decision log: see `DESIGN_LOG.md` and `docs/adr/`

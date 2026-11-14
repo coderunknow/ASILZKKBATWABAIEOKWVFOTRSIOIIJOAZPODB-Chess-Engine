@@ -5,7 +5,7 @@ Every game is stored as PGN + a JSONL record line with full config, so any batch
 is reproducible and auditable. No ratings are computed here (see stats.py).
 
 Usage example:
-  python3 scripts/match.py --white-cmd "./target/release/asilzkkbbatwabaieokwvfotrsioiij uci" \
+  python3 scripts/match.py --white-cmd "./target/release/flawless uci" \
       --black-cmd "node /path/to/stockfish-19-lite-single.js" \
       --movetime 100 --openings openings.txt --out benches/<id> [--games 20]
 """

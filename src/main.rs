@@ -1,11 +1,11 @@
-//! CLI entry point for ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB.
+//! CLI entry point for Flawless.
 
-use asilzkkbbatwabaieokwvfotrsioiij::eval::{ClassicalEvaluator, Evaluator};
-use asilzkkbbatwabaieokwvfotrsioiij::movegen;
-use asilzkkbbatwabaieokwvfotrsioiij::position::Position;
+use flawless::eval::{ClassicalEvaluator, Evaluator};
+use flawless::movegen;
+use flawless::position::Position;
 use std::time::Instant;
 
-const ENGINE_NAME: &str = "ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB";
+const ENGINE_NAME: &str = "Flawless";
 const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
@@ -19,7 +19,7 @@ fn main() {
         Some("perft") => cmd_perft(&args[2..]),
         Some("divide") => cmd_divide(&args[2..]),
         Some("bench") => cmd_bench(),
-        Some("uci") => asilzkkbbatwabaieokwvfotrsioiij::uci::run_uci(),
+        Some("uci") => flawless::uci::run_uci(),
         Some("eval") => cmd_eval(&args[2..]),
         Some("bench_eval") => cmd_bench_eval(),
         Some("moves") => cmd_moves(&args[2..]),
@@ -51,11 +51,8 @@ fn cmd_perft(args: &[String]) {
         },
         None => Position::startpos(),
     };
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
-    eprintln!(
-        "magic sliders active: {}",
-        asilzkkbbatwabaieokwvfotrsioiij::attack::magic_ready()
-    );
+    flawless::attack::init_attacks();
+    eprintln!("magic sliders active: {}", flawless::attack::magic_ready());
     let t = Instant::now();
     let nodes = movegen::perft(&mut pos, depth);
     let dt = t.elapsed();
@@ -82,7 +79,7 @@ fn cmd_divide(args: &[String]) {
         }),
         None => Position::startpos(),
     };
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    flawless::attack::init_attacks();
     let t = Instant::now();
     let total: u64 = movegen::perft_divide(&mut pos, depth)
         .iter()
@@ -102,8 +99,8 @@ fn cmd_divide(args: &[String]) {
 /// for the search implementation on this machine. Timing varies by machine;
 /// node counts and the signature should not change for identical engine code.
 fn cmd_bench() {
-    use asilzkkbbatwabaieokwvfotrsioiij::search::{SearchLimits, Searcher};
-    use asilzkkbbatwabaieokwvfotrsioiij::tt::TranspositionTable;
+    use flawless::search::{SearchLimits, Searcher};
+    use flawless::tt::TranspositionTable;
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, Mutex};
 
@@ -123,7 +120,7 @@ fn cmd_bench() {
         "r1b1kb1r/pp1p1ppp/2n2n2/q1pp4/3P4/2PB1N2/PP3PPP/RNBQ1RK1 w kq - 0 1",
     ];
 
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    flawless::attack::init_attacks();
     let t = Instant::now();
     let mut total_nodes = 0u64;
     let mut signature: u64 = 0xcbf29ce484222325;
@@ -190,7 +187,7 @@ fn cmd_moves(_args: &[String]) {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    flawless::attack::init_attacks();
     for line in stdin.lock().lines() {
         let line = match line {
             Ok(l) => l,
@@ -217,7 +214,7 @@ fn cmd_moves(_args: &[String]) {
 /// Print the Zobrist hash of the given FEN (or stdin FENs, one per line).
 fn cmd_hash(args: &[String]) {
     use std::io::{BufRead, Write};
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    flawless::attack::init_attacks();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     if let Some(fen) = args.first() {
@@ -260,7 +257,7 @@ fn cmd_eval(args: &[String]) {
         }),
         None => Position::startpos(),
     };
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    flawless::attack::init_attacks();
     let mut eval = ClassicalEvaluator;
     let b = eval.breakdown(&pos);
     println!("total      {:>6} cp", b.total);
@@ -275,7 +272,7 @@ fn cmd_eval(args: &[String]) {
 }
 
 fn cmd_bench_eval() {
-    asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
+    flawless::attack::init_attacks();
     let fens = [
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",

@@ -56,3 +56,15 @@
 - Implemented `cargo run --release -- bench` (fixed depth 10, 12 positions, deterministic signature).
 - Search experiment: RFP + check extensions. All gates pass. A/B: +80 Elo (CI [-9,+168], 40 games).
 - probe-004 (RFP+CE build) vs SF Skill 5, 40 games @100ms: 14/14/12 score 0.525 (CI [0.412,0.637]).
+
+## 2026-11-14 — Identity migration to Flawless
+
+- `flawless` package/binary/crate; `id name Flawless`; `id author coderunknow (Apache-2.0)`.
+- CI workflow smoke tests de-masked (removed `|| true` swallowers); binary path updated.
+- Historical raw evidence keeps the old identifiers by policy (see ADR-0002).
+- Environment note: sandbox workspace was re-materialized (git HEAD → 98b1a00, toolchain/venv/
+  opponents lost); restored branch ref + index from origin (a01fcaf), rebuilt toolchain from npm
+  (rustc/cargo 1.99.0), and re-verified lld execute bits for linking; episode recorded in
+  FAILURE_LEDGER.md.
+- Repository was observed as `coderunknow/Flawless-Chess-Engine` (externally renamed); the old
+  URL auto-redirects. This project did not and does not rename the repository.
