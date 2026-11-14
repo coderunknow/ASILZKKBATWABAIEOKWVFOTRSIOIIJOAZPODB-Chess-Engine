@@ -56,8 +56,9 @@ Do not present these numbers as official ratings; no CCRL anchor was available.
 
 1. Keep engine development evidence-based: if time permits, probe skill 3/7 to tighten the bracket, or run
    longer-TC probes; do not tune to the probe opponent.
-2. NPS / bench regression tracking (`cargo run --release -- bench_eval`; add `bench` for search
-   fixed-node signature) and document.
+2. ~~NPS / bench regression tracking~~ DONE (2026-11-14): `cargo run --release -- bench` — fixed
+   depth 10 over 12 positions, deterministic FNV-1a signature `d790483532d87af0`
+   (2,798,466 nodes); `bench_eval` for eval throughput; CI runs perft d3 + UCI handshake.
 3. Remaining V1 gaps: benchmark CLI `bench`, time-management validation vs clocks, EF RN search-consistency
    checks, Windows-specific verification (CI covers build only), and documentation of the release gates.
 4. NEVER claim v1.0.0 status; never present in-sandbox numbers as CCRL/CEGT.
