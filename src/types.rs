@@ -126,8 +126,11 @@ impl Move {
             promo: ((v >> 12) & 0x7) as u8,
         }
     }
-    /// UCI long algebraic notation, e.g. "e2e4", "e7e8q".
+    /// UCI long algebraic notation, e.g. "e2e4", "e7e8q". `Move::NULL` maps to `0000`.
     pub fn to_uci(self) -> String {
+        if self == Move::NULL {
+            return "0000".to_string();
+        }
         let mut s = String::with_capacity(5);
         s.push((b'a' + file_of(self.from)) as char);
         s.push((b'1' + rank_of(self.from)) as char);

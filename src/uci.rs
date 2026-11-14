@@ -42,11 +42,28 @@ pub struct UciEngine {
     stderr_log: bool,
 }
 
+fn print_bestmove(result: &SearchResult) {
+    match result.ponder_move {
+        Some(p) => println!("bestmove {} ponder {}", result.best_move, p),
+        None => println!("bestmove {}", result.best_move),
+    }
+}
+
 struct WorkerHandle {
     join: thread::JoinHandle<()>,
     done: Receiver<(SearchResult, TranspositionTable)>,
     stop: Arc<AtomicBool>,
     limits: Arc<Mutex<SearchLimits>>,
+    /// True while `go infinite` / `go ponder` / a bare `go` is waiting for an external
+    /// signal: bestmove must NOT be printed until `stop`/`ponderhit` (UCI).
+    hold: Arc<AtomicBool>,
+    /// Exactly-once guard for printing bestmove (worker or main thread prints it).
+    printed: Arc<AtomicBool>,
+    /// Legal move used if the search thread panics before producing one.
+    fallback: Option<Move>,
+    /// Result was already received (via ponderhit's try_recv); stop_and_join should not
+    /// treat a later channel disconnect as an error.
+    consumed: Arc<AtomicBool>,
 }
 
 impl UciEngine {
@@ -296,7 +313,11 @@ impl UciEngine {
         // Fallback legal move in case the search thread dies unexpectedly —
         // the GUI must always receive a bestmove.
         let fallback_move = generate_legal(&mut self.pos).iter().next().copied();
+        // go infinite / go ponder / bare go: bestmove is held until stop/ponderhit.
+        let hold = Arc::new(AtomicBool::new(limits.infinite));
+        let printed = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
+        let consumed = Arc::new(AtomicBool::new(false));
         let tt = self
             .tt
             .take()
@@ -308,6 +329,8 @@ impl UciEngine {
         let (tx, rx) = channel();
 
         let limits_for_thread = shared_limits.clone();
+        let hold_for_thread = hold.clone();
+        let printed_for_thread = printed.clone();
         let handle = thread::spawn(move || {
             let mut tt = tt;
             let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -334,11 +357,14 @@ impl UciEngine {
             // search ends, even if the GUI sends no further commands (UCI protocol).
             match searched {
                 Ok(result) => {
-                    match result.ponder_move {
-                        Some(p) => println!("bestmove {} ponder {}", result.best_move, p),
-                        None => println!("bestmove {}", result.best_move),
+                    // For infinite/ponder searches the main thread prints bestmove
+                    // after stop/ponderhit; otherwise we print as soon as we're done.
+                    if !hold_for_thread.load(Ordering::Relaxed)
+                        && !printed_for_thread.swap(true, Ordering::AcqRel)
+                    {
+                        print_bestmove(&result);
+                        let _ = std::io::stdout().flush();
                     }
-                    let _ = std::io::stdout().flush();
                     let _ = tx.send((result, tt));
                 }
                 Err(_) => {
@@ -346,11 +372,15 @@ impl UciEngine {
                     // The marker goes to stdout so GUIs and the match runner can see it.
                     println!("info string search thread panicked; emitting fallback bestmove");
                     eprintln!("info string search thread panicked; emitting fallback bestmove");
-                    match fallback_move {
-                        Some(m) => println!("bestmove {m}"),
-                        None => println!("bestmove 0000"),
+                    if !hold_for_thread.load(Ordering::Relaxed)
+                        && !printed_for_thread.swap(true, Ordering::AcqRel)
+                    {
+                        match fallback_move {
+                            Some(m) => println!("bestmove {m}"),
+                            None => println!("bestmove 0000"),
+                        }
+                        let _ = std::io::stdout().flush();
                     }
-                    let _ = std::io::stdout().flush();
                     // TT is lost; the main thread recreates it on join failure.
                 }
             }
@@ -361,6 +391,10 @@ impl UciEngine {
             done: rx,
             stop,
             limits: shared_limits,
+            hold,
+            printed,
+            fallback: fallback_move,
+            consumed,
         });
     }
 
@@ -376,6 +410,32 @@ impl UciEngine {
                         lim.infinite = false;
                     }
                     lim.ponder = false;
+                }
+            }
+            worker.hold.store(false, Ordering::Relaxed);
+        }
+        // If the search already ended while bestmove was held (rare, e.g. hit max_depth
+        // territory before the GUI reacted), flush the suppressed result now.
+        if let Some(worker) = self.worker.as_ref() {
+            match worker.done.try_recv() {
+                Ok((result, tt)) => {
+                    worker.consumed.store(true, Ordering::Relaxed);
+                    self.tt = Some(tt);
+                    if !worker.printed.swap(true, Ordering::AcqRel) {
+                        print_bestmove(&result);
+                        let _ = std::io::stdout().flush();
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    worker.consumed.store(true, Ordering::Relaxed);
+                    if !worker.printed.swap(true, Ordering::AcqRel) {
+                        match worker.fallback {
+                            Some(m) => println!("bestmove {m}"),
+                            None => println!("bestmove 0000"),
+                        }
+                        let _ = std::io::stdout().flush();
+                    }
                 }
             }
         }
@@ -439,14 +499,23 @@ impl UciEngine {
         let _ = worker.join.join();
         match worker.done.recv() {
             Ok((result, tt)) => {
-                // bestmove already printed by the search worker; keep only the TT handoff.
-                let _ = result;
                 self.tt = Some(tt);
+                if !worker.printed.swap(true, Ordering::AcqRel) {
+                    print_bestmove(&result);
+                }
             }
             Err(_) => {
-                eprintln!("info string search thread ended without result");
+                if !worker.consumed.load(Ordering::Relaxed) {
+                    eprintln!("info string search thread ended without result");
+                }
                 if self.tt.is_none() {
                     self.tt = Some(TranspositionTable::new(self.hash_mb));
+                }
+                if !worker.printed.swap(true, Ordering::AcqRel) {
+                    match worker.fallback {
+                        Some(m) => println!("bestmove {m}"),
+                        None => println!("bestmove 0000"),
+                    }
                 }
             }
         }
@@ -468,10 +537,11 @@ pub fn clock_limits(
         (btime, binc)
     };
     let mtg = movestogo.unwrap_or(40).max(1);
-    let soft = (t / mtg + inc / 2).clamp(20, 30_000);
-    // Never panic: min must not exceed max even when t < 30 or soft > t - 30.
-    let cap = t.saturating_sub(30);
-    let hard = soft.saturating_mul(6).min(cap).max(soft);
+    // Soft limit may not exceed the remaining budget (clock hit with time on the board
+    // is a forfeit), then hard lives in [soft, cap] with a 30 ms safety margin.
+    let soft = (t / mtg + inc / 2).clamp(20, 30_000).min(t);
+    let cap = t.saturating_sub(30).max(soft);
+    let hard = soft.saturating_mul(6).min(cap);
     (soft, hard)
 }
 

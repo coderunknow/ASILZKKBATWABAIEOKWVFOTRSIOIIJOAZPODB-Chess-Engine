@@ -80,6 +80,9 @@ pub struct Searcher<'a> {
     start: Instant,
     /// Legal moves allowed at the root (from `go searchmoves`). Applied at ply 0 only.
     root_moves: Option<Vec<Move>>,
+    /// Best move found at ply 0 in the most recent completed search call. Used for
+    /// restricted-root PV construction instead of stale TT entries.
+    root_best: Option<Move>,
 }
 
 impl<'a> Searcher<'a> {
@@ -100,6 +103,7 @@ impl<'a> Searcher<'a> {
             seldepth: 0,
             start: Instant::now(),
             root_moves: None,
+            root_best: None,
         }
     }
 
@@ -127,6 +131,11 @@ impl<'a> Searcher<'a> {
     #[inline]
     fn should_stop_now(&self) -> bool {
         let l = self.lim();
+        // go infinite / go ponder / bare go: clocks and node caps are inert until an
+        // external stop (or ponderhit, which flips infinite) arrives.
+        if l.infinite {
+            return false;
+        }
         self.start.elapsed().as_millis() as u64 >= l.hard_ms || self.nodes >= l.max_nodes
     }
 
@@ -209,6 +218,7 @@ impl<'a> Searcher<'a> {
     ) -> SearchResult {
         self.tt.new_search();
         self.killers = [[None; 2]; MAX_PLY as usize];
+        self.root_best = None;
         for side in 0..2 {
             for v in self.history[side].iter_mut() {
                 *v /= 2;
@@ -384,7 +394,20 @@ impl<'a> Searcher<'a> {
     fn extract_pv(&self, pos: &Position, max_len: i32) -> Vec<Move> {
         let mut pos = pos.clone();
         let mut pv = Vec::with_capacity(16);
-        for _ in 0..max_len.clamp(0, MAX_PLY) {
+        for i in 0..max_len.clamp(0, MAX_PLY) {
+            if i == 0 {
+                if let Some(ref only) = self.root_moves {
+                    // Root PV head must come from the restricted set, never a stale TT hit.
+                    match self.root_best {
+                        Some(m) if only.contains(&m) => {
+                            pv.push(m);
+                            pos.make_move(m);
+                            continue;
+                        }
+                        _ => break,
+                    }
+                }
+            }
             let key = pos.hash;
             match self.tt.probe_move(key) {
                 Some(m) => {
@@ -414,14 +437,14 @@ impl<'a> Searcher<'a> {
             return self.static_eval(pos);
         }
         let in_chk = in_check(pos);
-        // A dead position is a draw (FIDE 5.2.2/5.6), even if a check is on the board.
-        if pos.insufficient_material() {
-            return DRAW_SCORE;
-        }
-        // Claimable draw rules (repetition, fifty-move) never override checkmate:
-        // when the side to move is in check we fall through to the terminal check
-        // below so mate/stalemate is scored correctly (FIDE 9.3, 9.6 precedence).
-        if !in_chk && (pos.is_repetition() || pos.is_fifty_move()) {
+        // Dead/claimable draws BEFORE the TT probe (FIDE 5.2.2/9.2/9.3): when the side to
+        // move is NOT in check, no checkmate is possible for the REPLYING side, so these
+        // can never collide with mate precedence — and scoring them here keeps stale TT
+        // scores out of drawn nodes. When in check we must count legal moves first
+        // (mate precedence); see the block right after the terminal check below.
+        if !in_chk
+            && (pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material())
+        {
             return DRAW_SCORE;
         }
         let mut alpha = alpha;
@@ -431,11 +454,15 @@ impl<'a> Searcher<'a> {
         // Transposition table probe first: terminal nodes are deterministic, so a
         // sufficient-depth entry is equally valid there — and this keeps TT-cutoff
         // nodes off the movegen path.
+        // Zobrist excludes the halfmove clock; a score cached away from the fifty-move
+        // boundary can misdescribe the same board near it, so score CUTOFFS are disabled
+        // past the horizon. Move ordering via TT move is always safe.
+        const TT_DRAW_HORIZON: u16 = 90;
         let key = pos.hash;
         let probe = self.tt.probe(key, ply);
         let tt_move = probe.best_move;
         if let Some(score) = probe.score {
-            if probe.depth >= depth && !is_pv {
+            if pos.halfmove < TT_DRAW_HORIZON && probe.depth >= depth && !is_pv {
                 match probe.bound {
                     BOUND_EXACT => return score,
                     BOUND_LOWER if score >= beta => return score,
@@ -467,6 +494,12 @@ impl<'a> Searcher<'a> {
             } else {
                 DRAW_SCORE
             };
+        }
+        // In check (or not): with legal moves confirmed to exist, claimable/dead draws
+        // apply — check status does not exclude them (FIDE 9.2/9.3), only checkmate does,
+        // and mate has been handled above.
+        if pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material() {
+            return DRAW_SCORE;
         }
         if depth <= 0 {
             return self.quiesce(pos, alpha, beta, ply);
@@ -589,6 +622,9 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        if ply == 0 {
+            self.root_best = best_move;
+        }
         let flag = if best_score >= beta {
             BOUND_LOWER
         } else if best_score > alpha_entry {
@@ -597,7 +633,12 @@ impl<'a> Searcher<'a> {
             // best-score did not raise alpha: fail-low (upper bound)
             BOUND_UPPER
         };
-        self.tt.store(key, best_move, best_score, depth, flag, ply);
+        // Restricted root search (`go searchmoves`) yields scores only valid within the
+        // restriction — never store them as unrestricted bounds. The TT move itself may
+        // still be recorded for ordering, but extract_pv bypasses it at ply 0.
+        if !(ply == 0 && self.root_moves.is_some()) {
+            self.tt.store(key, best_move, best_score, depth, flag, ply);
+        }
         best_score
     }
 
@@ -626,19 +667,24 @@ impl<'a> Searcher<'a> {
                 DRAW_SCORE
             };
         }
+        // Draw predicates in qsearch too (terminal check ran first, so mate cannot be
+        // masked here): dead position, repetition, fifty-move.
+        if pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material() {
+            return DRAW_SCORE;
+        }
 
-        if !in_chk {
-            let stand_pat = self.static_eval(pos);
-            if stand_pat >= beta {
+        let stand_pat = if !in_chk {
+            let sp = self.static_eval(pos);
+            if sp >= beta {
                 return beta;
             }
-            if stand_pat > alpha {
-                alpha = stand_pat;
+            if sp > alpha {
+                alpha = sp;
             }
-            if stand_pat + 200 < alpha {
-                return alpha; // delta pruning
-            }
-        }
+            Some(sp)
+        } else {
+            None
+        };
         if !in_chk {
             let mut j = 0;
             for i in 0..moves.len {
@@ -655,6 +701,23 @@ impl<'a> Searcher<'a> {
 
         for i in 0..moves.len {
             let m = moves.moves[i];
+            // Per-capture delta pruning: skip this capture when even its full material
+            // swing (victim value, plus promotion bonus for promotions, plus a small
+            // margin for eval noise) cannot raise alpha. Sound against CodeRabbit's
+            // counterexample (stand_pat −600, alpha −300, capture of a queen).
+            if let Some(sp) = stand_pat {
+                let capture_gain = captured_piece(pos, m)
+                    .map(|p| PIECE_VALUE_MG[p])
+                    .unwrap_or(0);
+                let promo_gain = if m.promo != PROMO_NONE {
+                    PIECE_VALUE_MG[promo_piece_type(m.promo)].saturating_sub(PIECE_VALUE_MG[PAWN])
+                } else {
+                    0
+                };
+                if sp + capture_gain + promo_gain + 200 < alpha {
+                    continue;
+                }
+            }
             let undo = pos.make_move(m);
             let score = -self.quiesce(pos, -beta, -alpha, ply + 1);
             pos.unmake_move(m, &undo);

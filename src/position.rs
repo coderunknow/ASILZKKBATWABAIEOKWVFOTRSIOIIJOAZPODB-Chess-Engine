@@ -83,6 +83,7 @@ pub struct Undo {
     pub halfmove: u16,
     pub fullmove: u32,
     pub hash: u64,
+    pub ep_included: bool,
 }
 
 // ---------------- Position ----------------
@@ -99,6 +100,9 @@ pub struct Position {
     pub fullmove: u32,
     pub hash: u64,
     pub history: Vec<u64>,
+    /// Cached FIDE "same position" ep-hash decision for the current position.
+    /// Kept in sync with `hash` incrementally; `zobrist_full` recomputes it.
+    pub ep_included: bool,
 }
 
 impl Position {
@@ -119,6 +123,7 @@ impl Position {
             fullmove: 1,
             hash: 0,
             history: Vec::new(),
+            ep_included: false,
         }
     }
 
@@ -171,8 +176,8 @@ impl Position {
             }
         }
         h ^= zob_castling(self.castling);
-        if self.ep >= 0 {
-            h ^= zob_ep(file_of(self.ep as Square));
+        if let Some(f) = self.hash_ep() {
+            h ^= zob_ep(f);
         }
         if self.side == BLACK {
             h ^= zob_side();
@@ -269,7 +274,30 @@ impl Position {
             if file > 7 || rank > 7 {
                 return Err("fen: en passant square out of range".to_string());
             }
-            pos.ep = make_square(file, rank) as i8;
+            let sq = make_square(file, rank);
+            // The ep target rank/emptiness/backer must be consistent with a double pawn push:
+            // White to move => ep on rank 6 with a BLACK pawn on rank 5 behind it; the reverse
+            // for Black to move. The square itself must be empty and the backing pawn must be
+            // the opponent's pawn. (An ep target with no legal capturer is legal, so we do NOT
+            // require an adjacent friendly pawn.)
+            let valid = match pos.side {
+                WHITE => {
+                    // ep on rank 6 (index 5); the black pawn that just double-pushed sits on rank 5
+                    rank_of(sq) == 5
+                        && pos.occ_all & (1u64 << sq) == 0
+                        && pos.pieces[BLACK * 6 + PAWN] & (1u64 << (sq - 8)) != 0
+                }
+                _ => {
+                    // ep on rank 3 (index 2); the white pawn that just double-pushed sits on rank 4
+                    rank_of(sq) == 2
+                        && pos.occ_all & (1u64 << sq) == 0
+                        && pos.pieces[WHITE * 6 + PAWN] & (1u64 << (sq + 8)) != 0
+                }
+            };
+            if !valid {
+                return Err("fen: en passant square inconsistent with a legal double pawn push".to_string());
+            }
+            pos.ep = sq as i8;
         }
         // halfmove clock
         if fields.len() >= 5 {
@@ -299,6 +327,14 @@ impl Position {
         {
             return Err("fen: kings adjacent".to_string());
         }
+        // Illegal position: the side to move may never be giving check to the opponent's king
+        // (that would mean the opponent failed to respond to check). Reject — move generation
+        // assumes the opponent's king is never en prise (it may emit moves capturing it).
+        let opp_king_sq = lsb(pos.pieces[(1 - pos.side) * 6 + KING]);
+        if pos.is_attacked(opp_king_sq, pos.side) {
+            return Err("fen: side to move is attacking the opponent's king".to_string());
+        }
+        pos.ep_included = pos.ep >= 0 && pos.hash_ep().is_some();
         pos.hash = pos.zobrist_full();
         pos.history = vec![pos.hash];
         Ok(pos)
@@ -420,6 +456,7 @@ impl Position {
             halfmove: self.halfmove,
             fullmove: self.fullmove,
             hash: self.hash,
+            ep_included: self.ep_included,
         };
         let us = self.side;
         let them = 1 - us;
@@ -516,19 +553,14 @@ impl Position {
             self.castling = new_castling;
         }
 
-        // En passant square.
+        // En passant square. The hash side of ep is handled AFTER the side flip below,
+        // because whether the ep file belongs in the hash depends on the side to move.
         let old_ep = self.ep;
+        let old_ep_included = self.ep_included;
         self.ep = -1;
         if moved == PAWN && m.from.abs_diff(m.to) == 16 {
             self.ep = ((m.from + m.to) / 2) as i8;
         }
-        if old_ep >= 0 {
-            self.hash ^= zob_ep(file_of(old_ep as Square));
-        }
-        if self.ep >= 0 {
-            self.hash ^= zob_ep(file_of(self.ep as Square));
-        }
-
         // Clocks.
         if moved == PAWN || undo.captured >= 0 {
             self.halfmove = 0;
@@ -542,6 +574,21 @@ impl Position {
         // Side to move.
         self.hash ^= zob_side();
         self.side = them;
+
+        // Ep hash (FIDE "same position" semantics): remove the old inclusion, then add
+        // the new one (computable only after the side flip).
+        if old_ep >= 0 && old_ep_included {
+            self.hash ^= zob_ep(file_of(old_ep as Square));
+        }
+        let new_ep_included = if self.ep >= 0 {
+            self.hash_ep().is_some()
+        } else {
+            false
+        };
+        if self.ep >= 0 && new_ep_included {
+            self.hash ^= zob_ep(file_of(self.ep as Square));
+        }
+        self.ep_included = new_ep_included;
 
         self.history.push(self.hash);
         undo
@@ -559,6 +606,7 @@ impl Position {
         self.ep = undo.ep;
         self.halfmove = undo.halfmove;
         self.fullmove = undo.fullmove;
+        self.ep_included = undo.ep_included;
 
         // What is standing on m.to now?
         let on_to = self.piece_on(m.to);
@@ -629,6 +677,52 @@ impl Position {
     }
 
     // ---------------- repetition / draws ----------------
+
+    /// True when the en passant target square can actually be captured in this position
+    /// (a side-to-move pawn on an adjacent file, and the capture passes legality — e.g. not
+    /// pseudo-legal only because of a rank pin). FIDE "same position" excludes ep targets that
+    /// cannot be captured to, so the hash mirrors that rule.
+    fn ep_capture_available(&self) -> bool {
+        if self.ep < 0 {
+            return false;
+        }
+        let ep = self.ep as Square;
+        let ep_file = file_of(ep) as i32;
+        let us = self.side;
+        let rank = rank_of(ep);
+        // white to move captures onto rank 6 from rank 5; black to move onto rank 3 from rank 4
+        let pawn_rank = if us == WHITE { 4 } else { 3 };
+        let our_pawns = self.pieces[us * 6 + PAWN];
+        for d in [-1i32, 1] {
+            let f = ep_file + d;
+            if f < 0 || f > 7 {
+                continue;
+            }
+            let from = make_square(f as u8, pawn_rank);
+            if our_pawns & (1u64 << from) == 0 {
+                continue;
+            }
+            let _ = rank;
+            // Legality including rank-pins on the captured pawn row: probe on a clone.
+            let mut probe = self.clone();
+            let legal = crate::movegen::generate_legal(&mut probe);
+            for i in 0..legal.len {
+                let m = legal.moves[i];
+                if m.from == from as Square && m.to == ep && m.promo == crate::types::PROMO_NONE {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Ep file to include in the hash, if any (FIDE "same position" semantics).
+    fn hash_ep(&self) -> Option<u8> {
+        if self.ep < 0 || !self.ep_capture_available() {
+            return None;
+        }
+        Some(file_of(self.ep as Square))
+    }
 
     /// Count how many times the current hash appears in `history` (excluding the last entry,
     /// which is the current position).

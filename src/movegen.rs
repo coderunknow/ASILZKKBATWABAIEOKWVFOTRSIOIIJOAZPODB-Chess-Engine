@@ -127,6 +127,7 @@ pub fn generate_pseudo_legal(pos: &Position) -> MoveList {
     // ---------- castling ----------
     if white {
         if pos.castling & CASTLE_WK != 0
+            && pos.pieces[us * 6 + KING] & bb(E1) != 0
             && occ & (bb(F1) | bb(G1)) == 0
             && pos.pieces[us * 6 + ROOK] & bb(H1) != 0
             && !pos.is_attacked(E1, them)
@@ -136,6 +137,7 @@ pub fn generate_pseudo_legal(pos: &Position) -> MoveList {
             moves.push(Move::new(E1, G1));
         }
         if pos.castling & CASTLE_WQ != 0
+            && pos.pieces[us * 6 + KING] & bb(E1) != 0
             && occ & (bb(D1) | bb(C1) | bb(B1)) == 0
             && pos.pieces[us * 6 + ROOK] & bb(A1) != 0
             && !pos.is_attacked(E1, them)
@@ -146,6 +148,7 @@ pub fn generate_pseudo_legal(pos: &Position) -> MoveList {
         }
     } else {
         if pos.castling & CASTLE_BK != 0
+            && pos.pieces[us * 6 + KING] & bb(E8) != 0
             && occ & (bb(F8) | bb(G8)) == 0
             && pos.pieces[us * 6 + ROOK] & bb(H8) != 0
             && !pos.is_attacked(E8, them)
@@ -155,6 +158,7 @@ pub fn generate_pseudo_legal(pos: &Position) -> MoveList {
             moves.push(Move::new(E8, G8));
         }
         if pos.castling & CASTLE_BQ != 0
+            && pos.pieces[us * 6 + KING] & bb(E8) != 0
             && occ & (bb(D8) | bb(C8) | bb(B8)) == 0
             && pos.pieces[us * 6 + ROOK] & bb(A8) != 0
             && !pos.is_attacked(E8, them)
