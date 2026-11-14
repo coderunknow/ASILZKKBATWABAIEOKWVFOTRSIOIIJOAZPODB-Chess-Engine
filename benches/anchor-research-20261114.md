@@ -57,6 +57,37 @@ v1.14+ Linux; "old" tag has 1.0–1.10 exe), Demolito 2021-10-04=3153±11 (relea
 Igel 3.x (release assets), Halogen 13+ (Linux release assets), Monolith 0.4=2600±16,
 Stash (tags; no release assets).
 
+## Verified build ladder (2026-11-14, sandbox builds; final binaries to be rebuilt+hashed on a
+hosted runner with recorded toolchain — local builds validate the recipes only)
+
+| Anchor | CCRL | ±95% | games | git tag | lang | local build | id name | local SHA-256 (temporary) |
+|---|---|---|---|---|---|---|---|---|
+| Raven 0.50 | 2081 | 25 | 413 | sgriffin53/raven `0.50` | C | gcc -O2 -fcommon (no LTO) | Raven 0.40 (author id-string lag — caveat) | e16ec1a7…c6d83 |
+| Topple 0.2.1 | 2439 | 14 | 1276 | konsolas/ToppleChess `v0.2.1` | C++ | g++ -std=c++17 -O2 -include climits,cstdint,cstring | Topple v0.2.1 ✓ | b131ed7a…174d |
+| akimbo 0.1.1 | 2441 | 19 | 646 | jw1912/akimbo `v0.1.1` | Rust | cargo build --release --offline (no deps) | akimbo 0.1.1 ✓ | e0066598…579c0 |
+| WyldChess 1.2 | 2445 | 21 | 520 | Mk-Chan/WyldChess `v1.2` | C | make CC="gcc -fcommon" | WyldChess (no version) | ab1ac743…290b0e |
+
+Additional rungs (tags verified to exist; CCRL rows verified; builds pending):
+
+| Raven 0.70 | 2242 | 24 | 433 | `0.70` | C |
+| Topple 0.1.1 | 2324 | 17 | 928 | `v0.1.1` | C++ |
+| Raven 0.80 | 2341 | 24 | 428 | `0.80` | C |
+| Raven 0.90 | 2451 | 23 | 438 | `0.90` | C |
+| WyldChess 1.1 | 2474 | 21 | 506 | `v1.1` | C |
+
+Mapping caveats: Raven tag 0.50 binary identifies as "Raven 0.40" (documented; the CCRL entry
+"Raven 0.50 64-bit" is the only 0.50 row and the tag trail is continuous). WyldChess id string
+carries no version. Counter (CounterGo) version mapping ambiguous — excluded. Carballo 0.5/0.8
+have NO tags (tags start v0.9) — excluded. Pirarucu is Kotlin (Gradle downloads unreachable) —
+excluded despite exact tag v1.9.2.
+
+Below-2100 leads (identity/version verification pending): Vice 1.0 = 1997±21 (639 games) —
+possible `bluefeversoft/vice` (MIT, YouTube-series engine) or `peterwankman/vice` (WTFPL) —
+MUST verify that the repo's version/identity matches CCRL's tested "Vice 1.0" before use;
+Monolith 0.3 = 2387±20 (592) — `cimarronOST/Monolith` (GPL-3.0) identity to verify;
+Daydreamer 1.5 = 2298±18 (726) — `AaronBecker/daydreamer` (license file missing? verify);
+Stash 14.0 = 2085±30 (318) — mhouppin/stash-bot `v14` (C, GPL-3.0).
+
 ## Rules that govern the final pool (RATING_PROTOCOL §2 / §9)
 
 - ≥3 anchors, same scale (CCRL 40/15 only), exact versions, binary SHA-256, license verified.

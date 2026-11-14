@@ -119,3 +119,22 @@
   hosted runner), rating-run.yml, rating-gate.yml (stable fail-closed rating-gate job). Toolchain
   rebuilt from npm (rustc/cargo/clippy/rustfmt 1.99.0; remember chmod +x on bin/ and
   lib/rustlib/*/bin/* — npm strips exec bits and the linker needs gcc-ld/ld.lld executable).
+
+- 2026-11-14 (seg 10 continued — anchor research → verified build ladder):
+  anchor-research.yml extended 4× (error-convention extraction, candidate version rows,
+  release-tag probes, lower-band rows, homepage links [regex fixed after empty match],
+  full tag lists, buildable-family rows). Runner annotations (check 132426702372 /
+  132427366210 / 132428391521 / 4ab675d-series) delivered: error convention "95% confidence
+  intervals" (→ pool error_convention ci95); version↔rating maps for akimbo/Topple/Weiss/
+  Demolito/FabChess/Igel/Halogen/Stash/Pirarucu/Raven/WyldChess/Monolith/Carballo; 342
+  lower-band rows (1700–2200). Sandbox CAN reach api.github.com + codeload.github.com →
+  tag verification + source downloads done locally. Built + UCI-smoked 4 anchors locally:
+  Raven 0.50 (2081±25, id-string "Raven 0.40" caveat), Topple v0.2.1 (2439±14, exact id),
+  akimbo v0.1.1 (2441±19, exact id), WyldChess v1.2 (2445±21). Ladder rungs identified:
+  Raven 0.70 (2242), Topple 0.1.1 (2324), Raven 0.80 (2341), Raven 0.90 (2451), WyldChess 1.1
+  (2474). Excluded with reason: Carballo 0.5/0.8 (no tags before v0.9), Pirarucu (Kotlin
+  toolchain unreachable), Counter/CounterGo (version mapping ambiguous). Leads pending
+  identity verification: Vice 1.0 (1997±21), Monolith 0.3 (2387), Daydreamer 1.5 (2298),
+  Stash 14.0 (2085). benches/anchor-research-20261114.md records all provenance. STATUS.md
+  Rating-status section updated (blocker + next actions revised). DESIGN_LOG adversarial
+  review entry added (mission §3.8). Commits: 5823fff, d25b683, 82ca55b, 4ab675d, + docs.
