@@ -50,9 +50,16 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       3 runs 1998/1984/1996 ms vs i7-4770K reference 2054 ms for 3,939,338 nodes
       (Tors3/CCRL_ScirptsTests ccrl_bench.py) → factor k=1.0291, equivalent TC 40/14.58 min;
       batches play 40/15 wall-clock with the ~3% deviation documented (pool `calibration` block).
-- [ ] Throughput pilots complete — pilot shards via rating-run.yml NOT YET RUN (next step).
+- [ ] Throughput pilots complete — PILOT-1 EXECUTED (run 43602273258, success): 4/4 games,
+      **29.5 min/game measured** (match step 13:57–14:56Z), engine fd75726d… verified;
+      duplicate pilot (43603558950) also completed — exploratory only, never counted toward
+      confirmatory samples. Box stays open until the raw evidence is committed and verified
+      (evidence-bridge collection of run 43602273258 queued).
 - [ ] Both null controls pass — anchor-vs-anchor (published diff ±75 Elo) and color-swapped
-      self-match (score consistent with 0.5): NOT YET RUN.
+      self-match (score consistent with 0.5): DISPATCHED and RUNNING (CTRL-1 run 43604654709
+      240 games; CTRL-2 run 43603826611 240 games, 0 shard failures so far). Thresholds frozen
+      in PREREGISTRATION.md before dispatch. Also in flight: SCREENING-1/2 (120 games each,
+      anchor selection only, never gate evidence).
 - [ ] Batch A independently passes the strict rating gate — NOT RUN (needs ≥2,000 completed
       games per eligible anchor; 60×17×2=2,040 games/anchor planned).
 - [ ] Batch B independently passes the strict rating gate — NOT RUN (fresh disjoint openings).
