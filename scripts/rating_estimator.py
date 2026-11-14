@@ -201,11 +201,15 @@ def joint_bootstrap(anchors: list[dict], n_boot: int, seed: int) -> dict:
 def col_means_cov(D: list[list[float]]) -> tuple[list[float], list[list[float]]]:
     B = len(D)
     A = len(D[0])
-    means = [sum(D[b][a] for b in range(B)) / B for a in range(A)]
+    # math.fsum: exact, version-stable summation — bootstrap covariances must not
+    # depend on interpreter float-accumulation behavior (reproducibility).
+    means = [math.fsum(D[b][a] for b in range(B)) / B for a in range(A)]
     cov = [[0.0] * A for _ in range(A)]
     for i in range(A):
         for j in range(A):
-            cov[i][j] = sum((D[b][i] - means[i]) * (D[b][j] - means[j]) for b in range(B)) / (B - 1)
+            cov[i][j] = math.fsum(
+                (D[b][i] - means[i]) * (D[b][j] - means[j]) for b in range(B)
+            ) / (B - 1)
     return means, cov
 
 
@@ -280,7 +284,19 @@ def batch_estimate(games_by_anchor: dict[str, list[dict]], anchor_entries: list[
     y = [anchors[i]["published_elo"] + boot["observed"][i] for i in range(A)]
 
     w_total, _, mode_total = gls(sigma_total, y)
-    w_match, _, mode_match = gls(sigma_m, y)
+    # Match-only weights are REPORTING-ONLY. When the match covariance is
+    # degenerate (e.g. zero within-opening variance), no match-only GLS exists;
+    # that is recorded, never raised — the estimator's own variance uses w_total.
+    inv_m = mat_inverse(sigma_m)
+    if inv_m is not None:
+        one = [1.0] * A
+        iv1 = mat_vec(inv_m, one)
+        denom = sum(iv1)
+        w_match = [x / denom for x in iv1] if denom > 0 else None
+        mode_match = "gls"
+    else:
+        w_match = None
+        mode_match = "degenerate-match-covariance (match-only weights unavailable)"
     theta = sum(w_total[i] * y[i] for i in range(A))
     var_match = sum(w_total[i] * w_total[j] * sigma_m[i][j] for i in range(A) for j in range(A))
     var_cal = sum(w_total[i] * w_total[j] * sigma_c[i][j] for i in range(A) for j in range(A))
