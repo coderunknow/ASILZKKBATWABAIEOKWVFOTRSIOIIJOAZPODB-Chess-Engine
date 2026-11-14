@@ -282,3 +282,37 @@ ten were implementation defects/footguns fixed in code or its tests.
   * Residual risk accepted: clock policy 'add' vs cutechess/CCRL semantics not yet verified
     against cutechess source (pilot task); Flawless clock-management verified at smoke level
     (tests/clock_smoke.rs), deeper budget behavior under real 40/15 load is a pilot task.
+
+## 2026-11-14 — §4 engine correctness/reliability audit: closure matrix
+
+Every audit area has reproducible evidence in-repo. Verdicts: PASS = evidence complete and
+green at `5eb6ee9`; regression = committed automated test that guards the fix.
+
+| Area | Evidence | Verdict |
+|---|---|---|
+| FEN handling | `scripts/diftest.py` SAN/FEN round-trips over 76,240 sampled positions (0 mismatches); `tests/correctness.rs` terminal-state FENs; uci `position fen` smoke + fuzz grammar incl. malformed FENs tolerated | PASS |
+| Move generation | Perft full CPW matrix **27/27 exact** (startpos d1–d6, Kiwipete d1–d5, pos3 d1–d6, pos4 d1–d6, pos5 d1–d5) + python-chess oracle MATCH; CI asserts startpos d3 on every push (both OSs) | PASS |
+| Perft depth ≥6 | startpos d6 = 119,060,324; pos3 d6 = 11,030,083; pos4 d6 = 706,045,033 (`benches/perft_full_20261114.md`) | PASS |
+| Zobrist | `tests/correctness.rs` make/unmake round trip + incremental-vs-recomputed hash consistency; DIFTEST repetition detection matches python-chess | PASS |
+| TT | `tt::tests::*` (6): store/probe roundtrip, wrong-key miss, depth-preferred replacement, mate scores ply-relative, **clock-unsafe entries suppress score but keep move** (regression for the halfmove-clock defect found by CodeRabbit) | PASS |
+| Mate handling | mate>draw precedence + mate-distance ply adjustments (regression `mate_scores_are_ply_relative`); no-startpos crash root-caused (illegal opening `e2e5`) + opener hardening + regression in `scripts/test_match.py` | PASS |
+| UCI | `tests/uci_smoke.rs` (4): handshake/quit, unknown-command tolerance with post-exit full drain + panic-marker scan, seeded command fuzz (6×25), **bestmove handoff stress** (30 jittered trials, exactly-once emission without follow-up input — guards the uci.rs hold/ponderhit mutex design) | PASS |
+| Clock | repeating 40/15 UCI clock (`scripts/test_match.py` 104 checks: parsing, add/reset periods, flag fall) + `tests/clock_smoke.rs` (3) + `uci::tests::clock_limits_respect_remaining_time`; stop/ponderhit mid-search | PASS |
+| Threads | search worker + main-thread command loop handoff proven by the stress regression; `setoption Threads` accepted; panic isolation via `catch_unwind` + legal fallback bestmove (fuzz-verified); single-worker design documented (ARCHITECTURE.md) | PASS |
+| Search-vs-oracle | DIFTEST 76,240 positions / 305 d3 perft comparisons / 0 mismatches (`benches/diftest-final-compressed.log` SHA `c3be9174…`) | PASS |
+| Engine errors in harness | record → immediate replay → abort-after-2 policy (104-check suite); panic games flagged `engine_error`, excluded from statistics | PASS |
+
+Lint/quality gates: `cargo fmt --check` clean; `cargo clippy --all-targets -- -D warnings` clean;
+`cargo test --release` 34/34; Python suites 104/104 + 53/53 (real runners — the custom `main()`
+suites are invisible to `python -m unittest`, see FAILURE_LEDGER).
+
+### Residual-risk closure (same day): `--tc-policy add` == cutechess semantics — VERIFIED at source
+
+Verified against `cutechess/cutechess` `projects/lib/src/timecontrol.cpp` (`TimeControl::onMoveMade`,
+fetched via the GitHub API 2026-11-14): at a repeating-TC period boundary cutechess executes
+`setMovesLeft(m_movesPerTc); setTimeLeft(m_timePerTc + m_timeLeft);` — the new period budget is
+**ADDED** to the remaining clock (unused time carries over and accumulates). Flag expiry is
+`m_lastMoveTime > m_timeLeft + m_expiryMargin`. Therefore match.py's default `--tc-policy add`
+matches cutechess (and hence CCRL 40/15) semantics exactly; `--tc-policy reset` would DEVIATE from
+cutechess. The earlier residual risk is CLOSED; the default stands and is the one used by PILOT-1,
+the null controls and the planned batches.
