@@ -1,0 +1,124 @@
+# evidence-bridge.yml — collect raw per-game evidence from EXISTING rating-run
+# executions (runs that predate the in-run `evidence` job, or any re-run) and
+# commit it to the PR branch. Same deliberate-dispatch discipline as rating-run:
+# the workflow fires only when the marker file `benches/evidence-request.json`
+# moves in the top commit of a push (see rating-run.yml resolve for the gate).
+#
+# Each entry maps ONE completed rating-run execution to ONE disjoint evidence
+# directory. The run must be completed AND successful before its artifacts are
+# aggregated; every identity check is the strict aggregator's (fail closed).
+# Entries are never reused across different runs of the same shard identities —
+# the aggregator rejects duplicate shard_ids within one aggregation, and the
+# bridge keeps different runs in different evidence directories.
+
+name: evidence-bridge
+
+on:
+  pull_request:
+    paths:
+      - "benches/evidence-request.json"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Top-commit marker gate
+        id: gate
+        run: |
+          if git diff --name-only HEAD~1 HEAD -- benches/evidence-request.json | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "top commit does not move benches/evidence-request.json — NOT a dispatch"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Python + python-chess (pinned)
+        if: steps.gate.outputs.run == 'true'
+        run: python3 -m pip install --user chess==1.11.2
+
+      - name: Collect and aggregate evidence
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+
+          req = json.load(open("benches/evidence-request.json"))
+          if req.get("schema") != 1:
+              sys.exit("evidence-request schema must be 1")
+          pool = json.load(open("benches/anchor-pool.json"))
+
+          def sha_of(slot, engine_sha):
+              if slot == "flawless":
+                  return engine_sha
+              for e in pool["engines"]:
+                  if e.get("key") == slot:
+                      return e["sha256"]
+              sys.exit(f"unknown engine slot {slot}")
+
+          for ent in req["runs"]:
+              run_id = str(ent["run_id"])
+              # Fail closed: only completed, successful runs have usable shards.
+              r = subprocess.run(
+                  ["gh", "run", "view", run_id, "--json", "conclusion,status"],
+                  capture_output=True, text=True)
+              info = json.loads(r.stdout or "{}")
+              if info.get("status") != "completed" or info.get("conclusion") != "success":
+                  sys.exit(f"run {run_id} not completed/successfully: {info}")
+              dl = f"/tmp/bridge-{run_id}"
+              subprocess.run(["gh", "run", "download", run_id, "-D", dl], check=True)
+              out = f"benches/evidence/{ent['evidence_purpose']}/{ent['anchor_id']}"
+              os.makedirs(out, exist_ok=True)
+              cmd = [
+                  sys.executable, "scripts/aggregate_shards.py",
+                  "--shards-root", dl,
+                  "--batch", ent["batch"],
+                  "--anchor", ent["anchor_id"],
+                  "--engine-sha256", sha_of(ent["white_engine"], ent["engine_sha256"]),
+                  "--anchor-sha256", sha_of(ent["black_engine"], ent["engine_sha256"]),
+                  "--opening-suite-sha256", ent["opening_suite_sha256"],
+                  "--tc-moves", str(ent["tc_moves"]),
+                  "--tc-seconds", str(ent["tc_seconds"]),
+                  "--expected-shards", str(len(ent["shard_indices"])),
+                  "--out", f"{out}/games.jsonl",
+                  "--manifest", f"{out}/manifest.json",
+              ]
+              print("invoking:", " ".join(cmd), flush=True)
+              rc = subprocess.call(cmd)
+              if rc != 0:
+                  print(f"::error::aggregate failed for run {run_id} (fail closed)")
+                  sys.exit(rc)
+              print(f"collected run {run_id} -> {out}")
+          PY
+
+      - name: Commit evidence to the branch
+        if: steps.gate.outputs.run == 'true'
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "flawless-evidence-bot"
+          git config user.email "flawless-evidence-bot@users.noreply.github.com"
+          git add benches/evidence
+          if git diff --cached --quiet; then
+            echo "no new evidence to commit"; exit 0
+          fi
+          git commit -m "evidence: raw per-game results via evidence-bridge (request revision $(python3 -c "import json;print(json.load(open('benches/evidence-request.json'))['revision'])"))"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin "$BRANCH" && git push origin "$BRANCH" && exit 0
+            sleep $((10 * i))
+          done
+          echo "::error::evidence push failed after retries"
+          exit 1
