@@ -68,3 +68,19 @@
   FAILURE_LEDGER.md.
 - Repository was observed as `coderunknow/Flawless-Chess-Engine` (externally renamed); the old
   URL auto-redirects. This project did not and does not rename the repository.
+
+## 2026-11-14 — Audit passes 1-2, docs integrity, panic-fallback e2e verification
+
+- b85b3f7 FAILED CI (Clippy `write_with_newline` — shell pipe hid it locally); fixed in 837361f;
+  lesson recorded: never chain a gating command through a pipe that swallows its exit status;
+  CI is the backstop, not the first line of defense.
+- CI for head-era commits: 43562935232 (b4acfcd SUCCESS), 43563085939 (bbb31f9 SUCCESS),
+  43563499046 (b85b3f7 FAILURE), 43563628232 (44c8369 SUCCESS).
+- Panic-fallback path verified end-to-end with a synthetic panic engine: games flagged
+  engine_error=true with engine_error_turns; stats.py excludes them ("no scorable games after
+  exclusions"). Normal 4-game match unaffected (4/4 vs SF19-lite Skill 0 @ 100ms).
+- Match runner harvest fix (early-return paths dropped panic markers) committed 972161d.
+- Docs integrity pass: ARCHITECTURE TT 16→8 bytes, SEE claims removed (zero SEE in code; roadmap),
+  CLI docs match reality, fuzz status made reproducible (tests/uci_smoke.rs), ENVIRONMENT
+  snapshot-restore runbook, RATING_PROTOCOL.md pre-registered (not executed; gate BLOCKED).
+- 2026-11-14 commit b85b3f7 also contained a corrupted shell-chained clippy run; 837361f is the fix.
