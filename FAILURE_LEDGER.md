@@ -83,3 +83,8 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   struct; the annotations-2.0 diagnostic step confirmed the exact error in one run.
 - Lesson (unchanged, reinforced): after every restore, rebuild AND re-run gates before claiming
   anything; a green-looking CI rerun on a wiped tree proves nothing about local state.
+- Also on restore #3: `git add -A` swept a locally-installed GPL Stockfish WASM tree (npm
+  stockfish@19.0.1) into commit d6dc221 after node_modules was reinstalled for verification;
+  removed in f0a2a55 (.gitignore now covers node_modules/). History keeps the blobs (no
+  force-push — PR head stability); no further node_modules may be committed. Opponent remains
+  pinned OUTSIDE the repo (/home/user/opponents, hash-verified).
