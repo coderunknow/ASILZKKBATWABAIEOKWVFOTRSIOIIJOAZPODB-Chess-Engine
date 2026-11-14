@@ -15,6 +15,14 @@ name: anchor-verify
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/anchor_build.sh"
+      - ".github/workflows/anchor-verify.yml"
+      - "benches/anchor-pool.json"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
 
 permissions:
   contents: read
