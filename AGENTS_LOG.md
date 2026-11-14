@@ -104,3 +104,18 @@
   fixed via StoreRequest; CodeRabbit 5903125228 (13 findings) dispositioned in source/docs;
   RATING_PROTOCOL Amendment §9 (strict > 2,000; both batches + combined pass; ≥2,000
   games/anchor/batch) appended; CI now uploads bench signature + binary SHA-256 + manifest.
+
+- 2026-11-14 (rating-infra segment): workspace restore #4 clobbered local git to 98b1a00 +
+  wiped .venv/toolchain; recovered history via `git fetch` + `git reset origin/<branch>`
+  (working tree byte-identical to 0b70906, zero loss). PR #1 returned to Draft (gh pr ready
+  --undo) — the earlier "not marked ready" claim was wrong; GitHub had it open/non-draft.
+  match.py v2: clock TC (--tc 40/15 repeating, movestogo, elapsed charging, flag, ponder off,
+  add/reset policy), 60x17x2 scheduling + shard slicing, engine-error record/immediate-replay/
+  abort-after-2, move-cap unadjudicated, manifest v2 (pre + finalized), suite hash, anchor-schema
+  hardening. scripts/test_match.py 104/104. tests/clock_smoke.rs + uci clock_limits tests: cargo
+  33/33, clippy/fmt clean. scripts/rating_estimator.py (§9.6-9.8 joint bootstrap/GLS/combined/
+  null-controls/fail-closed gate) + scripts/test_rating_estimator.py 46/46; scripts/aggregate_shards.py
+  (fail-closed §5.2 rules, smoke-verified). Workflows: anchor-research.yml (CCRL 40/15 fetch from
+  hosted runner), rating-run.yml, rating-gate.yml (stable fail-closed rating-gate job). Toolchain
+  rebuilt from npm (rustc/cargo/clippy/rustfmt 1.99.0; remember chmod +x on bin/ and
+  lib/rustlib/*/bin/* — npm strips exec bits and the linker needs gcc-ld/ld.lld executable).

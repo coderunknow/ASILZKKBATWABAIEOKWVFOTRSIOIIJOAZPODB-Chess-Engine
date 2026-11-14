@@ -577,3 +577,41 @@ pub fn run_uci() {
     let mut engine = UciEngine::new();
     engine.run();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clock_limits_respect_remaining_time() {
+        // 40 moves in 15 minutes (the rating-schedule shape).
+        let (soft, hard) = clock_limits(WHITE, 900_000, 900_000, 0, 0, Some(40));
+        assert_eq!(soft, 22_500);
+        assert_eq!(hard, 135_000);
+        // Never exceed the remaining clock; hard >= soft; safety margin on the cap.
+        for &(t, inc, mtg) in &[
+            (0u64, 0u64, Some(40u64)),
+            (1, 0, Some(40)),
+            (250, 0, Some(40)),
+            (3_000, 0, Some(40)),
+            (900_000, 0, Some(40)),
+            (900_000, 0, Some(1)),
+            (900_000, 100, Some(10)),
+            (5_000, 0, None),
+            (900_000, 0, Some(0)), // movestogo 0 must not panic; treated as >= 1
+        ] {
+            let (s, h) = clock_limits(WHITE, t, t, inc, inc, mtg);
+            assert!(s <= t, "soft {s} exceeds remaining {t}");
+            assert!(h >= s, "hard {h} below soft {s}");
+            assert!(
+                h <= t.saturating_sub(30).max(s),
+                "hard {h} unsafe for remaining {t}"
+            );
+        }
+        // Side symmetry: black gets the same limits from its own clock.
+        let (sw, hw) = clock_limits(WHITE, 3_000, 250, 0, 0, Some(40));
+        let (sb, hb) = clock_limits(WHITE + 1, 3_000, 250, 0, 0, Some(40));
+        assert_eq!((sw, hw), (75, 450));
+        assert_eq!((sb, hb), (20, 120));
+    }
+}

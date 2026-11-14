@@ -244,3 +244,18 @@ hardware/OS, git commit).
     both; search.rs call site passes both.
 None of the 13 were invalid on inspection; three were documentation-of-method corrections (1,2,12),
 ten were implementation defects/footguns fixed in code or its tests.
+
+- 2026-11-14 (rating harness + estimator): (1) Time-control period policy implemented as
+  --tc-policy add (default; unused time carries, a fresh period is ADDED at each 40-move
+  boundary — classic repeating control) and reset (clock set to period); the preregistration
+  must freeze which policy the confirmatory batches use, and the manifest always records it.
+  Verify against cutechess/CCRL semantics before freezing. (2) Engine-error replay is
+  depth-first (immediate) so a second consecutive failure aborts the batch promptly (§3).
+  (3) move_cap termination is recorded unadjudicated '*' and never scored; --move-cap-policy
+  draw exists for exploratory runs only. (4) §9.8 combined calibration: exact combined
+  calibration variance is c* = sum_a (lam*w_A,a + (1-lam)*w_B,a)^2 * eps_a^2 with
+  lam = (1/v_A)/(1/v_A+1/v_B); shared anchor errors are added ONCE and never inverse-variance
+  pooled. (5) Match-only vs calibrated intervals use the SAME point estimate (total-GLS
+  weights); match-only variance = w' Sigma_m w. (6) Boundary bootstrap replicates (score 0/1
+  in any resample) fail closed (EvidenceError) instead of clamping. (7) anchors: error_convention
+  must be one of sd/se/ci95/ci90/ci99 — ambiguity is rejected, matching §9.6 conversion rules.

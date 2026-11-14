@@ -115,3 +115,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   the authoritative CCRL/CEGT lists and ratable opponent binaries (or their licensed redistribution),
   then commit benches/rating-batchA and benches/rating-batchB and update STATUS.md with the
   measured result and CIs.
+
+- 2026-11-14: `cp -a <empty-var>/. sysroot/` after a failed `find` copied the filesystem root
+  into /home/user/.toolchain/sysroot (unremovable cgroup pseudo-files inside). Cause: empty
+  substitution in cp source. Fix: rm -rf + rebuild from npm packages; ALWAYS guard `cp` sources
+  as non-empty. Also: npm strips execute bits — chmod +x sysroot/bin/* and
+  sysroot/lib/rustlib/*/bin/* (incl. gcc-ld/) or linking fails with "cannot find 'ld'".
+- 2026-11-14: synthetic anchor-vs-anchor null-control fixture was internally inconsistent
+  (manufactured A1-vs-A2 games implied d=+235 while published diff was -100) -> control failed
+  (correctly). Fix: build transitively consistent synthetic worlds (per-anchor score patterns
+  matching published gaps). Uniform per-opening score clusters make Sigma_m degenerate (zero
+  variance) and force the GLS fallback — synthetic fixtures must use heterogeneous clusters.

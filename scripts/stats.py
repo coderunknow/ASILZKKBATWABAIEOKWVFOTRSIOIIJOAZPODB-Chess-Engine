@@ -27,7 +27,14 @@ def load(path: str, include_engine_error: bool = False) -> tuple[list[dict], int
             if not line:
                 continue
             g = json.loads(line)
-            if g.get("engine_error") and not include_engine_error:
+            # Unadjudicated terminations (e.g. move_cap '*') are NEVER scored.
+            if g.get("result") not in ("1-0", "0-1", "1/2-1/2"):
+                skipped += 1
+                continue
+            # Engine-error attempts and other uncounted games are recorded in the
+            # evidence stream but excluded from statistics unless explicitly included
+            # for diagnostics (never for gate evidence).
+            if (g.get("engine_error") or g.get("counted") is False) and not include_engine_error:
                 skipped += 1
                 continue
             games.append(g)

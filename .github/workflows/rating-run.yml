@@ -1,0 +1,152 @@
+# rating-run.yml — deliberate tournament execution for the >2,000 Elo gate
+# (docs/RATING_PROTOCOL.md §9). Expensive execution is NEVER triggered by an
+# ordinary push: this workflow is workflow_dispatch-only and each run is one
+# deterministic shard (batch x anchor x opening-range x repetition-range).
+#
+# Dispatch note: GitHub delivers workflow_dispatch only to workflow files that
+# exist on the default branch. Until this file lands on `main`, deliberate runs
+# must be triggered by a commit touching this file (pull_request paths filter
+# below) or after merge; the permanent path is `gh workflow run rating-run.yml`.
+#
+# Inputs are the PREREGISTERED identities: frozen target commit, engine binary
+# SHA-256, batch (A|B), anchor id, shard index/count, opening-suite hash, seed,
+# and exact game count. Any mismatch between requested and actual hashes fails
+# the shard; a failed shard is re-run into a FRESH output dir (never mixing).
+
+name: rating-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: "Frozen target commit SHA (full)"
+        required: true
+      engine_sha256:
+        description: "Frozen engine binary SHA-256 (64 hex)"
+        required: true
+      batch:
+        description: "Preregistered batch"
+        required: true
+        default: "A"
+      anchor_id:
+        description: "Anchor identifier from the frozen anchor pool"
+        required: true
+      shard_index:
+        description: "0-based shard index"
+        required: true
+      shard_count:
+        description: "Total shards for this (batch, anchor)"
+        required: true
+      opening_suite:
+        description: "Opening suite path (relative to repo root)"
+        required: true
+        default: "benches/rating-openings-batchA.txt"
+      opening_suite_sha256:
+        description: "Frozen opening-suite SHA-256 (64 hex)"
+        required: true
+      repetitions:
+        description: "Paired repetitions per opening (e.g. 17 -> 2040 games)"
+        required: true
+        default: "17"
+      seed:
+        description: "Preregistered seed"
+        required: true
+        default: "20261114"
+      tc:
+        description: "Time control (moves/minutes)"
+        required: true
+        default: "40/15"
+  pull_request:
+    paths:
+      - ".github/workflows/rating-run.yml"
+
+jobs:
+  pilot-or-shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout frozen commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_commit }}
+
+      - name: Verify checkout is the frozen commit
+        run: |
+          got=$(git rev-parse HEAD)
+          want="${{ github.event.inputs.target_commit }}"
+          [ "$got" = "$want" ] || { echo "checkout $got != frozen $want"; exit 1; }
+
+      - name: Record runner hardware and software (calibration data)
+        run: |
+          {
+            echo "=== utc: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+            uname -a; cat /etc/os-release; lscpu; head -5 /proc/meminfo
+            echo "ImageOS=${ImageOS:-unknown} ImageVersion=${ImageVersion:-unknown}"
+          } | tee runner-hardware.txt
+
+      - name: Install Rust (pinned)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+
+      - name: Build release engine
+        run: cargo build --release --locked
+
+      - name: Verify engine binary SHA-256 against frozen value
+        run: |
+          got=$(sha256sum target/release/flawless | cut -d' ' -f1)
+          want="${{ github.event.inputs.engine_sha256 }}"
+          echo "engine sha256: $got"
+          [ "$got" = "$want" ] || { echo "engine hash mismatch: $got != $want"; exit 1; }
+
+      - name: Verify opening-suite hash
+        run: |
+          got=$(sha256sum "${{ github.event.inputs.opening_suite }}" | cut -d' ' -f1)
+          want="${{ github.event.inputs.opening_suite_sha256 }}"
+          echo "suite sha256: $got"
+          [ "$got" = "$want" ] || { echo "suite hash mismatch: $got != $want"; exit 1; }
+
+      - name: Install Python + python-chess (pinned)
+        run: |
+          python3 -m pip install --user chess==1.11.2
+
+      # Anchor binaries must be acquired and hash-verified per the frozen pool
+      # (docs/RATING_PROTOCOL.md §2). The pool file is preregistered; this step
+      # downloads each binary from its recorded source URL and refuses to run the
+      # shard unless every SHA-256 matches. No placeholder pool ever validates.
+      - name: Acquire and verify anchor binaries
+        env:
+          ANCHOR_ID: ${{ github.event.inputs.anchor_id }}
+        run: |
+          echo "acquire anchor binaries for $ANCHOR_ID from the frozen pool" >&2
+          echo "IMPLEMENTATION PENDING: waiting for the verified anchor pool" >&2
+          echo "(benches/anchor-pool.json with real, verified values)." >&2
+          echo "This shard FAILS CLOSED until then." >&2
+          exit 1
+
+      - name: Run tournament shard (match.py)
+        run: |
+          python3 scripts/match.py \
+            --white-cmd "./target/release/flawless uci" \
+            --black-cmd "./anchors/${{ github.event.inputs.anchor_id }}" \
+            --white-name Flawless --black-name "${{ github.event.inputs.anchor_id }}" \
+            --tc "${{ github.event.inputs.tc }}" \
+            --openings "${{ github.event.inputs.opening_suite }}" \
+            --repetitions "${{ github.event.inputs.repetitions }}" \
+            --batch-id "${{ github.event.inputs.batch }}" \
+            --shard-index "${{ github.event.inputs.shard_index }}" \
+            --shard-count "${{ github.event.inputs.shard_count }}" \
+            --shard-id "${{ github.event.inputs.batch }}-${{ github.event.inputs.anchor_id }}-${{ github.event.inputs.shard_index }}" \
+            --anchor-json benches/anchor-pool.json \
+            --out "benches/rating-${{ github.event.inputs.batch }}/${{ github.event.inputs.anchor_id }}/shard-${{ github.event.inputs.shard_index }}"
+
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rating-${{ github.event.inputs.batch }}-${{ github.event.inputs.anchor_id }}-shard${{ github.event.inputs.shard_index }}-${{ github.run_id }}
+          path: |
+            benches/rating-${{ github.event.inputs.batch }}/${{ github.event.inputs.anchor_id }}/shard-${{ github.event.inputs.shard_index }}/
+            runner-hardware.txt
+          if-no-files-found: warn
+          retention-days: 90

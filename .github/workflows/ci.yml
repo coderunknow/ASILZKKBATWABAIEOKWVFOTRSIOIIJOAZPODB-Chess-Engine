@@ -45,6 +45,14 @@ jobs:
       - name: Tests (release)
         run: cargo test --release --locked
 
+      - name: Python harness + estimator regression tests
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" -m pip install --user chess==1.11.2
+          "$PY" scripts/test_match.py
+          "$PY" scripts/test_rating_estimator.py
+
       - name: Release build
         run: cargo build --release --locked
 

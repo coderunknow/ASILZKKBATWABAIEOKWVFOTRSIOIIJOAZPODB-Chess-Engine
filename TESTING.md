@@ -59,3 +59,17 @@ release build, UCI handshake, perft d3 sanity — green on PR #1 (runs 435495006
 
 Raw outputs are stored under `benches/` and summarized in `STATUS.md` / `BENCHMARKING.md`. No test
 result is claimed without a command + output line.
+
+## Rating harness & estimator regression suites (2026-11-14)
+
+| Suite | Scope | Status |
+|---|---|---|
+| `scripts/test_match.py` (104 checks) | clock-TC parsing + repeating period (`add`/`reset`) + flag; 60×17×2=2,040 schedule determinism + shard partitioning; engine-error record/immediate-replay/abort-after-2; move-cap unadjudicated (`*`) vs explicit draw policy; manifest v2 finalization (in_progress→completed/aborted); opening-suite hash; anchor-schema hardening (template rejected; TBD/null/bad-hash/ambiguous-convention/unverified-license all rejected) | PASS 2026-11-14 |
+| `tests/clock_smoke.rs` (3) + `uci::tests::clock_limits_*` (2) | Flawless clock management: full `go wtime/btime/winc/binc/movestogo` commands return a legal bestmove within budget (crash-net bounds from `clock_limits`); increment + movestogo continuation; `clock_limits` invariants (soft ≤ t, hard ≥ soft, hard ≤ cap, movestogo 0 no-panic) | PASS 2026-11-14 (cargo 33/33) |
+| `scripts/test_rating_estimator.py` (46 checks) | balanced-match recovery; perfect/zero boundary rejection; known anchor diffs; correlated opening difficulty (joint bootstrap covariance > 0); uncertainty conversion sd/se/ci90/ci95/ci99; GLS weights + singular fallback; shared calibration added once across batches; combined CI math; missing/invalid evidence rejection; fixed-seed reproducibility; null-control verdicts; full fail-closed gate (PASS on strong evidence; FAIL on poisoned control; FAIL on missing evidence) | PASS 2026-11-14 |
+| `scripts/aggregate_shards.py` | fail-closed §5.2 rules (missing shards, duplicate shard ids/games, engine/anchor/suite hash mismatches, TC mismatches, incomplete records, hardware divergence) | smoke-verified both directions 2026-11-14 |
+
+Gate note: `scripts/rating_estimator.py gate` independently recomputes every reported number
+from raw `games.jsonl` evidence (never trusts a hand-entered rating). It is the implementation
+behind the `rating-gate` check (`.github/workflows/rating-gate.yml`) and fails closed on any
+missing artifact.
