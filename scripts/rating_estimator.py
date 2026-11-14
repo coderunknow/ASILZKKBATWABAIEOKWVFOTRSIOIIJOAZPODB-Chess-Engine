@@ -58,6 +58,17 @@ class EvidenceError(SystemExit):
 # ---------------------------------------------------------------------------
 
 
+def anchor_label(entry: dict) -> str:
+    """Identity under which an anchor's games are recorded.
+
+    The match harness records each engine under the dispatch label (the frozen
+    pool's unique `key`); the pool's `name` field is the engine's display name
+    and is NOT unique (e.g. two Topple versions). Game matching therefore uses
+    `key` first, falling back to `name` for older descriptors.
+    """
+    return entry.get("key") or entry["name"]
+
+
 def load_games(path: str, focus: str | None) -> list[dict]:
     games = []
     try:
@@ -262,7 +273,7 @@ def batch_estimate(games_by_anchor: dict[str, list[dict]], anchor_entries: list[
                    focus: str, n_boot: int, seed: int) -> dict:
     anchors = []
     for entry in anchor_entries:
-        name = entry["name"]
+        name = anchor_label(entry)
         if name not in games_by_anchor:
             raise EvidenceError(f"no games file for anchor {name!r}")
         clusters = focus_scores_by_opening(games_by_anchor[name], focus)
@@ -306,7 +317,7 @@ def batch_estimate(games_by_anchor: dict[str, list[dict]], anchor_entries: list[
     for i, a in enumerate(anchors):
         d = boot["observed"][i]
         per_anchor.append({
-            "name": a["name"],
+            "name": a["name"],  # label recorded in games (pool key)
             "published_elo": a["published_elo"],
             "published_error_as_published": float(anchor_entries[i]["published_error"]),
             "error_convention": anchor_entries[i]["error_convention"],
@@ -392,7 +403,7 @@ def combine_batches(ba: dict, bb: dict) -> dict:
 def control_anchor_vs_anchor(games: list[dict], entry_a: dict, entry_b: dict,
                              n_boot: int, seed: int) -> dict:
     """Measured A-vs-B difference must recover R_a - R_b within +/-75 Elo."""
-    a_name, b_name = entry_a["name"], entry_b["name"]
+    a_name, b_name = anchor_label(entry_a), anchor_label(entry_b)
     clusters = focus_scores_by_opening(games, a_name)
     if not clusters:
         raise EvidenceError("anchor-vs-anchor control: no counted games")
@@ -458,8 +469,8 @@ def run_gate(args) -> int:
 
     results["control_anchor_vs_anchor"] = control_anchor_vs_anchor(
         load_games(args.control_anchor, None),  # anchor-vs-anchor: neither side is focus
-        next(e for e in entries if e["name"] == args.control_anchor_names[0]),
-        next(e for e in entries if e["name"] == args.control_anchor_names[1]),
+        next(e for e in entries if anchor_label(e) == args.control_anchor_names[0]),
+        next(e for e in entries if anchor_label(e) == args.control_anchor_names[1]),
         args.bootstrap, args.seed,
     )
     results["control_self_match"] = control_self_match(
@@ -608,8 +619,8 @@ def main() -> int:
         else:
             games = load_games(args.games, None)
             pool = json.load(open(args.anchor_json))
-            ea = next(e for e in pool["engines"] if e["name"] == args.names[0])
-            eb = next(e for e in pool["engines"] if e["name"] == args.names[1])
+            ea = next(e for e in pool["engines"] if anchor_label(e) == args.names[0])
+            eb = next(e for e in pool["engines"] if anchor_label(e) == args.names[1])
             res = control_anchor_vs_anchor(games, ea, eb, args.bootstrap, args.seed)
         if args.out:
             with open(args.out, "w") as f:

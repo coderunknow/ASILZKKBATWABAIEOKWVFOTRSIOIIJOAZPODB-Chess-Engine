@@ -290,6 +290,37 @@ def test_null_controls():
     check(not r2["pass"], "biased self-match fails")
 
 
+
+
+def test_anchor_label_key_matching():
+    # Frozen-pool reality: display names are NOT unique (two 'Topple' versions);
+    # games are recorded under the unique pool key (the match harness label).
+    e1 = pool_entry("Topple", 2000, 30)
+    e1["key"] = "topple-0.1.1"
+    e2 = pool_entry("Topple", 2100, 30)
+    e2["key"] = "topple-0.2.1"
+    check(re.anchor_label(e1) == "topple-0.1.1", "anchor_label prefers unique key")
+    check(re.anchor_label(pool_entry("Solo", 2000, 30)) == "Solo",
+          "anchor_label falls back to name for older descriptors")
+
+    g1 = make_games("topple-0.1.1", uniform_openings(20, 8, 4, 2))
+    g2 = make_games("topple-0.2.1", uniform_openings(20, 4, 8, 2))
+    res = re.batch_estimate({"topple-0.1.1": g1, "topple-0.2.1": g2},
+                            [e1, e2], FOCUS, 500, 7)
+    names = [p["name"] for p in res["per_anchor"]]
+    check(names == ["topple-0.1.1", "topple-0.2.1"],
+          "batch_estimate matches anchors by key despite duplicate display names")
+
+    games = []
+    for oname, w, l, d in uniform_openings(20, 12, 4, 2):
+        seq = ["1-0"] * w + ["0-1"] * l + ["1/2-1/2"] * d
+        for r_ in seq:
+            games.append({"opening": oname, "white": "topple-0.1.1", "black": "topple-0.2.1",
+                          "result": r_, "counted": True, "engine_error": False})
+    cr = re.control_anchor_vs_anchor(games, e1, e2, 500, 5)
+    check(math.isfinite(cr["error"]),
+          "anchor-vs-anchor control scores via key labels (not display names)")
+
 # ---------------------------------------------------------------------------
 # Full gate end-to-end (subprocess, fail closed both ways)
 # ---------------------------------------------------------------------------
@@ -394,6 +425,7 @@ def main():
     test_shared_calibration()
     test_missing_invalid_evidence()
     test_null_controls()
+    test_anchor_label_key_matching()
     test_gate_full()
     print(f"\n{PASS} checks passed, {FAIL} failed")
     return 1 if FAIL else 0
