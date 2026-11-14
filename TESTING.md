@@ -34,9 +34,14 @@ K+B v K+B same color bishops) · stalemate · checkmate · search state restorat
 Covered today (all verified locally on Rust 1.99.0): `uci` handshake (`id`/`uciok`), `isready`,
 `position startpos`/`fen`/`moves`, `go depth`/`movetime`/`infinite`/`wtime,btime,winc,binc,movestogo`,
 `stop` mid-search, `ponderhit` (ponder→clock conversion), `ucinewgame`, `setoption Hash/Threads/MultiPV`
-(unknown options ignored), `quit`. Randomized command-sequence fuzz: 6 trials × 25 commands from a
-30-command grammar — 0 crashes, 0 hangs (2026-11-14). Panic resilience: search thread wrapped in
-`catch_unwind`; on internal panic the engine emits a legal fallback `bestmove` (GUI never hangs).
+(unknown options ignored), `quit`. Randomized command-sequence fuzz is now a committed, deterministic
+test: `tests/uci_smoke.rs` (seeded splitmix64, 6 trials × 25 commands over a ~19-token grammar, plus an
+unknown-command tolerance test and a handshake/quit test) — 0 crashes, 0 hangs; runs in CI via `cargo test`.
+It replaces the earlier one-off session check that was not reproducible from the repo.
+Deep/black-box fuzzing (e.g. cargo-fuzz/libFuzzer): NOT performed (no network access to crates.io; zero-dependency policy).
+Panic resilience: search thread wrapped in `catch_unwind`; on internal panic the engine emits a legal fallback
+`bestmove` and a stdout `info string search thread panicked; emitting fallback bestmove` marker (GUI never
+hangs); match runner tags such games `engine_error` and stats.py excludes them by default.
 CI additionally runs a UCI handshake + perft d3 sanity on every push/PR (both OSs).
 
 ## Static quality

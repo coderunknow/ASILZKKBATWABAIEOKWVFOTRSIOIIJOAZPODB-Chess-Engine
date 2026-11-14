@@ -2,6 +2,33 @@
 
 All notable changes are documented here. SemVer 2.0.0. Versions before the V1 release gate are `0.x`.
 
+## [Unreleased] — Flawless identity migration + correctness audit (2026-11-14)
+
+- **Identity migration** (ADR-0002): engine, package, library and binary renamed to **Flawless**;
+  `id name Flawless`; `id author coderunknow (Apache-2.0)` (authorship unchanged). Repository
+  observed as `coderunknow/Flawless-Chess-Engine` (externally renamed; this project did not rename
+  it; old URL auto-redirects). Historical benchmark evidence, PGNs and append-only logs keep the old
+  identifiers by policy.
+- **Audit pass 1 (correctness)** — each defect reproduced by a failing→passing test:
+  (1) checkmate now outranks the fifty-move and repetition draw rules in search (FIDE 9.6.2);
+  (2) quiescence: terminal (mate/stalemate) check moved before stand-pat cutoffs and delta pruning;
+  (3) main search: no-legal-moves terminal check moved before null-move/futility/RFP, and claimable
+  draw rules require !in_check — mate can no longer be pruned or mis-scored as a draw;
+  (4) `go searchmoves` was silently ignored by the MultiPV=1 PVS path — root restriction now
+  enforced at ply 0 for both MultiPV paths; empty `searchmoves` falls back to all legal moves;
+  (5) panic-fallback turns are now detectable by the match runner (`engine_error` / `engine_error_turns`
+  in JSONL), excluded from stats by default, and the engine emits a GUI-visible stdout marker;
+  (6) bench signature `d790483532d87af0` → `3086f65159758c9d` (2,317,474 nodes) — expected consequence.
+- **Audit pass 2**: `clock_limits` `u64::clamp` min>max panic at `t<30ms` fixed; UCI bestmove smoke
+  (depth 2) and MSRV (Rust 1.80) CI jobs added; remaining `|| true` masks removed from CI.
+- **Tests**: 24 integration + 4 unit tests, incl. seeded deterministic UCI fuzz (`tests/uci_smoke.rs`)
+  replacing the non-reproducible one-off fuzz claim.
+- **Reviews**: CodeRabbit manually triggered (incremental; see PR #1) — review in progress/recorded
+  by SHA; Codex documented retry attempted — usage-limited; Copilot quota (lower-effort retry needs
+  web UI, API cannot request); Qodo/Kilo billing-blocked (not code findings).
+- Absolute Elo remains **UNKNOWN**; the ≥2,000 Elo release gate is NOT measured and NOT met;
+  no calibrated pool reachable from this sandbox. v1.0.0 NOT authorized.
+
 ## [Unreleased] — Phase 3 (evaluation) + Phase 4 (search) + UCI (2026-11-14)
 
 - Tapered classical evaluation (`src/eval.rs`): material + PST (MG/EG), mobility baselines,
@@ -41,7 +68,7 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   mate-bound-safe) + check extensions. A/B vs previous build: score 0.613 (Elo +80, CI overlapping 0);
   vs pinned SF Skill 5 score improved 0.438 → 0.525 (CI overlapping). Not conclusive at 40 games.
 - `bench`: fixed-depth-10 search benchmark over 12 fixed positions; deterministic FNV-1a
-  `bench signature` (current: `d790483532d87af0`, 2,798,466 nodes); node count is the regression signal.
+  `bench signature` (current: `3086f65159758c9d`, 2,317,474 nodes; see DESIGN_LOG 2026-11-14 audit entry); node count is the regression signal.
 - Not committed tags; v1.0.0 NOT authorized.
 
 ## [0.1.0-dev.1] — 2026-11-14

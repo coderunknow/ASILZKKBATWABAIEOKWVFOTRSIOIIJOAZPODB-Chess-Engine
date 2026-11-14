@@ -1,8 +1,9 @@
 # FAILURE_LEDGER.md (append-only)
 
-No failures recorded yet. Entries must include: what was attempted, why, exact commit/binary,
-conditions, raw evidence location, result + uncertainty, suspected mechanism (labeled as hypothesis),
-what was learned, next experiment.
+<!-- 2026-11-14 (audit): the "No failures recorded yet" preamble was stale — the file already
+contained entries. Entries are append-only and remain the live record. Required entry format:
+what was attempted, why, exact commit/binary, conditions, raw evidence location,
+result + uncertainty, suspected mechanism (hypothesis), what was learned, next experiment. -->
 
 ## 2026-11-14 — UCI bestmove never printed without trailing stdin input
 

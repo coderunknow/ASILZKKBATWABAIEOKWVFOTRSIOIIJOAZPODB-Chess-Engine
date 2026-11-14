@@ -69,7 +69,7 @@ pin/mask scissors is a later optimization if profiling justifies it.
 ## 3. Transposition table
 
 - Zobrist keyed, fixed size from `Hash` option (MiB, default 64 MiB — safe on 8 GB reference machine),
-  power-of-two bucket count, 1 entry/bucket (V1), 16-byte entries packed:
+  power-of-two bucket count, 1 entry/bucket (V1), 8-byte entries packed:
   `key16 | move16 | score16 (i16, cp, side-to-move-relative, mated-in-1 offset) | depth8 | gen8 | bound8(2 bits used)`.
 - Depth-preferred replacement + generation counter for aging across `ucinewgame`.
 - Probe/store with always-replace on deeper depth; TT move used for ordering; TT cutoffs only on
@@ -83,8 +83,8 @@ Iterative deepening driver from the root, with:
 - Negamax alpha-beta with **PVS** (principal variation search).
 - **Aspiration windows** around the previous iteration's score (researched bounds; widened on fail).
 - **Quiescence search**: captures + promotions (+ check evasions if in check), standing pat,
-  delta pruning, MVV-LVA ordering, SEE-gated bad-capture pruning.
-- **Move ordering**: TT move → good captures (SEE ≥ 0, MVV-LVA) → killer 1/2 → quiet history → bad captures → promotions.
+  delta pruning (200 cp), MVV-LVA capture/promotion ordering.
+- **Move ordering** (as implemented): TT move → captures/promotions by MVV-LVA (+promotion bonus) → killer 1/2 → quiet history. No SEE anywhere in the current code; SEE-based pruning/ordering is an unscheduled roadmap item, NOT implemented.
 - **Null-move pruning** (guarded by beta > value window and non-trivial non-pawn material to limit
   zugzwang risk), with adaptive reduction based on depth and score margin.
 - **Late move reductions** (logarithmic, gated by depth ≥ 3, reduction reduced for captures/promotions and PV nodes).
@@ -150,7 +150,7 @@ Asynchronous search on a worker thread; `go` returns immediately; `bestmove` pri
 - Runtime SIMD dispatch: V1 keeps everything scalar/portable; the first unsafe/SIMD block will be the
   NNUE/accumulator kernel with `is_x86_feature_detected!("avx2")` + scalar fallback, documented invariants.
 - `rust-toolchain.toml` pins `1.99.0`; `Cargo.lock` committed; zero dependencies ⇒ trivial license audit.
-- CI (GitHub Actions): fmt, clippy `-D warnings`, tests (incl. release-mode perft 4/5 gates), Windows + Linux builds.
+- CI (GitHub Actions): fmt, clippy `-D warnings`, tests, Windows + Linux release builds, UCI handshake + bestmove smoke tests on both, MSRV (Rust 1.80) check job.
 
 ## 9. Rating measurement (policy)
 
@@ -166,8 +166,9 @@ Asynchronous search on a worker thread; `go` returns immediately; `bestmove` pri
 
 ## 10. PGN & CLI
 
-- Subcommands: `uci` (default), `perft <depth> [fen]`, `bench` (fixed-node search benchmark), `pgn`
-  (replay/verify games — minimal parser), `eval` (print static eval), `makefen`/`moves` helpers.
+- Subcommands (as implemented): `uci`, `perft <depth> [fen]`, `divide <depth> [fen]`, `bench`
+  (fixed-depth-10 signature benchmark), `eval [fen]`, `bench_eval`, `moves`. No `pgn` subcommand exists
+  yet; `makefen` does not exist.
 - PGN: minimal read support (tag pairs + movetext tokenizer + SAN via python-chess for validation in tests);
   full SAN output for `bench`/debug. python-chess (pinned 1.11.2, GPL-3.0+, **test-only**, never linked)
   is the differential oracle in `scripts/`.

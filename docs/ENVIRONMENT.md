@@ -32,11 +32,16 @@ official compiler binaries; install scripts mirror the rust-installer layout):
 - `@toolchain-bin/clippy-1.99.0-x86_64-unknown-linux-gnu@0.1.99`
 
 Install prefix: `/home/user/.toolchain/sysroot` (activate with `export PATH=/home/user/.toolchain/sysroot/bin:$PATH`
-or `source /home/user/.toolchain/env`).
+or `source /home/user/.toolchain/env`). **The dependency directories do NOT survive sandbox snapshot
+restores.** After every restore, redo: npm toolchain install (same pins) + venv + opponents, then
+`find /home/user/.toolchain/sysroot/bin /home/user/.toolchain/sysroot/lib/rustlib/*/bin -type f -exec chmod 755 {} +`
+(the npm tarballs ship `rust-lld` and `gcc-ld/*` as mode 644, which otherwise breaks linking with
+`collect2: cannot find 'ld'`). `gcc 12.2.0` + binutils `ld` are present for linking.
 
-**Note:** the npm tarballs shipped binaries without the execute bit; `chmod 755` was applied under the
-install prefix. `gcc 12.2.0` + binutils `ld` are present for linking (rustc defaults to rust-lld via
-`-fuse-ld=lld` with `-B.../gcc-ld`; this works once the lld binaries are executable).
+**Sandbox snapshot restores** wiped `/home/user/.toolchain`, `/home/user/.venv` and
+`/home/user/opponents` three times so far (2026-11-14 entries in FAILURE_LEDGER.md). Working tree
+recovers via `git update-ref` to origin tip + `git reset`; origin is the source of truth; push early
+and often; never trust unpushed local state.
 
 ## Python (test oracle & tooling)
 
@@ -50,7 +55,9 @@ install prefix. `gcc 12.2.0` + binutils `ld` are present for linking (rustc defa
 
 - `git` and `gh` authenticated as `coderunknow` (token via env; never stored in repo).
 - Branch: `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij` (current work branch).
-- `main` contains the initial commit only.
+- `main` contains the initial commit only; engine development happens on `arena/...` (PR #1).
+- Repository is named `coderunknow/Flawless-Chess-Engine` (externally renamed; this project did not
+  rename it; old URL auto-redirects). Engine identity is **Flawless** (ADR-0002).
 
 ## Target reference machine (NOT available here)
 

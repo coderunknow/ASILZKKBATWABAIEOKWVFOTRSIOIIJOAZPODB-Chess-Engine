@@ -1,6 +1,6 @@
 # STATUS — Flawless Chess Engine
 
-**Project state: `ACTIVE`** (V1 is NOT complete; the 2,000 Elo release gate has not been met and has not been measured)
+**Project state: `ACTIVE`** (V1 is NOT complete; the 2,000 Elo release gate has not been met and has NOT been measured — no calibrated absolute rating exists; see "Rating status" below)
 
 **Current branch:** `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij`
 **Starting commit (verified 2026-11-14):** `98b1a00203183d9c7ccb175f7d6eb8f5ef5eb429` (only an Apache-2.0 `LICENSE` present)
@@ -15,13 +15,17 @@
 - [x] Architecture RFC published (Phase 1) — see ARCHITECTURE.md (accepted for v1 scope)
 - [x] Chess foundation correct: perft gates pass (startpos, Kiwipete, positions 3–5; pos4 d6 = 706045033)
 - [x] Differential testing vs python-chess (pinned 1.999, GPL-3.0+, test-only oracle) — DIFTEST PASSED, 76,240 positions, 305 d3 perft comparisons, 0 mismatches
-- [x] UCI protocol implemented and smoke-tested (async stop via worker thread + AtomicBool, clocks, MultiPV, ponder/ponderhit) — not yet fuzzed
+- [x] UCI protocol implemented and smoke-tested (async stop via worker thread + AtomicBool, clocks, MultiPV, ponder/ponderhit) — fuzzed smoke-level (seeded, deterministic; tests/uci_smoke.rs) — see TESTING.md; deep fuzzing NOT performed
 - [x] Search baseline: iterative deepening + alpha-beta + TT (8-byte) + quiescence + null-move + LMR + aspiration + MultiPV (uncommitted until this phase checkpoint; see below)
 - [x] Classical evaluation baseline (tapered PSTs, mobility, bishop pair, king zone, tempo); NNUE interface deferred, NNUE NOT default
 - [x] Benchmark harness (fixed-time `movetime`/`depth`, paired openings, color reversal, opening-clustered CI) — `scripts/match.py` + `scripts/stats.py` + `benches/openings-20.txt`; verified end-to-end (smoke-match 2/2 wins vs SF 19 WASM Skill 0)
-- [x] CI green on Linux + Windows (fmt, clippy -D warnings, release tests, release build, UCI handshake, perft d3 sanity) — PR #1, runs 43549500632; Kilo Code Review bot fails for account credits (not a code issue)
-- [ ] Match infrastructure: paired openings, color reversal, opening-clustered CIs — partial (planned scripts; not implemented)
-- [ ] Rating estimate ≥ 2000 with opening-clustered 95% CI lower bound ≥ 2000 over ≥2 batches (**NOT MET / NOT MEASURED**)
+- [x] CI green on Linux + Windows (fmt, clippy -D warnings, release tests, release build, UCI handshake, UCI bestmove smoke, perft d3 sanity) + MSRV (1.80) job — PR #1, runs 43549500632/…; Kilo Code Review bot fails for account credits (not a code issue); CodeRabbit manually triggered (incremental) — see "Reviews" below
+- [x] Match infrastructure: paired openings, color reversal, opening-clustered bootstrap CIs — `scripts/match.py` + `scripts/stats.py` (used for probes); panic-fallback games flagged `engine_error` and excluded from stats by default
+- [x] Identity migration to Flawless (ADR-0002) — historical evidence kept under old identifiers
+- [x] Correctness audit pass 1 + 2 (mate>draw precedence, quiesce/RFP terminals, searchmoves MultiPV=1, clock_limits panic, panic-fallback plumbing) — all reproduced by regression tests; bench signature `d790483532d87af0` → `3086f65159758c9d`
+- [x] UCI integration smoke + seeded deterministic fuzz (`tests/uci_smoke.rs`)
+- [ ] Absolute rating ≥ 2,000 (two-sided 95% CI lower bound ≥ 2,000) — NOT MEASURED, NOT MET (no calibrated pool reachable from sandbox; see "Rating status")
+- [ ] Reviews: CodeRabbit FINISHED/finding closure pending its completion; Copilot BLOCKED (quota, lower-effort retry needs web UI); Codex RATE_LIMITED; Qodo BLOCKED (trial ended); Kilo BLOCKED (credits)
 - [ ] Correctness, reliability, documentation, release gates (see TESTING.md)
 - [ ] v1.0.0 stable release (**NOT AUTHORIZED — gate not passed**)
 
@@ -57,8 +61,41 @@ Do not present these numbers as official ratings; no CCRL anchor was available.
 1. Keep engine development evidence-based: if time permits, probe skill 3/7 to tighten the bracket, or run
    longer-TC probes; do not tune to the probe opponent.
 2. ~~NPS / bench regression tracking~~ DONE (2026-11-14): `cargo run --release -- bench` — fixed
-   depth 10 over 12 positions, deterministic FNV-1a signature `d790483532d87af0`
-   (2,798,466 nodes); `bench_eval` for eval throughput; CI runs perft d3 + UCI handshake.
+   depth 10 over 12 positions, deterministic FNV-1a signature `3086f65159758c9d`
+   (2,317,474 nodes); `bench_eval` for eval throughput; CI runs perft d3 + UCI handshake + bestmove smoke.
 3. Remaining V1 gaps: benchmark CLI `bench`, time-management validation vs clocks, EF RN search-consistency
    checks, Windows-specific verification (CI covers build only), and documentation of the release gates.
 4. NEVER claim v1.0.0 status; never present in-sandbox numbers as CCRL/CEGT.
+
+## Rating status (absolute; release-gate relevant)
+
+- **Absolute rating: UNKNOWN.** The in-sandbox probes (SF Skill 0/5/10 WASM) are relative comparisons
+  vs one unrated-for-our-purposes opponent configuration, not a calibrated absolute scale, and are NOT
+  a CCRL/CEGT rating. Stockfish Skill Level is not a calibrated Elo anchor.
+- **The V1 release gate (two-sided 95% CI of calibrated absolute rating, lower endpoint ≥ 2,000 Elo,
+  vs a credible pool with documented methodology, pinned opponents, paired openings, ≥2 independent
+  confirmation batches, preregistered) is NOT measured and NOT met. Nothing may be claimed otherwise.**
+- Blocker (exact): no reachable calibrated pool from this sandbox. CCRL/CEGT listings are pages with
+  documented methodology but match execution at scale (thousands of games, 40/15-class time controls,
+  ratable opponent binaries with known CCRL Elo) cannot be downloaded/run here; crates.io/static
+  rust-lang.org are unreachable; raw.githubusercontent.com is blocked; only github/codeload/api.github.com,
+  npm and pypi registries are reachable. No official rating exists or may be claimed.
+- Pre-registered protocol for when the gate IS executed: `docs/RATING_PROTOCOL.md`.
+- Next actions for the gate (in priority order): (1) run the preregistered protocol on a machine with
+  access to ratable opponent binaries (e.g. licensed CEGT/CCRL-anchored opponents or publicly distributed
+  engine binaries with documented CCRL 40/15 Elo), ≥2 confirmation batches; (2) publish raw PGNs + stats;
+  (3) only then evaluate v1.0.0 authorization.
+
+## Reviews (per-reviewer state, head SHA at time of record)
+
+Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, not draft.
+
+| Reviewer | State | Notes |
+|----------|-------|-------|
+| CodeRabbit | IN_PROGRESS (triggered 2026-11-14T05:46Z on head bbb31f9) | auto-skip: repo <10 stars; manual trigger `review triggered`; incremental system (does not re-review already-reviewed commits). Findings, if any, will be fixed and re-reviewed. |
+| GitHub Copilot | BLOCKED | quota insufficient at default effort (2026-11-14). Retry at LOWER effort requested by task but requires the web UI reviewers panel (effort selection); API re-request rejected (`422: not a collaborator`); docs.github.com unreachable from sandbox. No findings recorded. |
+| Codex | RATE_LIMITED | documented retry (`@codex review`) attempted 2026-11-14T05:47Z → "You have reached your Codex usage limits for code reviews." Prior run at 05a36c0: code review FAILED (usage limit), no findings available. |
+| Qodo | BLOCKED | "Qodo reviews are paused because your trial has ended." (billing-blocked, 2026-11-14). No code findings. |
+| Kilo | BLOCKED | "Kilo Code Review could not run — your account is out of credits." (2026-11-14). No code findings. |
+
+Review policy: a reviewer FINISHED only when the service actually completes and findings are dispositioned.

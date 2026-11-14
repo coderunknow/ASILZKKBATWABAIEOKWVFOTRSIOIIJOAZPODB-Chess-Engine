@@ -30,7 +30,8 @@
 
 - `cargo run --release -- bench` — fixed-depth-10 search benchmark over 12 fixed positions; prints
   per-position depth/score/nodes and a total + FNV-1a `bench signature` (deterministic for identical
-  engine code; node counts are the regression signal). Current signature: `a7a9f01893e9f1a5`,
+  engine code; node counts are the regression signal). Current signature: `3086f65159758c9d`
+  (2,317,474 nodes @ depth 10; changed 2026-11-14 by the terminal/draw precedence audit fix),
   2,326,103 nodes in ~3.1 s (~760k nps, 2 vCPU sandbox).
 - `cargo run --release -- bench_eval` — fixed-node eval micro-benchmark (1000 evals/FEN, ~100–500 ns/eval in sandbox).
 - `cargo run --release -- perft <depth> [fen]`.
