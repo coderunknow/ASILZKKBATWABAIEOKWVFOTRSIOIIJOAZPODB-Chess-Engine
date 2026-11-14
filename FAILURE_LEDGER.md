@@ -66,3 +66,20 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   linking; full gate suite re-run.
 - Lesson: push early and often; everything not pushed is at risk; keep this rebuild sequence
   documented (docs/ENVIRONMENT.md); verify gates after every restore.
+
+## 2026-11-14 — Sandbox workspace reset (third materialization); full rebuild verified
+
+- Attempt: continue Phase "CodeRabbit closure + re-verification".
+- What happened: `/home/user/.toolchain`, `/home/user/.venv`, `/home/user/opponents`, and
+  `node_modules` were wiped AGAIN; only the repository snapshot survived. This time the rebuild ran
+  the full documented sequence and every gate was RE-VERIFIED before any commit: toolchain reinstall
+  (@toolchain-bin pins: rustc/cargo 1.99.0, clippy 0.1.99, rustfmt 1.10.0 + find -exec chmod 755),
+  venv (python-chess 1.11.2), pinned Stockfish 19 WASM reinstalled (hashes ccb130d7… / ee4f115b…
+  re-verified byte-identical to BENCHMARKING.md), opponents/ mirrored, DIFTEST re-run
+  (2295 perft-d2 positions, 0 mismatches, PASSED), bench re-measured (signature unchanged
+  `fc907eba40b7869f`, 2,221,199 nodes), `cargo test --release --locked` 29/29 green, clippy clean.
+- Latent defect found & fixed in the process: tt::store grew to 8 arguments (clippy too_many_arguments,
+  -D warnings) — CI had gone blind to it (log access blocked); fixed by bundling a StoreRequest
+  struct; the annotations-2.0 diagnostic step confirmed the exact error in one run.
+- Lesson (unchanged, reinforced): after every restore, rebuild AND re-run gates before claiming
+  anything; a green-looking CI rerun on a wiped tree proves nothing about local state.

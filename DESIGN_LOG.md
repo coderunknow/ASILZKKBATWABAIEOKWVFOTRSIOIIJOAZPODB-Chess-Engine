@@ -174,3 +174,31 @@ Process honesty:
   remains unavailable. CI is the build oracle. Bench signature still requires a real build;
   informational CI bench step remains the channel, but its output is not machine-readable here
   without log access — re-measurement remains PENDING until toolchain or log access returns.
+
+2026-11-14 (workspace restore #3 — full rebuild, all gates re-verified):
+- /home/user/.toolchain, .venv, /home/user/opponents, node_modules wiped again; only pushed origin
+  state survived. Rebuilt exactly per docs/ENVIRONMENT.md: npm @toolchain-bin pins
+  (rustc/cargo 1.99.0, clippy 0.1.99, rustfmt 1.10.0) + `install.sh --prefix` per component +
+  execute-bit fix; venv (python-chess 1.11.2); pinned SF 19 WASM reinstalled and SHA-256 verified
+  identical to BENCHMARKING.md (ccb130d7…/ee4f115b…); opponents/ mirrored and re-hashed.
+- Local verification on the restored tree (first real build since the wipe):
+  `cargo test --release --locked` 29/29 green; `cargo fmt --all --check` clean; clippy 1.99.0
+  found ONE latent error invisible while CI logs were blocked: tt::store grew to 8 args
+  (clippy::too_many_arguments, -D warnings) — fixed by bundling `StoreRequest` (key, best_move,
+  score, depth, bound, ply, halfmove); CI failure on db174e4 (ubuntu exit 101 / windows exit 1)
+  was exactly this. CodeRabbit review-2 instrumentation was NOT required in the SAME run — the
+  local toolchain displaced blind debugging; the temporary diagnostic step remains on the branch
+  pending CI green, then returns to the plain step.
+- DIFTEST re-run (seed 20261114, 300 games): legal-move sets identical, perft-d2 2295/2295,
+  0 mismatches — PASSED. Bench re-measured (db174e4): signature UNCHANGED `fc907eba40b7869f`
+  (depth/score/PV stable) with 2,221,199 nodes @ d10 — 43% fewer nodes than the recorded
+  3,899,001, i.e. the per-capture delta-pruning rework is active and effective; 8.56 s,
+  259,619 nps on 2 vCPU. BENCHMARKING.md updated.
+- CodeRabbit review 5903125228 (13 findings) dispositioned: src (null-move ep-hash inclusion,
+  in-check draw-before-TT, restricted-root extract_pv confinement, CLOCK-UNSAFE TT entries for
+  fifty-move-horizon subtrees, ponderhit/worker flush mutex, smoke-test drain-after-exit),
+  scripts (select-free reader thread, launcher+script artifact hashing, O_EXCL batch reservation,
+  stats.py boundary endpoints as no-finite-estimate + bootstrap SD), docs (STATUS de-clamp;
+  RATING_PROTOCOL Amendment §9: strict > 2,000 gate, both batches + combined must pass,
+  ≥ 2,000 games/anchor/batch, no predictions/clamping, sequential-stopping rules, SD-based
+  σ_matched, covariance-aware GLS combination, batch combination retaining shared calibration).

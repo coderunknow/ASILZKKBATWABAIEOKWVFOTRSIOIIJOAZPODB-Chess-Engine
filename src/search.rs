@@ -655,8 +655,15 @@ impl<'a> Searcher<'a> {
         // restriction — never store them as unrestricted bounds. The TT move itself may
         // still be recorded for ordering, but extract_pv bypasses it at ply 0.
         if !(ply == 0 && self.root_moves.is_some()) {
-            self.tt
-                .store(key, best_move, best_score, depth, flag, ply, pos.halfmove);
+            self.tt.store(crate::tt::StoreRequest {
+                key,
+                best_move,
+                score: best_score,
+                depth,
+                bound: flag,
+                ply,
+                halfmove: pos.halfmove,
+            });
         }
         best_score
     }

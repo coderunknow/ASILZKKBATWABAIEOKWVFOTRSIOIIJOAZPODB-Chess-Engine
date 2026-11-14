@@ -36,9 +36,12 @@
   engine code; node counts are the regression signal). Signature history (all 2026-11-14):
   `d790483532d87af0` → `3086f65159758c9d` (2,317,474 nodes; audit fixes) → `f1aceef5a9dbc812`
   (2,367,196 nodes; FIDE ep-hash semantics + castling-origin-king guard) → `fc907eba40b7869f`
-  (3,899,001 nodes; draw/TT/delta-prune corrections — NPS cost accepted for soundness) → **current
-  tree pending re-measurement** (per-capture delta pruning replaced the blanket 1,700-node margin;
-  CI runs an informational bench step and the signature is reported in the run log). The stale
+  (3,899,001 nodes; draw/TT/delta-prune corrections — NPS cost accepted for soundness) → **re-measured
+  2026-11-14 on db174e4 (restored npm toolchain; `cargo run --release --locked -- bench`): signature
+  unchanged (`fc907eba40b7869f`, i.e. depth/score/PV line stable) but 2,221,199 nodes @ d10 — a 43%
+  node reduction from the per-capture delta-pruning rework — 8.56 s, 259,619 nps on this 2-vCPU
+  sandbox. CI runs an informational bench step which also uploads the signature as an artifact.**
+  The stale
   "2,326,103 nodes in ~3.1 s" line was a mixed-build measurement error and has been removed.
 - `cargo run --release -- bench_eval` — fixed-node eval micro-benchmark (1000 evals/FEN, ~100–500 ns/eval in sandbox).
 - `cargo run --release -- perft <depth> [fen]`.

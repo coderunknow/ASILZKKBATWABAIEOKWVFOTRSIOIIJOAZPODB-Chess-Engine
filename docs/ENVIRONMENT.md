@@ -63,3 +63,10 @@ and often; never trust unpushed local state.
 
 Windows 10 LTSC 2021, Intel Core i5-7300U (4 threads), 8 GB RAM, Intel HD 620, 256 GB SSD.
 All performance claims must eventually be validated there (or labeled as sandbox measurements).
+
+## Restore #4 (2026-11-14, same day) — rebuild verified end-to-end
+- Rebuilt with the documented sequence (install.sh --prefix per @toolchain-bin tarball + chmod
+  755 of libexec/gcc-ld). Verified: `cargo 1.99.0`, `rustc 1.99.0`, clippy 0.1.99, rustfmt
+  1.10.0; venv python-chess 1.11.2; SF WASM hashes re-verified identical; tests 29/29 green;
+  DIFTEST PASSED (2295 perft-d2, 0 mismatches); bench 2,221,199 nodes; clippy clean after the
+  StoreRequest bundling fix.

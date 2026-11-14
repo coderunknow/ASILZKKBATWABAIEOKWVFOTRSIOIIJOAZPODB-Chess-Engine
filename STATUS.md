@@ -68,6 +68,13 @@ estimate = **INCONCLUSIVE**. Do not present these numbers as official ratings.
    checks, Windows-specific verification (CI covers build only), and documentation of the release gates.
 4. NEVER claim v1.0.0 status; never present in-sandbox numbers as CCRL/CEGT.
 
+## Local verification re-run (2026-11-14, workspace restore #3)
+
+Toolchain (npm @toolchain-bin @1.99.0 pins) rebuilt per docs/ENVIRONMENT.md; DIFTEST re-passed
+(legal-move sets identical; perft-d2 2295/2295, 0 mismatches, seed 20261114); `cargo test --release`
+29/29 green; clippy clean (1 latent too_many_arguments fixed via StoreRequest); bench re-measured:
+signature unchanged `fc907eba40b7869f`, 2,221,199 nodes @ d10 (43% reduction; 259,619 nps).
+
 ## Rating status (absolute; release-gate relevant)
 
 - **Absolute rating: UNKNOWN.** The in-sandbox probes (SF Skill 0/5/10 WASM) are relative comparisons

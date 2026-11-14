@@ -98,3 +98,9 @@
   was clippy::manual_range_contains @ src/position.rs:699 (fixed 2c777b5). CI fully green since
   2c777b5 / cd9b7d9 (msrv + ubuntu + windows). When logs are blocked, use the
   check-runs annotations API; do NOT retry gh run view --log / gh run download (blob storage EOF).
+- 2026-11-14 workspace restore #3: toolchain/venv/opponents/node_modules wiped; full npm rebuild
+  per docs/ENVIRONMENT.md (verified byte-identical SF WASM hashes); tests 29/29, diftest PASSED,
+  bench signature unchanged fc907eba40b7869f with 2,221,199 nodes (-43%); clippy too_many_arguments
+  fixed via StoreRequest; CodeRabbit 5903125228 (13 findings) dispositioned in source/docs;
+  RATING_PROTOCOL Amendment §9 (strict > 2,000; both batches + combined pass; ≥2,000
+  games/anchor/batch) appended; CI now uploads bench signature + binary SHA-256 + manifest.
