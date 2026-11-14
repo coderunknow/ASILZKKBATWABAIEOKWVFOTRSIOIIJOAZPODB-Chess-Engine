@@ -149,6 +149,19 @@ jobs:
           anchor = cfg.get("anchor_id", "")
           if not re.fullmatch(r"[a-z0-9._-]+", anchor or ""):
               fail(f"bad anchor_id {anchor!r}")
+          # Engine slots: 'flawless' (built at the frozen commit) or a frozen-pool key.
+          pool = json.load(open("benches/anchor-pool.json"))
+          pool_keys = {e.get("key") for e in pool.get("engines", [])}
+          for slot in ("white_engine", "black_engine"):
+              v = cfg.get(slot, "flawless" if slot == "white_engine" else anchor)
+              if v != "flawless" and v not in pool_keys:
+                  fail(f"{slot}={v!r} must be 'flawless' or a frozen-pool anchor key")
+              cfg[slot] = v
+          if purpose == "confirmatory":
+              if cfg["white_engine"] != "flawless" or cfg["black_engine"] == "flawless":
+                  fail("confirmatory runs must be flawless (white) vs a frozen-pool anchor (black)")
+          if purpose == "control" and batch != "CTRL":
+              fail("control runs must use batch CTRL")
           count = cfg.get("shard_count")
           indices = cfg.get("shard_indices")
           if not isinstance(count, int) or count <= 0 or not isinstance(indices, list) or not indices:
@@ -281,11 +294,14 @@ jobs:
 
       - name: Acquire and verify anchor binaries
         env:
-          ANCHOR_ID: ${{ fromJson(needs.resolve.outputs.config).anchor_id }}
+          WHITE_ENGINE: ${{ fromJson(needs.resolve.outputs.config).white_engine }}
+          BLACK_ENGINE: ${{ fromJson(needs.resolve.outputs.config).black_engine }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' > /tmp/entry.json
+          for ANCHOR_ID in $(printf '%s\n%s\n' "$WHITE_ENGINE" "$BLACK_ENGINE" | sort -u | grep -v '^flawless$' || true); do
+            export ANCHOR_ID
+            python3 - <<'PY' > /tmp/entry.json
           import json, os, sys
           pool = json.load(open("benches/anchor-pool.json"))
           key = os.environ["ANCHOR_ID"]
@@ -296,26 +312,27 @@ jobs:
           else:
               sys.exit(f"anchor id {key!r} not in frozen pool")
           PY
-          WANTED=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['sha256'])")
-          ART=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['artifact'])")
-          RUNID=$(python3 -c "import json; print(json.load(open('benches/anchor-pool.json'))['verification']['run_id'])")
-          mkdir -p anchors
-          if gh run download "$RUNID" -n "$ART" -D /tmp/anchor-bin 2>/dev/null && [ -f /tmp/anchor-bin/anchor-binary ]; then
-            cp /tmp/anchor-bin/anchor-binary "anchors/$ANCHOR_ID"
-            MODE="artifact $ART"
-          else
-            echo "artifact unavailable — rebuilding from pinned source" >&2
-            bash scripts/anchor_build.sh "$ANCHOR_ID" /tmp/anchor-rebuild > /tmp/rebuild.json
-            cp "/tmp/anchor-rebuild/$ANCHOR_ID.src/$(python3 -c "import json; print(json.load(open('/tmp/rebuild.json'))['binary'])")" "anchors/$ANCHOR_ID"
-            MODE="rebuild from pinned source"
-          fi
-          chmod +x "anchors/$ANCHOR_ID"
-          GOT=$(sha256sum "anchors/$ANCHOR_ID" | cut -d' ' -f1)
-          if [ "$GOT" != "$WANTED" ]; then
-            echo "::error::anchor binary hash mismatch for $ANCHOR_ID: got $GOT want $WANTED (mode=$MODE)"
-            exit 11
-          fi
-          echo "anchor $ANCHOR_ID verified sha256=$GOT (mode=$MODE)"
+            WANTED=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['sha256'])")
+            ART=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['artifact'])")
+            RUNID=$(python3 -c "import json; print(json.load(open('benches/anchor-pool.json'))['verification']['run_id'])")
+            mkdir -p anchors
+            if gh run download "$RUNID" -n "$ART" -D /tmp/anchor-bin 2>/dev/null && [ -f /tmp/anchor-bin/anchor-binary ]; then
+              cp /tmp/anchor-bin/anchor-binary "anchors/$ANCHOR_ID"
+              MODE="artifact $ART"
+            else
+              echo "artifact unavailable — rebuilding from pinned source" >&2
+              bash scripts/anchor_build.sh "$ANCHOR_ID" /tmp/anchor-rebuild > /tmp/rebuild.json
+              cp "/tmp/anchor-rebuild/$ANCHOR_ID.src/$(python3 -c "import json; print(json.load(open('/tmp/rebuild.json'))['binary'])")" "anchors/$ANCHOR_ID"
+              MODE="rebuild from pinned source"
+            fi
+            chmod +x "anchors/$ANCHOR_ID"
+            GOT=$(sha256sum "anchors/$ANCHOR_ID" | cut -d' ' -f1)
+            if [ "$GOT" != "$WANTED" ]; then
+              echo "::error::anchor binary hash mismatch for $ANCHOR_ID: got $GOT want $WANTED (mode=$MODE)"
+              exit 11
+            fi
+            echo "anchor $ANCHOR_ID verified sha256=$GOT (mode=$MODE)"
+          done
 
       - name: Run tournament shard (match.py)
         env:
@@ -329,14 +346,22 @@ jobs:
           c = json.loads(os.environ["CFG"])
           i = os.environ["MATRIX_I"]
           out = f"benches/rating-{c['batch']}/{c['anchor_id']}/shard-{i}"
+
+          def cmd_for(slot_value):
+              if slot_value == "flawless":
+                  return "./target/release/flawless uci", "Flawless"
+              return f"./anchors/{slot_value}", slot_value
+
+          w_cmd, w_name = cmd_for(c["white_engine"])
+          b_cmd, b_name = cmd_for(c["black_engine"])
           cmd = [
               sys.executable, "scripts/match.py",
-              # NOTE: --white-cmd is ONE argv containing the full command line;
-              # match.py splits it internally (args.white_cmd.split()).
-              "--white-cmd", "./target/release/flawless uci",
-              "--black-cmd", f"./anchors/{c['anchor_id']}",
-              "--white-name", "Flawless",
-              "--black-name", c["anchor_id"],
+              # NOTE: *-cmd values are ONE argv each containing the full command line;
+              # match.py splits them internally (args.white_cmd.split()).
+              "--white-cmd", w_cmd,
+              "--black-cmd", b_cmd,
+              "--white-name", w_name,
+              "--black-name", b_name,
               "--tc", c["tc"],
               "--openings", c["opening_suite"],
               "--repetitions", str(c["repetitions"]),

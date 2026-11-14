@@ -44,3 +44,41 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   (2) shell word-splitting of `--white-cmd` argv (match.py: "unrecognized arguments: uci",
   exit 2) → step now drives match.py via an explicit argv list with stderr annotation capture.
 - game/throughput results: PENDING (games run in revision 3+).
+
+---
+
+## CTRL-1 — anchor-vs-anchor null control (registered 2026-11-14, before dispatch)
+
+- **Purpose:** control (null control #1 of §3.3 / mission). Validates that the pipeline +
+  runners + 40/15 TC transfer relative ratings: a match between two frozen-pool anchors must
+  recover their published CCRL rating difference within **±75 Elo** (mission-defined threshold;
+  not adjusted here).
+- **Pair:** white topple-0.1.1 (published 2324±17) vs black topple-0.2.1 (2439±14). Published
+  diff (white − black) = **−115 Elo**. Same engine family, both verified id-mapped, both MIT.
+- **Methodology:** 60 openings (`benches/rating-openings-batchA.txt`, SHA-256 2c4a54d8…)
+  × 2 paired repetitions × AB/BA = **240 games**; shards of 2 games (shard_count=120,
+  indices 0–119); TC 40/15 wall-clock; seed 20261115; engine_sha256 fd75726d… (flawless not
+  seated; uniform strict check retained); batch CTRL, label `topple-0.1.1-vs-topple-0.2.1`.
+- **Acceptance criterion (fixed):** |d̂ − (−115)| ≤ 75 Elo, where d̂ = −400·log10(1/s̄−1) from
+  the completed-game score s̄ (white perspective), games counted per §9 adjudication rules.
+  Failure → investigate transferability (runner TC/hardware), record in FAILURE_LEDGER, register
+  remediation; never adjust the threshold.
+- **Expected evidence:** artifacts `rating-CTRL-topple-0.1.1-vs-topple-0.2.1-shard*-<run_id>` +
+  manifests (per-game JSONL with engine hashes).
+
+## CTRL-2 — flawless self-match null control (registered 2026-11-14, before dispatch)
+
+- **Purpose:** control (null control #2). Validates harness symmetry (colors, clocks, opening
+  application): Flawless vs the identical binary must score **0.5 within its 95% binomial
+  CI** (mission-defined threshold).
+- **Methodology:** identical binary both sides (engine_sha256 fd75726d…), 60 openings (batch-A
+  suite) × 2 paired repetitions × AB/BA = **240 games**; shards of 2 games (shard_count=120,
+  indices 0–119); TC 40/15; seed 20261116; batch CTRL, label `flawless-self`.
+- **Acceptance criterion (fixed):** 0.5 ∈ 95% binomial CI of the total score (wins + ½·draws)
+  over the completed games. Failure → investigate asymmetry, record in FAILURE_LEDGER, register
+  remediation; never adjust the threshold.
+- **Expected evidence:** artifacts `rating-CTRL-flawless-self-shard*-<run_id>` + manifests.
+
+### CTRL-1 / CTRL-2 results (filled after execution)
+
+- status: PENDING EXECUTION
