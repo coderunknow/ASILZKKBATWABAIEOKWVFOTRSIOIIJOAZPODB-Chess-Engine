@@ -141,10 +141,19 @@ impl TranspositionTable {
         self.probes += 1;
         let e = Self::unpack(self.entries[self.index(key)]);
         if e.bound() == BOUND_NONE || e.key16 != (key >> 48) as u16 {
-            return ProbeResult { best_move: None, score: None, depth: 0, bound: BOUND_NONE };
+            return ProbeResult {
+                best_move: None,
+                score: None,
+                depth: 0,
+                bound: BOUND_NONE,
+            };
         }
         self.hits += 1;
-        let best_move = if e.move16 != 0 { Some(Move::from_u16(e.move16)) } else { None };
+        let best_move = if e.move16 != 0 {
+            Some(Move::from_u16(e.move16))
+        } else {
+            None
+        };
         ProbeResult {
             best_move,
             score: Some(Self::adjust_score_from_tt(e.score, ply)),
@@ -163,7 +172,15 @@ impl TranspositionTable {
         }
     }
 
-    pub fn store(&mut self, key: u64, best_move: Option<Move>, score: i32, depth: i32, bound: u8, ply: i32) {
+    pub fn store(
+        &mut self,
+        key: u64,
+        best_move: Option<Move>,
+        score: i32,
+        depth: i32,
+        bound: u8,
+        ply: i32,
+    ) {
         let idx = self.index(key);
         let old = Self::unpack(self.entries[idx]);
         let replace = old.bound() == BOUND_NONE

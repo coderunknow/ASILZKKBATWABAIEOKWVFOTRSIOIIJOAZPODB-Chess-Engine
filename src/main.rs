@@ -33,10 +33,13 @@ fn main() {
 }
 
 fn cmd_perft(args: &[String]) {
-    let depth: u32 = args.first().and_then(|s| s.parse().ok()).unwrap_or_else(|| {
-        eprintln!("usage: perft <depth> [fen]");
-        std::process::exit(2);
-    });
+    let depth: u32 = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            eprintln!("usage: perft <depth> [fen]");
+            std::process::exit(2);
+        });
     let fen = args.get(1).map(|s| s.as_str());
     let mut pos = match fen {
         Some(f) => match Position::from_fen(f) {
@@ -49,18 +52,28 @@ fn cmd_perft(args: &[String]) {
         None => Position::startpos(),
     };
     asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
-    eprintln!("magic sliders active: {}", asilzkkbbatwabaieokwvfotrsioiij::attack::magic_ready());
+    eprintln!(
+        "magic sliders active: {}",
+        asilzkkbbatwabaieokwvfotrsioiij::attack::magic_ready()
+    );
     let t = Instant::now();
     let nodes = movegen::perft(&mut pos, depth);
     let dt = t.elapsed();
-    println!("perft({depth}) = {nodes}  ({:.3}s, {:.2}M nodes/s)", dt.as_secs_f64(), nodes as f64 / dt.as_secs_f64() / 1e6);
+    println!(
+        "perft({depth}) = {nodes}  ({:.3}s, {:.2}M nodes/s)",
+        dt.as_secs_f64(),
+        nodes as f64 / dt.as_secs_f64() / 1e6
+    );
 }
 
 fn cmd_divide(args: &[String]) {
-    let depth: u32 = args.first().and_then(|s| s.parse().ok()).unwrap_or_else(|| {
-        eprintln!("usage: divide <depth> [fen]");
-        std::process::exit(2);
-    });
+    let depth: u32 = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| {
+            eprintln!("usage: divide <depth> [fen]");
+            std::process::exit(2);
+        });
     let fen = args.get(1).map(|s| s.as_str());
     let mut pos = match fen {
         Some(f) => Position::from_fen(f).unwrap_or_else(|e| {
@@ -86,7 +99,6 @@ fn cmd_bench() {
     eprintln!("bench: search not implemented yet");
     std::process::exit(1);
 }
-
 
 /// Batch mode: read FENs (one per line) from stdin; print the engine's legal moves for each.
 fn cmd_moves(_args: &[String]) {
@@ -155,7 +167,6 @@ fn cmd_hash(args: &[String]) {
     }
 }
 
-
 fn cmd_eval(args: &[String]) {
     let fen = args.first().map(|s| s.as_str());
     let pos = match fen {
@@ -166,7 +177,7 @@ fn cmd_eval(args: &[String]) {
         None => Position::startpos(),
     };
     asilzkkbbatwabaieokwvfotrsioiij::attack::init_attacks();
-    let mut eval = ClassicalEvaluator::default();
+    let mut eval = ClassicalEvaluator;
     let b = eval.breakdown(&pos);
     println!("total      {:>6} cp", b.total);
     println!("material   {:>6}", b.material);
@@ -187,7 +198,7 @@ fn cmd_bench_eval() {
         "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
         "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
     ];
-    let mut eval = ClassicalEvaluator::default();
+    let mut eval = ClassicalEvaluator;
     for fen in fens {
         let pos = Position::from_fen(fen).unwrap();
         let t = Instant::now();
@@ -196,6 +207,13 @@ fn cmd_bench_eval() {
         for _ in 0..n {
             acc = acc.saturating_add(eval.evaluate(&pos));
         }
-        println!("{:>6} cp  avg over {} evals in {:.3}s ({} ns/eval, checksum {})", acc / n, n, t.elapsed().as_secs_f64(), t.elapsed().as_nanos() / n as u128, acc);
+        println!(
+            "{:>6} cp  avg over {} evals in {:.3}s ({} ns/eval, checksum {})",
+            acc / n,
+            n,
+            t.elapsed().as_secs_f64(),
+            t.elapsed().as_nanos() / n as u128,
+            acc
+        );
     }
 }

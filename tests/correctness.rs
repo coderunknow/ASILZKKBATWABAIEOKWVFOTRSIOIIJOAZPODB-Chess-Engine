@@ -34,7 +34,16 @@ fn magic_vs_walk_exhaustive() {
         let mut mask = 0u64;
         let f = (sq % 8) as i32;
         let r = (sq / 8) as i32;
-        for &(df, dr) in &[(0i32, 1i32), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+        for &(df, dr) in &[
+            (0i32, 1i32),
+            (1, 0),
+            (0, -1),
+            (-1, 0),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ] {
             let mut nf = f + df;
             let mut nr = r + dr;
             while (0..8).contains(&nf) && (0..8).contains(&nr) {
@@ -57,7 +66,10 @@ fn magic_vs_walk_exhaustive() {
             assert_eq!(m_rook, w_rook, "rook mismatch sq={sq} occ={subset:#x}");
             let m_bishop = attack::bishop_attacks(sq, subset);
             let w_bishop = attack::bishop_attacks_walk(sq, subset);
-            assert_eq!(m_bishop, w_bishop, "bishop mismatch sq={sq} occ={subset:#x}");
+            assert_eq!(
+                m_bishop, w_bishop,
+                "bishop mismatch sq={sq} occ={subset:#x}"
+            );
             subset = subset.wrapping_sub(mask) & mask;
         }
     }
@@ -83,13 +95,13 @@ fn fen_roundtrip_canonical() {
 #[test]
 fn invalid_fens_rejected() {
     for f in [
-        "8/8/8/8/8/8/8/K6k w - - x 1",       // bad halfmove clock
-        "8/8/8/8/8/8/8/K6K w - - 0 1",       // two white kings
-        "8/8/8/8/8/8/8/k6k w - - 0 1",       // two black kings
-        "8/8/8/8/8/8/8/8 w - - 0 1",         // no kings
-        "8/8/8/8/8/8/8/P7 w - - 0 1",        // pawn on back rank
-        "8/8/8/8/8/8/8/K6q x - - 0 1",       // bad side
-        "8/8/8/8/8/8/8/K6k w X - 0 1",       // bad castling char
+        "8/8/8/8/8/8/8/K6k w - - x 1", // bad halfmove clock
+        "8/8/8/8/8/8/8/K6K w - - 0 1", // two white kings
+        "8/8/8/8/8/8/8/k6k w - - 0 1", // two black kings
+        "8/8/8/8/8/8/8/8 w - - 0 1",   // no kings
+        "8/8/8/8/8/8/8/P7 w - - 0 1",  // pawn on back rank
+        "8/8/8/8/8/8/8/K6q x - - 0 1", // bad side
+        "8/8/8/8/8/8/8/K6k w X - 0 1", // bad castling char
     ] {
         assert!(Position::from_fen(f).is_err(), "expected rejection: {f}");
     }
@@ -108,7 +120,11 @@ fn play_and_check_roundtrip(seed: u64, plies: usize) {
         pos.debug_check_invariants();
         let m = legal.moves[(rng(&mut seed) as usize) % legal.len];
         let undo = pos.make_move(m);
-        assert_eq!(pos.hash, pos.zobrist_full(), "hash drift after move {m:?} at ply {ply}");
+        assert_eq!(
+            pos.hash,
+            pos.zobrist_full(),
+            "hash drift after move {m:?} at ply {ply}"
+        );
         pos.debug_check_invariants();
         pos.unmake_move(m, &undo);
         assert_eq!(pos.to_fen(), snapshot_fen, "fen not restored at ply {ply}");
@@ -134,7 +150,11 @@ fn make_unmake_full_game_fens() {
     ];
     for (i, uci) in moves.iter().enumerate() {
         let legal = movegen::generate_legal(&mut pos);
-        let m = legal.iter().copied().find(|m| m.to_uci() == *uci).unwrap_or_else(|| panic!("move {uci} not legal at ply {i}"));
+        let m = legal
+            .iter()
+            .copied()
+            .find(|m| m.to_uci() == *uci)
+            .unwrap_or_else(|| panic!("move {uci} not legal at ply {i}"));
         let snapshot_fen = pos.to_fen();
         let snapshot_hash = pos.hash;
         let undo = pos.make_move(m);
@@ -150,11 +170,17 @@ fn ep_capture_legality_pin() {
     // pinned ep capture must be rejected; unpinned must be allowed
     let mut pos = Position::from_fen("8/8/8/K3Pp1r/8/8/8/4k3 w - f6 0 1").unwrap();
     let legal = movegen::generate_legal(&mut pos);
-    assert!(!legal.iter().any(|m| m.to_uci() == "e5f6"), "pinned ep must be illegal");
+    assert!(
+        !legal.iter().any(|m| m.to_uci() == "e5f6"),
+        "pinned ep must be illegal"
+    );
 
     let mut pos = Position::from_fen("8/8/8/K3Pp2/7r/8/8/4k3 w - f6 0 1").unwrap();
     let legal = movegen::generate_legal(&mut pos);
-    assert!(legal.iter().any(|m| m.to_uci() == "e5f6"), "unpinned ep must be legal");
+    assert!(
+        legal.iter().any(|m| m.to_uci() == "e5f6"),
+        "unpinned ep must be legal"
+    );
 }
 
 #[test]
@@ -162,12 +188,20 @@ fn castling_through_check_illegal() {
     // f1 attacked by black rook on f2 -> kingside illegal, queenside legal
     let mut pos = Position::from_fen("4k3/8/8/8/8/8/5r2/R3K2R w KQ - 0 1").unwrap();
     let legal = movegen::generate_legal(&mut pos);
-    assert!(!legal.iter().any(|m| m.to_uci() == "e1g1"), "castling through check must be illegal");
-    assert!(legal.iter().any(|m| m.to_uci() == "e1c1"), "queenside castle must be legal here");
+    assert!(
+        !legal.iter().any(|m| m.to_uci() == "e1g1"),
+        "castling through check must be illegal"
+    );
+    assert!(
+        legal.iter().any(|m| m.to_uci() == "e1c1"),
+        "queenside castle must be legal here"
+    );
     // rook e2 attacks e1 -> no castling at all
     let mut pos = Position::from_fen("4k3/8/8/8/8/8/4r3/R3K2R w KQ - 0 1").unwrap();
     let legal = movegen::generate_legal(&mut pos);
-    assert!(!legal.iter().any(|m| m.to_uci() == "e1g1" || m.to_uci() == "e1c1"));
+    assert!(!legal
+        .iter()
+        .any(|m| m.to_uci() == "e1g1" || m.to_uci() == "e1c1"));
 }
 
 #[test]
@@ -175,20 +209,31 @@ fn promotion_generation() {
     // white pawn d7 must produce four promotions plus quiet push? d8 empty: d7d8 4 promos + capture on c8? nothing there.
     let mut pos = Position::from_fen("k1r1r3/3P4/8/8/8/8/8/7K w - - 0 1").unwrap();
     let legal = movegen::generate_legal(&mut pos);
-    let promos: Vec<String> = legal.iter().map(|m| m.to_uci()).filter(|s| s.starts_with("d7")).map(|s| s.to_string()).collect();
-    for want in ["d7d8n", "d7d8b", "d7d8r", "d7d8q", "d7c8n", "d7c8b", "d7c8r", "d7c8q", "d7e8n", "d7e8b", "d7e8r", "d7e8q"] {
-        assert!(promos.iter().any(|p| p == want), "missing promotion {want}; got {promos:?}");
+    let promos: Vec<String> = legal
+        .iter()
+        .map(|m| m.to_uci())
+        .filter(|s| s.starts_with("d7"))
+        .map(|s| s.to_string())
+        .collect();
+    for want in [
+        "d7d8n", "d7d8b", "d7d8r", "d7d8q", "d7c8n", "d7c8b", "d7c8r", "d7c8q", "d7e8n", "d7e8b",
+        "d7e8r", "d7e8q",
+    ] {
+        assert!(
+            promos.iter().any(|p| p == want),
+            "missing promotion {want}; got {promos:?}"
+        );
     }
 }
 
 #[test]
 fn insufficient_material_table() {
     let cases = [
-        ("8/8/8/8/8/8/8/K6k w - - 0 1", true),   // KvK
-        ("8/8/8/8/8/8/4B3/K6k w - - 0 1", true),  // K+B v K
-        ("8/8/8/8/8/8/4N3/K6k w - - 0 1", true),  // K+N v K
-        ("8/8/8/8/8/8/4B3/K6k b - - 0 1", true),  // same
-        ("8/8/8/8/8/5b2/4B3/K6k w - - 0 1", true),// K+B v K+B, all bishops same square color => dead
+        ("8/8/8/8/8/8/8/K6k w - - 0 1", true),      // KvK
+        ("8/8/8/8/8/8/4B3/K6k w - - 0 1", true),    // K+B v K
+        ("8/8/8/8/8/8/4N3/K6k w - - 0 1", true),    // K+N v K
+        ("8/8/8/8/8/8/4B3/K6k b - - 0 1", true),    // same
+        ("8/8/8/8/8/5b2/4B3/K6k w - - 0 1", true), // K+B v K+B, all bishops same square color => dead
         ("8/8/8/8/8/8/4PP2/K6k w - - 0 1", false), // pawns present
         ("8/8/8/8/8/8/R7/K6k w - - 0 1", false),   // rook present
         ("8/8/8/8/8/8/4N3/K3n2k w - - 0 1", false), // K+N v K+N => helpmate exists => not dead
@@ -220,7 +265,11 @@ fn repetition_detection() {
         pos.make_move(m);
     }
     // startpos has occurred 3 times (at ply 0, after 2...Ng8, and after 4...Ng8? actually after the 6th move we are at move 4 position identical to after move 2)
-    assert!(pos.repetition_count() >= 1, "repetition not detected; count={}", pos.repetition_count());
+    assert!(
+        pos.repetition_count() >= 1,
+        "repetition not detected; count={}",
+        pos.repetition_count()
+    );
 }
 
 #[test]
@@ -233,19 +282,31 @@ fn checkmate_and_stalemate_detection() {
         pos.make_move(m);
     }
     assert!(movegen::in_check(&pos));
-    assert_eq!(movegen::generate_legal(&mut pos).len, 0, "checkmate position must have no legal moves");
+    assert_eq!(
+        movegen::generate_legal(&mut pos).len,
+        0,
+        "checkmate position must have no legal moves"
+    );
 
     // stalemate: black king h8, white queen g6(?) Actually: 7k/5Q2/6K1/8/8/8/8/8 b - - 0 1 is stalemate
     let mut pos = Position::from_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1").unwrap();
     assert!(!movegen::in_check(&pos));
-    assert_eq!(movegen::generate_legal(&mut pos).len, 0, "stalemate must have no legal moves");
+    assert_eq!(
+        movegen::generate_legal(&mut pos).len,
+        0,
+        "stalemate must have no legal moves"
+    );
 }
 
 #[test]
 fn hash_seed_determinism() {
     // Same FEN -> same hash across processes
-    let a = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
-    let b = Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1").unwrap();
+    let a =
+        Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+            .unwrap();
+    let b =
+        Position::from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1")
+            .unwrap();
     assert_eq!(a.hash, b.hash);
 }
 

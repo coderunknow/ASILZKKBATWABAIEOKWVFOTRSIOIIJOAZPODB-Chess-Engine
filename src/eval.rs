@@ -154,10 +154,22 @@ const PST_KING_EG: [i32; 64] = [
    -20,-10,  5, 10, 10,  5,-10,-20,
 ];
 
-const PST_MG: [&[i32; 64]; 6] =
-    [&PST_PAWN_MG, &PST_KNIGHT_MG, &PST_BISHOP_MG, &PST_ROOK_MG, &PST_QUEEN_MG, &PST_KING_MG];
-const PST_EG: [&[i32; 64]; 6] =
-    [&PST_PAWN_EG, &PST_KNIGHT_EG, &PST_BISHOP_EG, &PST_ROOK_EG, &PST_QUEEN_EG, &PST_KING_EG];
+const PST_MG: [&[i32; 64]; 6] = [
+    &PST_PAWN_MG,
+    &PST_KNIGHT_MG,
+    &PST_BISHOP_MG,
+    &PST_ROOK_MG,
+    &PST_QUEEN_MG,
+    &PST_KING_MG,
+];
+const PST_EG: [&[i32; 64]; 6] = [
+    &PST_PAWN_EG,
+    &PST_KNIGHT_EG,
+    &PST_BISHOP_EG,
+    &PST_ROOK_EG,
+    &PST_QUEEN_EG,
+    &PST_KING_EG,
+];
 
 #[inline]
 fn mirror_sq(sq: Square) -> Square {
@@ -254,8 +266,15 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
     let base = color * 6;
     let them = 1 - color;
     let mut out = ColorEval {
-        mg: 0, eg: 0, material: 0, pst: 0, mobility: 0,
-        pawns: 0, king_safety: 0, bishop_pair: 0, rook_file: 0,
+        mg: 0,
+        eg: 0,
+        material: 0,
+        pst: 0,
+        mobility: 0,
+        pawns: 0,
+        king_safety: 0,
+        bishop_pair: 0,
+        rook_file: 0,
     };
     let mut king_sq: Square = 0;
     let mut bishops = 0u32;
@@ -349,7 +368,11 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
     while pp != 0 {
         let sq = lsb(pp);
         pp &= pp - 1;
-        let r_idx = (if is_white { rank_of(sq) } else { 7 - rank_of(sq) }) as usize;
+        let r_idx = (if is_white {
+            rank_of(sq)
+        } else {
+            7 - rank_of(sq)
+        }) as usize;
         if r_idx >= 2 {
             pscore_mg += PASSED_MG[r_idx - 1];
             pscore_eg += PASSED_EG[r_idx - 1];
@@ -376,7 +399,11 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
             rfile_mg += 8;
             rfile_eg += 6;
         }
-        let on_seventh = if is_white { rank_of(sq) == 6 } else { rank_of(sq) == 1 };
+        let on_seventh = if is_white {
+            rank_of(sq) == 6
+        } else {
+            rank_of(sq) == 1
+        };
         if on_seventh {
             rfile_mg += 12;
             rfile_eg += 22;
@@ -463,8 +490,8 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
 pub fn breakdown(pos: &Position) -> EvalBreakdown {
     let mut phase = 0i32;
     for color in 0..2 {
-        for piece in 0..6 {
-            phase += PHASE_WEIGHT[piece] * popcount(pos.pieces[color * 6 + piece]) as i32;
+        for (piece, &pw) in PHASE_WEIGHT.iter().enumerate() {
+            phase += pw * popcount(pos.pieces[color * 6 + piece]) as i32;
         }
     }
     phase = phase.min(TOTAL_PHASE);

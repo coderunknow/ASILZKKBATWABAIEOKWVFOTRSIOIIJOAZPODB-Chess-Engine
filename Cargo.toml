@@ -2,7 +2,7 @@
 name = "asilzkkbbatwabaieokwvfotrsioiij"
 version = "0.1.0-dev.1"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.80"
 description = "ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB — an independent chess engine written in Rust (not a Stockfish derivative)"
 license = "Apache-2.0"
 repository = "https://github.com/coderunknow/ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB-Chess-Engine"

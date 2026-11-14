@@ -27,6 +27,12 @@ const WHITE: usize = crate::types::WHITE;
 const ENGINE_NAME: &str = "ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB";
 const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+impl Default for UciEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct UciEngine {
     pos: Position,
     tt: Option<TranspositionTable>,
@@ -75,7 +81,9 @@ impl UciEngine {
     /// Returns false to quit.
     fn handle_line(&mut self, line: &str) -> bool {
         let tokens: Vec<&str> = line.split_whitespace().collect();
-        let Some(&cmd) = tokens.first() else { return true };
+        let Some(&cmd) = tokens.first() else {
+            return true;
+        };
         match cmd {
             "uci" => {
                 println!("id name {ENGINE_NAME}");
@@ -132,7 +140,11 @@ impl UciEngine {
         let new_pos = if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
             Some(Position::startpos())
         } else {
-            let fen = if fen_tokens[0] == "fen" { fen_tokens[1..].join(" ") } else { fen_tokens.join(" ") };
+            let fen = if fen_tokens[0] == "fen" {
+                fen_tokens[1..].join(" ")
+            } else {
+                fen_tokens.join(" ")
+            };
             match Position::from_fen(&fen) {
                 Ok(p) => Some(p),
                 Err(e) => {
@@ -241,7 +253,13 @@ impl UciEngine {
             }
         }
 
-        self.last_clocks = Some((wtime.unwrap_or(0), btime.unwrap_or(0), winc, binc, movestogo));
+        self.last_clocks = Some((
+            wtime.unwrap_or(0),
+            btime.unwrap_or(0),
+            winc,
+            binc,
+            movestogo,
+        ));
 
         let (soft_ms, hard_ms) = if let Some(mt) = movetime {
             (mt, mt)
@@ -258,7 +276,13 @@ impl UciEngine {
             max_nodes,
             soft_ms,
             hard_ms,
-            infinite: infinite || ponder || (wtime.is_none() && btime.is_none() && movetime.is_none() && depth.is_none() && nodes.is_none()),
+            infinite: infinite
+                || ponder
+                || (wtime.is_none()
+                    && btime.is_none()
+                    && movetime.is_none()
+                    && depth.is_none()
+                    && nodes.is_none()),
             ponder,
         };
         let shared_limits = Arc::new(Mutex::new(SearchLimits {
@@ -271,7 +295,10 @@ impl UciEngine {
         }));
 
         let stop = Arc::new(AtomicBool::new(false));
-        let tt = self.tt.take().unwrap_or_else(|| TranspositionTable::new(self.hash_mb));
+        let tt = self
+            .tt
+            .take()
+            .unwrap_or_else(|| TranspositionTable::new(self.hash_mb));
         let mut pos = self.pos.clone();
         let stop_for_search = stop.clone();
         let multi_pv = self.multi_pv;
@@ -282,10 +309,11 @@ impl UciEngine {
         let handle = thread::spawn(move || {
             let mut tt = tt;
             let result = {
-                let mut searcher = Searcher::new(&mut tt, &stop_for_search, limits_for_thread.clone());
+                let mut searcher =
+                    Searcher::new(&mut tt, &stop_for_search, limits_for_thread.clone());
                 searcher.search_root(&mut pos, search_moves, multi_pv, &mut |progress: &SearchProgress| {
                     let elapsed = start_instant.elapsed().as_millis() as u64;
-                    let nps = if elapsed > 0 { progress.nodes.saturating_mul(1000) / elapsed } else { progress.nodes };
+                    let nps = progress.nodes.saturating_mul(1000).checked_div(elapsed).unwrap_or(progress.nodes);
                     println!(
                         "info depth {} seldepth {} multipv {} score {} nodes {} nps {} time {} pv {}",
                         progress.depth,
@@ -310,7 +338,12 @@ impl UciEngine {
             let _ = tx.send((result, tt));
         });
 
-        self.worker = Some(WorkerHandle { join: handle, done: rx, stop, limits: shared_limits });
+        self.worker = Some(WorkerHandle {
+            join: handle,
+            done: rx,
+            stop,
+            limits: shared_limits,
+        });
     }
 
     fn cmd_ponderhit(&mut self) {
@@ -318,7 +351,8 @@ impl UciEngine {
             if let Ok(mut lim) = worker.limits.lock() {
                 if lim.ponder {
                     if let Some((wt, bt, winc, binc, movestogo)) = self.last_clocks {
-                        let (soft, hard) = clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
+                        let (soft, hard) =
+                            clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
                         lim.soft_ms = soft;
                         lim.hard_ms = hard;
                         lim.infinite = false;
@@ -341,7 +375,11 @@ impl UciEngine {
         let name = name_tokens.join(" ").to_ascii_lowercase();
         let value = value_tokens.join(" ");
         match name.as_str() {
-            "hash" => match value.parse::<usize>().ok().filter(|&v| (1..=4096).contains(&v)) {
+            "hash" => match value
+                .parse::<usize>()
+                .ok()
+                .filter(|&v| (1..=4096).contains(&v))
+            {
                 Some(mb) => {
                     self.stop_and_join();
                     self.hash_mb = mb;
@@ -354,7 +392,11 @@ impl UciEngine {
                     eprintln!("info string option Threads: this build is single-threaded; value {value:?} ignored (1 thread used)");
                 }
             }
-            "multipv" => match value.parse::<usize>().ok().filter(|&v| (1..=256).contains(&v)) {
+            "multipv" => match value
+                .parse::<usize>()
+                .ok()
+                .filter(|&v| (1..=256).contains(&v))
+            {
                 Some(n) => self.multi_pv = n,
                 None => eprintln!("info string option MultiPV expects 1..256, got {value:?}"),
             },
@@ -370,7 +412,11 @@ impl UciEngine {
         if self.worker.is_none() {
             return;
         }
-        self.worker.as_ref().unwrap().stop.store(true, Ordering::Relaxed);
+        self.worker
+            .as_ref()
+            .unwrap()
+            .stop
+            .store(true, Ordering::Relaxed);
         let worker = self.worker.take().unwrap();
         let _ = worker.join.join();
         match worker.done.recv() {
@@ -390,8 +436,19 @@ impl UciEngine {
     }
 }
 
-pub fn clock_limits(side: usize, wtime: u64, btime: u64, winc: u64, binc: u64, movestogo: Option<u64>) -> (u64, u64) {
-    let (t, inc) = if side == WHITE { (wtime, winc) } else { (btime, binc) };
+pub fn clock_limits(
+    side: usize,
+    wtime: u64,
+    btime: u64,
+    winc: u64,
+    binc: u64,
+    movestogo: Option<u64>,
+) -> (u64, u64) {
+    let (t, inc) = if side == WHITE {
+        (wtime, winc)
+    } else {
+        (btime, binc)
+    };
     let mtg = movestogo.unwrap_or(40).max(1);
     let soft = (t / mtg + inc / 2).clamp(20, 30_000);
     let hard = (soft * 6).clamp(soft, t.saturating_sub(30));

@@ -52,7 +52,13 @@ pub fn generate_pseudo_legal(pos: &Position) -> MoveList {
             }
         }
         // captures
-        let targets = attack::pawn_attacks_lookup(us, from) & (enemy_occ | if pos.ep >= 0 { 1u64 << pos.ep as Square } else { 0 });
+        let targets = attack::pawn_attacks_lookup(us, from)
+            & (enemy_occ
+                | if pos.ep >= 0 {
+                    1u64 << pos.ep as Square
+                } else {
+                    0
+                });
         let mut t = targets;
         while t != 0 {
             let cap_to = lsb(t);
@@ -237,7 +243,7 @@ pub fn perft_divide(pos: &mut Position, depth: u32) -> Vec<(Move, u64)> {
         }
         pos.unmake_move(m, &undo);
     }
-    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out.sort_by_key(|e| e.0);
     out
 }
 

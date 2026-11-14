@@ -18,8 +18,16 @@ use std::sync::LazyLock;
 const fn build_knight() -> [u64; 64] {
     let mut t = [0u64; 64];
     let mut sq = 0usize;
-    let offsets: [(i32, i32); 8] =
-        [(1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2)];
+    let offsets: [(i32, i32); 8] = [
+        (1, 2),
+        (2, 1),
+        (2, -1),
+        (1, -2),
+        (-1, -2),
+        (-2, -1),
+        (-2, 1),
+        (-1, 2),
+    ];
     while sq < 64 {
         let f = (sq % 8) as i32;
         let r = (sq / 8) as i32;
@@ -43,8 +51,16 @@ pub static KNIGHT_ATTACKS: [u64; 64] = build_knight();
 const fn build_king() -> [u64; 64] {
     let mut t = [0u64; 64];
     let mut sq = 0usize;
-    let offsets: [(i32, i32); 8] =
-        [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)];
+    let offsets: [(i32, i32); 8] = [
+        (0, 1),
+        (1, 1),
+        (1, 0),
+        (1, -1),
+        (0, -1),
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+    ];
     while sq < 64 {
         let f = (sq % 8) as i32;
         let r = (sq / 8) as i32;
@@ -272,17 +288,40 @@ impl MagicTables {
         let mut bishop_attacks = vec![0u64; BISHOP_TABLE_SIZE].into_boxed_slice();
         let mut rook_magic = [0u64; 64];
         let mut bishop_magic = [0u64; 64];
-        for sq in 0..64 {
-            if !try_square(sq, rook_mask[sq], ROOK_BITS, rook_attacks_walk, &mut rook_attacks, &mut rook_magic, &mut rng) {
+        for (sq, &mask) in rook_mask.iter().enumerate() {
+            if !try_square(
+                sq,
+                mask,
+                ROOK_BITS,
+                rook_attacks_walk,
+                &mut rook_attacks,
+                &mut rook_magic,
+                &mut rng,
+            ) {
                 return Self::new_fallback();
             }
         }
-        for sq in 0..64 {
-            if !try_square(sq, bishop_mask[sq], BISHOP_BITS, bishop_attacks_walk, &mut bishop_attacks, &mut bishop_magic, &mut rng) {
+        for (sq, &mask) in bishop_mask.iter().enumerate() {
+            if !try_square(
+                sq,
+                mask,
+                BISHOP_BITS,
+                bishop_attacks_walk,
+                &mut bishop_attacks,
+                &mut bishop_magic,
+                &mut rng,
+            ) {
                 return Self::new_fallback();
             }
         }
-        MagicTables { rook_mask, bishop_mask, rook_magic, bishop_magic, rook_attacks, bishop_attacks }
+        MagicTables {
+            rook_mask,
+            bishop_mask,
+            rook_magic,
+            bishop_magic,
+            rook_attacks,
+            bishop_attacks,
+        }
     }
 
     fn magic_ready(&self) -> bool {

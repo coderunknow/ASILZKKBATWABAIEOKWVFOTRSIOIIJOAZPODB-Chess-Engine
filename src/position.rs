@@ -44,7 +44,12 @@ impl Zobrist {
         for v in ep_file.iter_mut() {
             *v = next();
         }
-        Zobrist { pieces, castling, ep_file, side: next() }
+        Zobrist {
+            pieces,
+            castling,
+            ep_file,
+            side: next(),
+        }
     }
 }
 
@@ -71,7 +76,7 @@ fn zob_side() -> u64 {
 
 #[derive(Clone, Copy)]
 pub struct Undo {
-    pub captured: i8, // -1 none, else PAWN..KING
+    pub captured: i8,      // -1 none, else PAWN..KING
     pub ep_captured: bool, // true if the capture was en passant
     pub castling: u8,
     pub ep: i8,
@@ -123,7 +128,11 @@ impl Position {
         if self.occ_all & b == 0 {
             return None;
         }
-        let color = if self.occ[WHITE] & b != 0 { WHITE } else { BLACK };
+        let color = if self.occ[WHITE] & b != 0 {
+            WHITE
+        } else {
+            BLACK
+        };
         for p in 0..6 {
             if self.pieces[color * 6 + p] & b != 0 {
                 return Some((color, p));
@@ -176,7 +185,10 @@ impl Position {
     pub fn from_fen(fen: &str) -> Result<Position, String> {
         let fields: Vec<&str> = fen.split_whitespace().collect();
         if fields.len() < 4 {
-            return Err(format!("fen: expected at least 4 fields, got {}", fields.len()));
+            return Err(format!(
+                "fen: expected at least 4 fields, got {}",
+                fields.len()
+            ));
         }
         let mut pos = Position::empty();
         // piece placement
@@ -199,7 +211,9 @@ impl Position {
                     }
                     continue;
                 }
-                let piece = PIECE_CHARS.iter().position(|&p| p == ch.to_ascii_lowercase());
+                let piece = PIECE_CHARS
+                    .iter()
+                    .position(|&p| p == ch.to_ascii_lowercase());
                 let piece = match piece {
                     Some(p) => p,
                     None => return Err(format!("fen: invalid piece char {ch:?}")),
@@ -207,13 +221,21 @@ impl Position {
                 if file >= 8 {
                     return Err("fen: rank too wide".to_string());
                 }
-                let color = if ch.is_ascii_uppercase() { WHITE } else { BLACK };
+                let color = if ch.is_ascii_uppercase() {
+                    WHITE
+                } else {
+                    BLACK
+                };
                 let sq = make_square(file as u8, rank as u8);
                 pos.add_piece(color * 6 + piece, sq);
                 file += 1;
             }
             if file != 8 {
-                return Err(format!("fen: rank {} has width {}, expected 8", 8 - ri, file));
+                return Err(format!(
+                    "fen: rank {} has width {}, expected 8",
+                    8 - ri,
+                    file
+                ));
             }
         }
         // side to move
@@ -272,7 +294,9 @@ impl Position {
         if wk != 1 || bk != 1 {
             return Err("fen: exactly one king per side required".to_string());
         }
-        if attack::king_attacks(lsb(pos.pieces[WHITE * 6 + KING])) & pos.pieces[BLACK * 6 + KING] != 0 {
+        if attack::king_attacks(lsb(pos.pieces[WHITE * 6 + KING])) & pos.pieces[BLACK * 6 + KING]
+            != 0
+        {
             return Err("fen: kings adjacent".to_string());
         }
         pos.hash = pos.zobrist_full();
@@ -295,7 +319,11 @@ impl Position {
                             empty = 0;
                         }
                         let ch = PIECE_CHARS[piece];
-                        s.push(if color == WHITE { ch.to_ascii_uppercase() } else { ch });
+                        s.push(if color == WHITE {
+                            ch.to_ascii_uppercase()
+                        } else {
+                            ch
+                        });
                     }
                 }
             }
@@ -312,10 +340,18 @@ impl Position {
         if self.castling == 0 {
             s.push('-');
         } else {
-            if self.castling & CASTLE_WK != 0 { s.push('K') }
-            if self.castling & CASTLE_WQ != 0 { s.push('Q') }
-            if self.castling & CASTLE_BK != 0 { s.push('k') }
-            if self.castling & CASTLE_BQ != 0 { s.push('q') }
+            if self.castling & CASTLE_WK != 0 {
+                s.push('K')
+            }
+            if self.castling & CASTLE_WQ != 0 {
+                s.push('Q')
+            }
+            if self.castling & CASTLE_BK != 0 {
+                s.push('k')
+            }
+            if self.castling & CASTLE_BQ != 0 {
+                s.push('q')
+            }
         }
         s.push(' ');
         if self.ep < 0 {
@@ -457,7 +493,11 @@ impl Position {
         // Update castling rights.
         let mut new_castling = self.castling;
         if moved == KING {
-            new_castling &= if us == WHITE { !(CASTLE_WK | CASTLE_WQ) } else { !(CASTLE_BK | CASTLE_BQ) };
+            new_castling &= if us == WHITE {
+                !(CASTLE_WK | CASTLE_WQ)
+            } else {
+                !(CASTLE_BK | CASTLE_BQ)
+            };
         }
         // Rook moved away from, or captured on, its original square.
         let rook_homes = [
@@ -535,7 +575,10 @@ impl Position {
         }
 
         // Restore castle rook.
-        if placed_piece == KING && m.promo == PROMO_NONE && file_of(m.from).abs_diff(file_of(m.to)) == 2 {
+        if placed_piece == KING
+            && m.promo == PROMO_NONE
+            && file_of(m.from).abs_diff(file_of(m.to)) == 2
+        {
             let (rook_from, rook_to) = if file_of(m.to) == 6 {
                 (m.to + 1, m.to - 1)
             } else {
@@ -564,9 +607,9 @@ impl Position {
     /// Debug invariant check (used in tests).
     pub fn debug_check_invariants(&self) {
         let mut occ = [0u64; 2];
-        for color in 0..2 {
+        for (color, o) in occ.iter_mut().enumerate() {
             for piece in 0..6 {
-                occ[color] |= self.pieces[color * 6 + piece];
+                *o |= self.pieces[color * 6 + piece];
             }
         }
         assert_eq!(occ[0], self.occ[0], "white occupancy mismatch");
@@ -575,7 +618,11 @@ impl Position {
         // no square may hold two pieces of same color group... (pieces are disjoint by construction)
         for i in 0..12 {
             for j in (i + 1)..12 {
-                assert_eq!(self.pieces[i] & self.pieces[j], 0, "overlapping piece bitboards {i} {j}");
+                assert_eq!(
+                    self.pieces[i] & self.pieces[j],
+                    0,
+                    "overlapping piece bitboards {i} {j}"
+                );
             }
         }
         assert_eq!(self.hash, self.zobrist_full(), "hash mismatch");
@@ -587,7 +634,11 @@ impl Position {
     /// which is the current position).
     pub fn repetition_count(&self) -> usize {
         let cur = self.hash;
-        self.history.iter().filter(|&&h| h == cur).count().saturating_sub(1)
+        self.history
+            .iter()
+            .filter(|&&h| h == cur)
+            .count()
+            .saturating_sub(1)
     }
 
     /// A position is a draw by repetition for search purposes if a repetition has occurred

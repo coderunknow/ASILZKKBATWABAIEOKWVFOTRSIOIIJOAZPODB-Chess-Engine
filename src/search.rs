@@ -7,7 +7,9 @@
 //! Draws honored inside search: repetition (2-fold along the search path), fifty-move rule,
 //! insufficient material; checkmate/stalemate handled by the no-legal-moves branch.
 
-use crate::eval::{ClassicalEvaluator, Evaluator, MATE_SCORE, DRAW_SCORE, INF_SCORE, PIECE_VALUE_MG};
+use crate::eval::{
+    ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_SCORE, PIECE_VALUE_MG,
+};
 use crate::movegen::{generate_legal, in_check};
 use crate::position::Position;
 use crate::tt::{TranspositionTable, BOUND_EXACT, BOUND_LOWER, BOUND_UPPER};
@@ -77,12 +79,16 @@ pub struct Searcher<'a> {
 }
 
 impl<'a> Searcher<'a> {
-    pub fn new(tt: &'a mut TranspositionTable, stop: &'a AtomicBool, limits: Arc<Mutex<SearchLimits>>) -> Self {
+    pub fn new(
+        tt: &'a mut TranspositionTable,
+        stop: &'a AtomicBool,
+        limits: Arc<Mutex<SearchLimits>>,
+    ) -> Self {
         Searcher {
             tt,
             stop,
             limits,
-            eval: ClassicalEvaluator::default(),
+            eval: ClassicalEvaluator,
             killers: [[None; 2]; MAX_PLY as usize],
             history: [[0; 64 * 64]; 2],
             lmr: build_lmr_table(),
@@ -163,7 +169,13 @@ impl<'a> Searcher<'a> {
         50_000 + self.history[us][(m.from as usize) * 64 + m.to as usize]
     }
 
-    fn order_and_score(&self, pos: &Position, moves: &mut MoveList, tt_move: Option<Move>, ply: usize) {
+    fn order_and_score(
+        &self,
+        pos: &Position,
+        moves: &mut MoveList,
+        tt_move: Option<Move>,
+        ply: usize,
+    ) {
         for i in 0..moves.len {
             moves.scores[i] = self.move_order_score(pos, moves.moves[i], tt_move, ply);
         }
@@ -207,7 +219,11 @@ impl<'a> Searcher<'a> {
             return SearchResult {
                 best_move: Move::NULL,
                 ponder_move: None,
-                score_cp: if in_check(pos) { -MATE_SCORE } else { DRAW_SCORE },
+                score_cp: if in_check(pos) {
+                    -MATE_SCORE
+                } else {
+                    DRAW_SCORE
+                },
                 depth: 0,
                 seldepth: 0,
                 nodes: 0,
@@ -334,7 +350,7 @@ impl<'a> Searcher<'a> {
             }
             results.push((rm, score));
         }
-        results.sort_by(|a, b| b.1.cmp(&a.1));
+        results.sort_by_key(|r| std::cmp::Reverse(r.1));
         for (i, (mv, score)) in results.iter().take(multi_pv).enumerate() {
             let mut pv = vec![*mv];
             let mut child = pos.clone();
@@ -394,7 +410,6 @@ impl<'a> Searcher<'a> {
         }
         let in_chk = in_check(pos);
         let mut alpha = alpha;
-        let beta = beta;
         let alpha_entry = alpha;
         let is_pv = beta - alpha > 1;
 
@@ -414,7 +429,13 @@ impl<'a> Searcher<'a> {
         }
 
         // Null-move pruning (not in check, not PV, non-trivial material)
-        if depth >= 3 && !in_chk && beta < MATE_BOUND && beta > -MATE_BOUND && pos.has_non_pawn_material(pos.side) && !is_pv {
+        if depth >= 3
+            && !in_chk
+            && beta < MATE_BOUND
+            && beta > -MATE_BOUND
+            && pos.has_non_pawn_material(pos.side)
+            && !is_pv
+        {
             let prev_ep = pos.ep;
             pos.make_null_move();
             let reduction = 2 + depth / 4;
@@ -438,21 +459,26 @@ impl<'a> Searcher<'a> {
 
         let mut moves = generate_legal(pos);
         if moves.len == 0 {
-            return if in_chk { -MATE_SCORE + ply as i32 } else { DRAW_SCORE };
+            return if in_chk {
+                -MATE_SCORE + ply
+            } else {
+                DRAW_SCORE
+            };
         }
         self.order_and_score(pos, &mut moves, tt_move, ply as usize);
 
         let mut best_score = -INF_SCORE;
         let mut best_move: Option<Move> = None;
-        let mut searched_count = 0i32;
+
         let mut quiet_tried: [Move; 32] = [Move::NULL; 32];
 
-        for i in 0..moves.len {
+        for (searched_count_usize, i) in (0..moves.len).enumerate() {
             let m = moves.moves[i];
             let capture = is_capture(pos, m);
             let undo = pos.make_move(m);
 
             // Late move reductions (quiet moves, not in check, late in the list)
+            let searched_count = searched_count_usize as i32;
             let mut reduction = 0i32;
             if depth >= 3 && searched_count >= 3 && !capture && m.promo == PROMO_NONE && !in_chk {
                 reduction = self.lmr[depth as usize][searched_count as usize];
@@ -471,7 +497,6 @@ impl<'a> Searcher<'a> {
                 s
             };
             pos.unmake_move(m, &undo);
-            searched_count += 1;
             if self.stop.load(Ordering::Relaxed) {
                 return alpha;
             }
@@ -552,7 +577,11 @@ impl<'a> Searcher<'a> {
 
         let mut moves = generate_legal(pos);
         if moves.len == 0 {
-            return if in_chk { -MATE_SCORE + ply as i32 } else { DRAW_SCORE };
+            return if in_chk {
+                -MATE_SCORE + ply
+            } else {
+                DRAW_SCORE
+            };
         }
         if !in_chk {
             let mut j = 0;
@@ -607,12 +636,12 @@ pub fn is_capture(pos: &Position, m: Move) -> bool {
 
 fn build_lmr_table() -> [[i32; 64]; 64] {
     let mut t = [[0i32; 64]; 64];
-    for depth in 3..64usize {
-        for count in 3..64usize {
+    for (depth, row) in t.iter_mut().enumerate().skip(3) {
+        for (count, cell) in row.iter_mut().enumerate().skip(3) {
             let d = depth as f64;
             let c = count as f64;
             let r = (d.ln() * c.ln() * 0.6) as i32;
-            t[depth][count] = r.clamp(0, depth as i32 - 1);
+            *cell = r.clamp(0, depth as i32 - 1);
         }
     }
     t

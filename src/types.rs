@@ -99,10 +99,18 @@ pub struct Move {
 }
 
 impl Move {
-    pub const NULL: Move = Move { from: 0, to: 0, promo: PROMO_NONE };
+    pub const NULL: Move = Move {
+        from: 0,
+        to: 0,
+        promo: PROMO_NONE,
+    };
 
     pub const fn new(from: Square, to: Square) -> Move {
-        Move { from, to, promo: PROMO_NONE }
+        Move {
+            from,
+            to,
+            promo: PROMO_NONE,
+        }
     }
     pub const fn with_promo(from: Square, to: Square, promo: u8) -> Move {
         Move { from, to, promo }
@@ -112,7 +120,11 @@ impl Move {
         (self.from as u16) | ((self.to as u16) << 6) | ((self.promo as u16) << 12)
     }
     pub const fn from_u16(v: u16) -> Move {
-        Move { from: (v & 0x3f) as Square, to: ((v >> 6) & 0x3f) as Square, promo: ((v >> 12) & 0x7) as u8 }
+        Move {
+            from: (v & 0x3f) as Square,
+            to: ((v >> 6) & 0x3f) as Square,
+            promo: ((v >> 12) & 0x7) as u8,
+        }
     }
     /// UCI long algebraic notation, e.g. "e2e4", "e7e8q".
     pub fn to_uci(self) -> String {
@@ -134,7 +146,11 @@ impl Move {
         }
         let from = make_square(file_char_to_idx(b[0])?, rank_char_to_idx(b[1])?);
         let to = make_square(file_char_to_idx(b[2])?, rank_char_to_idx(b[3])?);
-        let promo = if b.len() == 5 { promo_from_char(b[4] as char) } else { PROMO_NONE };
+        let promo = if b.len() == 5 {
+            promo_from_char(b[4] as char)
+        } else {
+            PROMO_NONE
+        };
         if b.len() == 5 && promo == PROMO_NONE {
             return None;
         }
@@ -191,12 +207,18 @@ impl Default for MoveList {
 }
 impl core::fmt::Debug for MoveList {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_list().entries(self.moves[..self.len].iter()).finish()
+        f.debug_list()
+            .entries(self.moves[..self.len].iter())
+            .finish()
     }
 }
 impl MoveList {
     pub const fn new() -> Self {
-        MoveList { moves: [Move::NULL; 256], scores: [0; 256], len: 0 }
+        MoveList {
+            moves: [Move::NULL; 256],
+            scores: [0; 256],
+            len: 0,
+        }
     }
     #[inline]
     pub fn push(&mut self, m: Move) {
