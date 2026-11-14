@@ -72,7 +72,7 @@ pub struct Searcher<'a> {
     eval: ClassicalEvaluator,
     killers: [[Option<Move>; 2]; MAX_PLY as usize],
     history: [[i32; 64 * 64]; 2],
-    lmr: [[i32; 64]; 64],
+    lmr: [[i32; 256]; MAX_PLY as usize + 1],
     nodes: u64,
     seldepth: i32,
     start: Instant,
@@ -481,7 +481,8 @@ impl<'a> Searcher<'a> {
             let searched_count = searched_count_usize as i32;
             let mut reduction = 0i32;
             if depth >= 3 && searched_count >= 3 && !capture && m.promo == PROMO_NONE && !in_chk {
-                reduction = self.lmr[depth as usize][searched_count as usize];
+                reduction = self.lmr[(depth as usize).min(MAX_PLY as usize)]
+                    [(searched_count as usize).min(255)];
             }
 
             let score = if searched_count == 0 {
@@ -634,8 +635,8 @@ pub fn is_capture(pos: &Position, m: Move) -> bool {
     captured_piece(pos, m).is_some()
 }
 
-fn build_lmr_table() -> [[i32; 64]; 64] {
-    let mut t = [[0i32; 64]; 64];
+fn build_lmr_table() -> [[i32; 256]; MAX_PLY as usize + 1] {
+    let mut t = [[0i32; 256]; MAX_PLY as usize + 1];
     for (depth, row) in t.iter_mut().enumerate().skip(3) {
         for (count, cell) in row.iter_mut().enumerate().skip(3) {
             let d = depth as f64;

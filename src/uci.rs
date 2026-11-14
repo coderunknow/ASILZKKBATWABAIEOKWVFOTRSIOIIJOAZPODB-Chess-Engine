@@ -294,6 +294,9 @@ impl UciEngine {
             ponder: limits.ponder,
         }));
 
+        // Fallback legal move in case the search thread dies unexpectedly —
+        // the GUI must always receive a bestmove.
+        let fallback_move = generate_legal(&mut self.pos).iter().next().copied();
         let stop = Arc::new(AtomicBool::new(false));
         let tt = self
             .tt
@@ -308,7 +311,7 @@ impl UciEngine {
         let limits_for_thread = shared_limits.clone();
         let handle = thread::spawn(move || {
             let mut tt = tt;
-            let result = {
+            let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut searcher =
                     Searcher::new(&mut tt, &stop_for_search, limits_for_thread.clone());
                 searcher.search_root(&mut pos, search_moves, multi_pv, &mut |progress: &SearchProgress| {
@@ -327,15 +330,29 @@ impl UciEngine {
                     );
                     let _ = std::io::stdout().flush();
                 })
-            };
+            }));
             // Print bestmove directly from the worker so it appears as soon as the
             // search ends, even if the GUI sends no further commands (UCI protocol).
-            match result.ponder_move {
-                Some(p) => println!("bestmove {} ponder {}", result.best_move, p),
-                None => println!("bestmove {}", result.best_move),
+            match searched {
+                Ok(result) => {
+                    match result.ponder_move {
+                        Some(p) => println!("bestmove {} ponder {}", result.best_move, p),
+                        None => println!("bestmove {}", result.best_move),
+                    }
+                    let _ = std::io::stdout().flush();
+                    let _ = tx.send((result, tt));
+                }
+                Err(_) => {
+                    // Search thread panicked; unblock the GUI with a legal fallback.
+                    eprintln!("info string search thread panicked; emitting fallback bestmove");
+                    match fallback_move {
+                        Some(m) => println!("bestmove {m}"),
+                        None => println!("bestmove 0000"),
+                    }
+                    let _ = std::io::stdout().flush();
+                    // TT is lost; the main thread recreates it on join failure.
+                }
             }
-            let _ = std::io::stdout().flush();
-            let _ = tx.send((result, tt));
         });
 
         self.worker = Some(WorkerHandle {

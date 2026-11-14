@@ -17,3 +17,21 @@ what was learned, next experiment.
 - Result: fixed and smoke-verified (mate-in-1 prints `bestmove b1b8`; stop/ponderhit verified).
 - Lesson: UCI engines must emit bestmove autonomously on search completion; never tie bestmove
   emission to the next GUI input.
+
+## 2026-11-14 — Search worker panic (LMR table out-of-bounds) loses the game on the board
+
+- Attempt: 40-game benchmark vs pinned Stockfish 19 WASM (Skill 0), opening `openings-20.txt`,
+  `go movetime 100` per side.
+- What happened: at game 1, move 30, our engine failed to reply for 300 s (harness timeout →
+  `timeout_forfeit`, recorded 0-1). Root-caused to a thread panic printed to stderr:
+  `index out of bounds: the len is 64 but the index is 64` at src/search.rs:484.
+- Root cause: LMR reduction table `[[i32; 64]; 64]` indexed by `[depth][searched_count]` with
+  **depth up to 64** (max_depth clamp) and **searched_count ≥ 64** (up to 218 legal moves).
+  Two independent out-of-bounds paths.
+- Fix: table enlarged to `[MAX_PLY+1][256]`; use-site indices clamped; and the UCI worker now wraps
+  the whole search in `catch_unwind`, emitting a legal fallback `bestmove` on panic so the GUI
+  never hangs. (The position — a mate-in-3 found at depth 16 — now searches cleanly at ~1.9M nps.)
+- Result: match re-run; 2-game smoke passes (engine wins both, mate scores sane); full probe
+  `benches/probe-001-sf19lite-skill0` launched.
+- Lesson: any panic inside the search thread must not desynchronize the UCI loop — always emit
+  bestmove; index tables must be sized for the true worst case (218 legal moves, depth 64).

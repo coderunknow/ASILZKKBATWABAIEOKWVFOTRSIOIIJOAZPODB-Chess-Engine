@@ -28,13 +28,27 @@
 
 ## Infrastructure in this repo
 
-- `cargo run --release -- bench` — fixed-node (or fixed-depth) benchmark; prints nodes/s and a checksum
-  of the main search line; used for regression tracking.
+- `cargo run --release -- bench_eval` — fixed-node eval micro-benchmark (1000 evals/FEN, ~100–500 ns/eval in sandbox).
 - `cargo run --release -- perft <depth> [fen]`.
-- `scripts/match.py` — game runner (UCI subprocess), writes PGN + JSONL records, supports opening books
-  (FEN list), color reversal, adjudication (resign/50-move/insufficient), and paired mode.
-- `scripts/stats.py` — Elo estimate + opening-clustered bootstrap 95% CI from PGN/JSONL.
+- `cargo run --release -- uci [uci|perft ...]` — full UCI engine; `go movetime/depth/clocks`, `ucinewgame`, MultiPV, ponder.
+- `scripts/match.py` — game runner (UCI subprocess), writes PGN + JSONL records, supports opening files
+  (`name|moves` UCI lines), color reversal (paired mode), adjudication via python-chess outcomes,
+  timeout/illegal-move forfeits, and wall-clock accounting. Verified end-to-end.
+- `scripts/stats.py` — score, Elo difference (logistic model), opening-clustered 95% bootstrap CI
+  (bootstrap over opening clusters, not games).
 - `scripts/diftest.py` — differential correctness vs python-chess.
+
+## Pinned benchmark opponents
+
+- **Stockfish 19 WASM (lite-single, single-threaded)**, npm package `stockfish@19.0.1`
+  (`buildVersion 19`, GPL-3.0), files at `node_modules/stockfish/bin/stockfish-19-lite-single.*`.
+  SHA-256 (recorded 2026-11-14): `stockfish-19-lite-single.js` ccb130d7ff29408531c47d859a49f91d59d4f482d05a53eb1a3231a4f624c91a,
+  `stockfish-19-lite-single.wasm` ee4f115bdb2d32cadf96cada104a05b5ec257d7ad6f57582190b49bc71f096de.
+  (Full-strength `stockfish-19.js` also present: 623ee70a10d6dc202375127b49e2e1822635f9ab07693ae7be28e50a787f6218; `stockfish-19.wasm`: a599d78d72e0722d8895be84aca8b492d12e8bba3cdfcbcbc4a64017888c6667).
+  Run via `node`. Used ONLY as a pinned benchmark opponent, never as a code source.
+  Invoked with `setoption name Skill Level value <0..20>` to build a strength ladder; CCRL-equivalence
+  of any skill level is NOT claimed.
+- Location on disk: `/home/user/opponents/` (outside the repository; not committed).
 
 ## Current status (2026-11-14)
 

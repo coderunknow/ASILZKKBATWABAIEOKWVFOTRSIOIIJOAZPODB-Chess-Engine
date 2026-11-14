@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Statistics for match JSONL output: score, Elo difference, opening-clustered 95% bootstrap CI.
+
+Method: after pairing games by opening, we bootstrap over *openings* (not individual
+games) so the confidence interval respects opening clustering — paired openings produce
+correlated game scores within a cluster. Elo difference uses the logistic model
+  Elo = -400 * log10(1/s - 1),  s in (0, 1)
+where s is the score fraction; s = 0.5 -> 0, s -> 1 -> +inf (reported as a bound).
+
+This is a descriptive statistic over the games played. It is NOT a CCRL rating and
+must not be presented as one.
+"""
+import argparse
+import json
+import math
+import random
+import sys
+from collections import defaultdict
+
+
+def load(path: str) -> list[dict]:
+    games = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                games.append(json.loads(line))
+    return games
+
+
+def elo_from_score(s: float) -> float:
+    s = min(max(s, 1e-6), 1 - 1e-6)
+    return -400.0 * math.log10(1.0 / s - 1.0)
+
+
+def score_of(result: str, perspective: str) -> float:
+    if result == "1/2-1/2":
+        return 0.5
+    if perspective == "white":
+        return 1.0 if result == "1-0" else 0.0
+    return 1.0 if result == "0-1" else 0.0
+
+
+def analyze(games: list[dict], focus: str):
+    """focus: name of the engine whose score we analyze (from White's perspective-aware pairing)."""
+    by_opening: dict[str, list[dict]] = defaultdict(list)
+    for g in games:
+        by_opening[g["opening"]].append(g)
+
+    clusters: list[tuple[float, int]] = []  # (sum of scores from focus perspective, n games)
+    for opening, gs in by_opening.items():
+        tot = 0.0
+        for g in gs:
+            if g["white"] == focus:
+                tot += score_of(g["result"], "white")
+            elif g["black"] == focus:
+                tot += score_of(g["result"], "black")
+            else:
+                raise ValueError(f"focus engine {focus!r} not present in game {g}")
+        clusters.append((tot, len(gs)))
+    return by_opening, clusters
+
+
+def bootstrap_ci(clusters, n_boot: int, seed: int):
+    rng = random.Random(seed)
+    n = len(clusters)
+    # cluster-level totals
+    sums = [c[0] for c in clusters]
+    ns = [c[1] for c in clusters]
+    total_score = sum(sums)
+    total_games = sum(ns)
+    point = total_score / total_games if total_games else 0.5
+    s_boot = []
+    for _ in range(n_boot):
+        ts = 0.0
+        tg = 0
+        for _ in range(n):
+            i = rng.randrange(n)
+            ts += sums[i]
+            tg += ns[i]
+        s_boot.append(ts / tg if tg else 0.5)
+    s_boot.sort()
+    lo = s_boot[int(0.025 * n_boot)]
+    hi = s_boot[int(0.975 * n_boot) - 1]
+    return point, lo, hi
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("jsonl")
+    ap.add_argument("--focus", required=True, help="engine name to analyze")
+    ap.add_argument("--bootstrap", type=int, default=10000)
+    ap.add_argument("--seed", type=int, default=20261114)
+    args = ap.parse_args()
+
+    games = load(args.jsonl)
+    by_opening, clusters = analyze(games, args.focus)
+    total_games = sum(c[1] for c in clusters)
+    total_score = sum(c[0] for c in clusters)
+    s, s_lo, s_hi = bootstrap_ci(clusters, args.bootstrap, args.seed)
+    print(f"games: {total_games}   openings (clusters): {len(clusters)}")
+    print(f"score: {total_score:.1f}/{total_games}  = {s:.3f}")
+    print(f"opening-clustered 95% bootstrap CI for score: [{s_lo:.3f}, {s_hi:.3f}]")
+    print(f"Elo difference (logistic): {elo_from_score(s):+.0f}   CI: [{elo_from_score(s_lo):+.0f}, {elo_from_score(s_hi):+.0f}]")
+    print("NOTE: descriptive internal statistic, not a CCRL/CEGT rating. Do not present as official.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
