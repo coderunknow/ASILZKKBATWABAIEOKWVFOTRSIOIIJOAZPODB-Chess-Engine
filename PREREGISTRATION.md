@@ -110,3 +110,47 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 ### SCREENING results (filled after execution)
 
 - status: PENDING EXECUTION
+
+---
+
+## BATCH-A / BATCH-B — confirmatory batches (registered 2026-11-14, BEFORE dispatch; anchor set filled per the fixed rule below before any game)
+
+- **Purpose:** confirmatory (gate evidence). Thresholds and all inputs below are frozen now.
+- **Acceptance (mission §9, unrounded):** for EACH of Batch A, Batch B and the combined
+  estimate, the two-sided 95% calibrated CI lower bound must be strictly > 2,000 Elo;
+  every eligible anchor: |d| ≤ 400 and ≥ 2,000 counted games **per batch**; both null
+  controls pass their registered thresholds. No rounding, no clamping, no extrapolation.
+- **Engine:** Flawless, engine_sha256 `fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d`
+  (strict mode; any mismatch fails the shard).
+- **Suites:** Batch A `benches/rating-openings-batchA.txt` SHA-256
+  `2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96`; Batch B
+  `benches/rating-openings-batchB.txt` SHA-256
+  `744a3981cc312a676ba259962309858b7d2fc645094bf2dccf5391e77f2f9dd4`. VERIFIED DISJOINT
+  2026-11-14: 60+60 lines, zero shared move-lines, zero shared names, zero internal
+  duplicates (checked programmatically; see AGENTS_LOG 273).
+- **Sample:** 60 openings × 17 paired repetitions × AB/BA = **2,040 games per eligible
+  anchor per batch**; counted per §9 adjudication (move-cap games recorded `*`
+  unadjudicated, never silently drawn; engine-error games excluded and replayed per policy).
+- **Sharding:** 255 shards × 8 games per (batch, anchor) (deterministic contiguous slices of
+  the frozen schedule; one marker dispatch per (batch, anchor); failed shards re-run into
+  FRESH output only, never overwriting/mixing).
+- **TC:** 40/15 wall-clock repeating (cutechess `add` semantics — verified at source), ponder
+  off; SF10 factor_k 1.0291 deviation documented in the pool.
+- **Bootstrap seeds (estimator):** Batch A `20261121`, Batch B `20261122` (combined uses the
+  registered joint procedure). Dispatch seed fields carry the same values.
+- **Anchor set (the ONLY rule-derived input):** chosen by the SCREENING-1/2 selection rule
+  already registered above, from the frozen pool only: ≥ 3 anchors, all expected
+  non-saturating (|d| ≤ 400) at the screening estimate, straddling the estimate within ±200
+  where the pool permits, including the widest available low/high discriminators. The exact
+  keys and the documented §2-span interpretation are committed in `benches/gate-plan.json`
+  (machine plan consumed by rating-gate.yml) in the same commit that dispatches Batch A,
+  BEFORE any batch game runs. If the rule cannot be satisfied by the frozen pool at the
+  screening estimate, the tension is documented and the nearest compliant set is chosen and
+  justified — never tuned to the outcome.
+- **Expected evidence:** `benches/evidence/batchA/<anchor>/` and `.../batchB/<anchor>/`
+  (committed raw per-game results + manifests), then the fail-closed gate:
+  `scripts/verify_evidence.py` + `scripts/rating_estimator.py gate`.
+
+### BATCH results (filled after execution)
+
+- status: PENDING EXECUTION (anchor set pending SCREENING-1/2)
