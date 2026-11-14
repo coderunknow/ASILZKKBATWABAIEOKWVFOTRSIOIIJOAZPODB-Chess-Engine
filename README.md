@@ -4,17 +4,21 @@ An independent, from-scratch chess engine written in Rust. **Not a Stockfish der
 
 - **Engine name (UCI):** `ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB`
 - **License:** Apache-2.0 (see `LICENSE`)
-- **Status:** development (`0.x`). See `STATUS.md` for the live checklist and `CHANGELOG.md` for releases.
+- **Status:** development (`0.x`). V1 gates NOT met — engine strength is **far below the 2,000-Elo
+  V1 target** (see `STATUS.md` probe table; in-sandbox estimates vs pinned Stockfish 19 WASM:
+  ~0.44–0.53 score vs Skill 5, ~0.11 vs Skill 10). No official CCRL/CEGT rating exists.
+  See `STATUS.md` for the live checklist and `CHANGELOG.md` for releases.
 
 ## Quick start
 
 ```bash
-export PATH=/home/user/.toolchain/sysroot/bin:$PATH   # build sandbox only; any Rust ≥ 1.75 works
-cargo build --release
-./target/release/asilzkkbbatwabaieokwvfotrsioiijoazpodb          # starts UCI mode on stdin/stdout
+cargo build --release   # any Rust ≥ 1.80 works (this sandbox used npm-redistributed 1.99.0; see docs/ENVIRONMENT.md)
+./target/release/asilzkkbbatwabaieokwvfotrsioiij uci              # UCI mode on stdin/stdout
+./target/release/asilzkkbbatwabaieokwvfotrsioiij perft 6          # perft from startpos
+./target/release/asilzkkbbatwabaieokwvfotrsioiij bench            # fixed-depth-10 search benchmark + signature
 ```
 
-Commands (CLI): `perft <depth> [fen]` · `bench [depth]` · `eval [fen]` · `pgn <file>` · `uci` (default).
+Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `bench_eval` · `eval [fen]` · `moves` · `hash` · `uci`.
 
 ## What works (V1 scope)
 
@@ -27,7 +31,8 @@ Windows + Linux release builds · CI.
 
 SMP search (`Threads` is capped at 1 and reports as such) · NNUE (classical eval only; NNUE is a
 documented future step) · Chess960 · opening books · syzygy tablebases · any claim of an official
-CCRL/CEGT rating (any measurement is a *private, CCRL-anchored estimate*).
+CCRL/CEGT rating (none exists — all probes so far are in-sandbox internal estimates with pinned
+opponents; do not present them as official ratings).
 
 ## Documentation map
 
@@ -37,4 +42,4 @@ CCRL/CEGT rating (any measurement is a *private, CCRL-anchored estimate*).
 ## Building on Windows
 
 Install VS Build Tools (C++ workload) or MinGW-w64, plus Rust via rustup, then `cargo build --release`.
-Windows binaries are produced by CI (see `.github/workflows/ci.yml`).
+Windows builds are exercised by CI (fmt, clippy, tests, release build, UCI handshake, perft sanity); CI does not publish binaries (see `.github/workflows/ci.yml`).
