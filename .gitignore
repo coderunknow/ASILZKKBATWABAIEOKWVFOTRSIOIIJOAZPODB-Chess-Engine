@@ -1,5 +1,7 @@
-/target/
-__pycache__/
-*.pyc
-.DS_Store
-/benches/*/logs/
+node_modules/
+target/
+*.fmted
+clippy.log
+bench-signature-*.txt
+release-binary-*.sha256
+release-manifest-*.txt
