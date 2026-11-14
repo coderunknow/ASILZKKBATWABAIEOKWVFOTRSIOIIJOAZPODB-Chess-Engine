@@ -423,3 +423,105 @@ jobs:
             runner-hardware.txt
           if-no-files-found: warn
           retention-days: 90
+
+  # After every shard of the dispatch completes: pull the run's shard artifacts
+  # back onto a runner (artifact blobs are NOT reachable from the development
+  # sandbox), run the strict aggregator, and commit the raw per-game evidence +
+  # manifests to the PR branch. This satisfies "reproducible from committed raw
+  # evidence" (docs/RATING_PROTOCOL.md §1.3) and gives the analysis stage data
+  # it can read directly. Paths are disjoint per (batch, label); pushes rebase
+  # and retry to survive concurrent evidence jobs.
+  evidence:
+    name: aggregate-and-commit-evidence
+    needs: [resolve, shard]
+    if: needs.resolve.outputs.run == 'true' && needs.shard.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Install Python + python-chess (pinned)
+        run: python3 -m pip install --user chess==1.11.2
+
+      - name: Download this run's shard artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shards
+          gh run download "${{ github.run_id }}" -D /tmp/shards
+          find /tmp/shards -name meta.json | wc -l
+
+      - name: Strict aggregate
+        env:
+          CFG: ${{ needs.resolve.outputs.config }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          c = json.loads(os.environ["CFG"])
+          pool = json.load(open("benches/anchor-pool.json"))
+          def sha_of(slot):
+              if slot == "flawless":
+                  return c["resolved_engine_sha256"]
+              for e in pool["engines"]:
+                  if e.get("key") == slot:
+                      return e["sha256"]
+              sys.exit(f"unknown engine slot {slot}")
+          white_sha = sha_of(c["white_engine"])
+          black_sha = sha_of(c["black_engine"])
+          out = f"benches/evidence/{c['purpose']}/{c['anchor_id']}"
+          os.makedirs(out, exist_ok=True)
+          cmd = [
+              sys.executable, "scripts/aggregate_shards.py",
+              "--shards-root", "/tmp/shards",
+              "--batch", c["batch"],
+              "--anchor", c["anchor_id"],
+              "--engine-sha256", white_sha,
+              "--anchor-sha256", black_sha,
+              "--opening-suite-sha256", c["opening_suite_sha256"],
+              "--tc-moves", c["tc"].split("/")[0],
+              "--tc-seconds", str(float(c["tc"].split("/")[1]) * 60.0),
+              "--expected-shards", str(len(c["shard_indices"])),
+              "--out", f"{out}/games.jsonl",
+              "--manifest", f"{out}/manifest.json",
+          ]
+          print("invoking:", " ".join(cmd), flush=True)
+          rc = subprocess.call(cmd)
+          if rc != 0:
+              print("::error::aggregate_shards failed (fail closed)")
+          sys.exit(rc)
+          PY
+
+      - name: Commit raw evidence to the branch
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "flawless-evidence-bot"
+          git config user.email "flawless-evidence-bot@users.noreply.github.com"
+          git add benches/evidence
+          if git diff --cached --quiet; then
+            echo "no new evidence to commit"; exit 0
+          fi
+          git commit -m "evidence: raw per-game results (${{ fromJson(needs.resolve.outputs.config).purpose }} ${{ fromJson(needs.resolve.outputs.config).batch }} ${{ fromJson(needs.resolve.outputs.config).anchor_id }}, run ${{ github.run_id }})"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin "$BRANCH" && git push origin "$BRANCH" && exit 0
+            sleep $((10 * i))
+          done
+          echo "::error::evidence push failed after retries"
+          exit 1
+
+      - name: Upload aggregate artifact (mirror)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-${{ fromJson(needs.resolve.outputs.config).purpose }}-${{ fromJson(needs.resolve.outputs.config).anchor_id }}-${{ github.run_id }}
+          path: benches/evidence/
+          if-no-files-found: warn
+          retention-days: 90
