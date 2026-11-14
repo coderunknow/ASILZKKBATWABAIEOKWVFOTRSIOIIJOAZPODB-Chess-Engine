@@ -156,3 +156,5 @@
   MERGE_READINESS.md created (§7 checklist with evidence). Local gates: pool schema ✓ (match.py
   fail-closed validator), YAML ✓, test_match 104/104, test_rating_estimator 46/46, cargo 33/33.
   Commits: 5b2cc78, 5a77079, 59c8a0c, 5fd73b1, 086feb8, 0d8287b + this.
+254. designed + implemented rating-run dispatch mechanism from the actual repo state (marker-file `benches/dispatch.json` + strict `resolve` job + matrix fan-out); fixed leftover fail-closed `exit 1` stub in the acquire step (would have failed every shard after successful verification); engine hash policy: pilot uses "freeze" (first runner build records hash), confirmatory requires literal frozen hash; wrote PREREGISTRATION.md with PILOT-1 (4 games, 2 shards x 2, excluded from gate evidence) BEFORE dispatch; local validation: YAML OK, dispatch schema OK, suite hash 2c4a54d8... matches, sh syntax OK.
+255. dispatched PILOT-1 via marker-file push (workflow: rating-run, paths filter benches/dispatch.json); local engine build at 1127969 rustc 1.99.0 = 9d7b22d5d1af0c56b0d56f908edd679b8628d90126d2fe5efc3c4faf24144208 (local only — runner hash is the one that will be frozen via annotations/manifest).

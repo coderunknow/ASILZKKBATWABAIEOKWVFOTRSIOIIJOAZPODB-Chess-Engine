@@ -1,17 +1,23 @@
 # rating-run.yml — deliberate tournament execution for the >2,000 Elo gate
 # (docs/RATING_PROTOCOL.md §9). Expensive execution is NEVER triggered by an
-# ordinary push: this workflow is workflow_dispatch-only and each run is one
-# deterministic shard (batch x anchor x opening-range x repetition-range).
+# ordinary push.
 #
-# Dispatch note: GitHub delivers workflow_dispatch only to workflow files that
-# exist on the default branch. Until this file lands on `main`, deliberate runs
-# must be triggered by a commit touching this file (pull_request paths filter
-# below) or after merge; the permanent path is `gh workflow run rating-run.yml`.
+# Dispatch mechanisms (both deliberate):
+#   1. Pre-merge / current: edit `benches/dispatch.json` (the marker file) and
+#      push. The pull_request paths filter below fires ONLY on that file, and
+#      the resolve job validates the dispatch schema before any engine runs.
+#   2. Post-merge: `gh workflow run rating-run.yml -f ...` (workflow_dispatch).
 #
-# Inputs are the PREREGISTERED identities: frozen target commit, engine binary
-# SHA-256, batch (A|B), anchor id, shard index/count, opening-suite hash, seed,
-# and exact game count. Any mismatch between requested and actual hashes fails
-# the shard; a failed shard is re-run into a FRESH output dir (never mixing).
+# One workflow run fans out `shard_indices` deterministic shards (matrix), each
+# job playing its contiguous slice of the frozen schedule (opening-major,
+# repetition-minor, AB then BA). Any hash/count/identity mismatch fails the
+# shard; a failed shard is re-run into a FRESH output dir (never mixing).
+#
+# engine_sha256: the frozen engine binary SHA-256 for confirmatory purposes.
+# For pilot/control FREEZE runs the literal string "freeze" is accepted (purpose
+# != "confirmatory" only): the first runner build of the target commit records
+# the hash into the manifest + annotations, and preregistration pins it before
+# any confirmatory batch. Placeholders are never valid evidence.
 
 name: rating-run
 
@@ -22,7 +28,7 @@ on:
         description: "Frozen target commit SHA (full)"
         required: true
       engine_sha256:
-        description: "Frozen engine binary SHA-256 (64 hex)"
+        description: "Frozen engine binary SHA-256 (64 hex) or 'freeze' for pilot"
         required: true
       batch:
         description: "Preregistered batch"
@@ -56,32 +62,185 @@ on:
         description: "Time control (moves/minutes)"
         required: true
         default: "40/15"
-  # NOTE: no pull_request trigger — this workflow cannot do anything without its
-  # dispatch inputs (frozen commit/hashes/shard identity). Until the file is on
-  # the default branch (where workflow_dispatch is delivered), pilot runs are
-  # executed locally with the same commands; see docs/RATING_PROTOCOL.md §9.
+      purpose:
+        description: "pilot|control|screening|confirmatory"
+        required: true
+        default: "pilot"
+  pull_request:
+    paths:
+      - "benches/dispatch.json"
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
-  pilot-or-shard:
-    runs-on: ubuntu-latest
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      config: ${{ steps.res.outputs.config }}
+      indices: ${{ steps.res.outputs.indices }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve and validate dispatch config (fail closed)
+        id: res
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          # workflow_dispatch fallback inputs:
+          IN_TARGET: ${{ github.event.inputs.target_commit }}
+          IN_ENGINE: ${{ github.event.inputs.engine_sha256 }}
+          IN_BATCH: ${{ github.event.inputs.batch }}
+          IN_ANCHOR: ${{ github.event.inputs.anchor_id }}
+          IN_INDEX: ${{ github.event.inputs.shard_index }}
+          IN_COUNT: ${{ github.event.inputs.shard_count }}
+          IN_SUITE: ${{ github.event.inputs.opening_suite }}
+          IN_SUITE_SHA: ${{ github.event.inputs.opening_suite_sha256 }}
+          IN_REPS: ${{ github.event.inputs.repetitions }}
+          IN_SEED: ${{ github.event.inputs.seed }}
+          IN_TC: ${{ github.event.inputs.tc }}
+          IN_PURPOSE: ${{ github.event.inputs.purpose }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, subprocess, sys
+
+          def fail(msg):
+              print(f"::error::dispatch: {msg}")
+              sys.exit(1)
+
+          ev = os.environ["EVENT_NAME"]
+          head = os.environ["HEAD_SHA"]
+
+          if ev == "pull_request":
+              if not os.path.exists("benches/dispatch.json"):
+                  fail("benches/dispatch.json missing")
+              cfg = json.load(open("benches/dispatch.json"))
+          else:
+              cfg = {
+                  "schema": 1,
+                  "purpose": os.environ.get("IN_PURPOSE") or "",
+                  "target_commit": os.environ.get("IN_TARGET") or "",
+                  "engine_sha256": os.environ.get("IN_ENGINE") or "",
+                  "batch": os.environ.get("IN_BATCH") or "",
+                  "anchor_id": os.environ.get("IN_ANCHOR") or "",
+                  "shard_count": int(os.environ.get("IN_COUNT") or 0),
+                  "shard_indices": [int(os.environ.get("IN_INDEX") or -1)],
+                  "opening_suite": os.environ.get("IN_SUITE") or "",
+                  "opening_suite_sha256": os.environ.get("IN_SUITE_SHA") or "",
+                  "repetitions": int(os.environ.get("IN_REPS") or 0),
+                  "seed": int(os.environ.get("IN_SEED") or 0),
+                  "tc": os.environ.get("IN_TC") or "",
+              }
+
+          # --- strict schema ---
+          if cfg.get("schema") != 1:
+              fail("schema must be 1")
+          purpose = cfg.get("purpose", "")
+          if purpose not in ("pilot", "control", "screening", "confirmatory"):
+              fail(f"bad purpose {purpose!r}")
+          batch = cfg.get("batch", "")
+          if batch not in ("A", "B", "CTRL"):
+              fail(f"bad batch {batch!r}")
+          anchor = cfg.get("anchor_id", "")
+          if not re.fullmatch(r"[a-z0-9._-]+", anchor or ""):
+              fail(f"bad anchor_id {anchor!r}")
+          count = cfg.get("shard_count")
+          indices = cfg.get("shard_indices")
+          if not isinstance(count, int) or count <= 0 or not isinstance(indices, list) or not indices:
+              fail("shard_count/shard_indices invalid")
+          for i in indices:
+              if not isinstance(i, int) or not (0 <= i < count):
+                  fail(f"shard index out of range: {i}")
+          reps = cfg.get("repetitions")
+          if not isinstance(reps, int) or reps <= 0:
+              fail("repetitions must be positive int")
+          if not isinstance(cfg.get("seed"), int):
+              fail("seed must be int")
+          if not re.fullmatch(r"\d+/\d+(\.\d+)?(m|s)?", cfg.get("tc", "")):
+              fail(f"bad tc {cfg.get('tc')!r}")
+
+          # --- engine hash policy ---
+          eng = cfg.get("engine_sha256", "")
+          if eng == "freeze":
+              if purpose == "confirmatory":
+                  fail("'freeze' engine_sha256 not allowed for confirmatory runs")
+          elif not re.fullmatch(r"[0-9a-f]{64}", eng):
+              fail(f"engine_sha256 must be 64-hex or 'freeze', got {eng!r}")
+
+          # --- suite hash ---
+          suite = cfg.get("opening_suite", "")
+          if not os.path.exists(suite):
+              fail(f"opening suite not found: {suite}")
+          got = hashlib.sha256(open(suite, "rb").read()).hexdigest()
+          want = cfg.get("opening_suite_sha256", "")
+          if not re.fullmatch(r"[0-9a-f]{64}", want or "") or got != want:
+              fail(f"suite hash mismatch: got {got} want {want!r}")
+
+          # --- target commit policy ---
+          tc_target = cfg.get("target_commit", "")
+          if tc_target == "auto":
+              if purpose == "confirmatory":
+                  fail("'auto' target_commit not allowed for confirmatory runs")
+              target = head
+          else:
+              if not re.fullmatch(r"[0-9a-f]{7,40}", tc_target or ""):
+                  fail(f"bad target_commit {tc_target!r}")
+              rc = subprocess.run(["git", "merge-base", "--is-ancestor", tc_target, head]).returncode
+              if rc != 0:
+                  fail(f"target_commit {tc_target} is not an ancestor of head {head}")
+              # engine/harness must be identical between frozen target and head
+              rc = subprocess.run(
+                  ["git", "diff", "--quiet", tc_target, head, "--",
+                   "src", "Cargo.toml", "Cargo.lock", "scripts", "benches/anchor-pool.json",
+                   "benches/rating-openings-batchA.txt", "benches/rating-openings-batchB.txt"]).returncode
+              if rc != 0:
+                  fail("engine/harness/suite/pool drift between target_commit and head")
+              target = tc_target
+
+          cfg["resolved_target_commit"] = target
+          cfg["resolved_engine_sha256"] = eng
+          with open("/tmp/resolved-config.json", "w") as f:
+              json.dump(cfg, f, indent=2)
+          print(f"resolved: purpose={purpose} batch={batch} anchor={anchor} "
+                f"shards={indices} of {count} reps={reps} tc={cfg['tc']} target={target}")
+
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a") as f:
+              f.write(f"indices={json.dumps(indices)}\n")
+              f.write(f"config={json.dumps(json.dumps(cfg))}\n")
+          PY
+
+  shard:
+    name: ${{ fromJson(needs.resolve.outputs.config).purpose }}-${{ fromJson(needs.resolve.outputs.config).batch }}-${{ fromJson(needs.resolve.outputs.config).anchor_id }}-shard${{ matrix.shard_index }}
+    needs: resolve
+    runs-on: ubuntu-24.04
     timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: ${{ fromJson(needs.resolve.outputs.indices) }}
     steps:
       - name: Checkout frozen commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.target_commit }}
+          ref: ${{ fromJson(needs.resolve.outputs.config).resolved_target_commit }}
 
       - name: Verify checkout is the frozen commit
         run: |
           got=$(git rev-parse HEAD)
-          want="${{ github.event.inputs.target_commit }}"
+          want="${{ fromJson(needs.resolve.outputs.config).resolved_target_commit }}"
           [ "$got" = "$want" ] || { echo "checkout $got != frozen $want"; exit 1; }
 
       - name: Record runner hardware and software (calibration data)
         run: |
           {
             echo "=== utc: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
-            uname -a; cat /etc/os-release; lscpu; head -5 /proc/meminfo
+            uname -a; cat /etc/os-release; lscpu | head -20; head -5 /proc/meminfo
             echo "ImageOS=${ImageOS:-unknown} ImageVersion=${ImageVersion:-unknown}"
           } | tee runner-hardware.txt
 
@@ -90,38 +249,42 @@ jobs:
         with:
           toolchain: 1.99.0
 
-      - name: Build release engine
+      - name: Build release engine at the frozen commit
         run: cargo build --release --locked
 
       - name: Verify engine binary SHA-256 against frozen value
+        env:
+          WANTED: ${{ fromJson(needs.resolve.outputs.config).resolved_engine_sha256 }}
         run: |
+          set -euo pipefail
           got=$(sha256sum target/release/flawless | cut -d' ' -f1)
-          want="${{ github.event.inputs.engine_sha256 }}"
           echo "engine sha256: $got"
-          [ "$got" = "$want" ] || { echo "engine hash mismatch: $got != $want"; exit 1; }
+          echo "::notice::engine_sha256=$got (commit $(git rev-parse HEAD))"
+          if [ "$WANTED" = "freeze" ]; then
+            echo "::notice::FREEZE RUN: recorded engine_sha256=$got — pin this in preregistration before confirmatory batches"
+          elif [ "$got" != "$WANTED" ]; then
+            echo "::error::engine hash mismatch: $got != $WANTED"
+            exit 1
+          fi
 
       - name: Verify opening-suite hash
+        env:
+          SUITE: ${{ fromJson(needs.resolve.outputs.config).opening_suite }}
+          WANT: ${{ fromJson(needs.resolve.outputs.config).opening_suite_sha256 }}
         run: |
-          got=$(sha256sum "${{ github.event.inputs.opening_suite }}" | cut -d' ' -f1)
-          want="${{ github.event.inputs.opening_suite_sha256 }}"
+          got=$(sha256sum "$SUITE" | cut -d' ' -f1)
           echo "suite sha256: $got"
-          [ "$got" = "$want" ] || { echo "suite hash mismatch: $got != $want"; exit 1; }
+          [ "$got" = "$WANT" ] || { echo "::error::suite hash mismatch: $got != $WANT"; exit 1; }
 
       - name: Install Python + python-chess (pinned)
-        run: |
-          python3 -m pip install --user chess==1.11.2
+        run: python3 -m pip install --user chess==1.11.2
 
-      # Anchor binaries must be acquired and hash-verified per the frozen pool
-      # (docs/RATING_PROTOCOL.md §2). The pool file is preregistered; this step
-      # downloads each binary from its recorded source URL and refuses to run the
-      # shard unless every SHA-256 matches. No placeholder pool ever validates.
       - name: Acquire and verify anchor binaries
         env:
-          ANCHOR_ID: ${{ github.event.inputs.anchor_id }}
+          ANCHOR_ID: ${{ fromJson(needs.resolve.outputs.config).anchor_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          POOL=benches/anchor-pool.json
           python3 - <<'PY' > /tmp/entry.json
           import json, os, sys
           pool = json.load(open("benches/anchor-pool.json"))
@@ -137,13 +300,10 @@ jobs:
           ART=$(python3 -c "import json; print(json.load(open('/tmp/entry.json'))['artifact'])")
           RUNID=$(python3 -c "import json; print(json.load(open('benches/anchor-pool.json'))['verification']['run_id'])")
           mkdir -p anchors
-          # Primary: the exact anchor-verify runner binary (byte-exact evidence).
           if gh run download "$RUNID" -n "$ART" -D /tmp/anchor-bin 2>/dev/null && [ -f /tmp/anchor-bin/anchor-binary ]; then
             cp /tmp/anchor-bin/anchor-binary "anchors/$ANCHOR_ID"
             MODE="artifact $ART"
           else
-            # Fallback (artifact expired): rebuild from the pinned source and
-            # require the binary hash to match the frozen pool (fail closed).
             echo "artifact unavailable — rebuilding from pinned source" >&2
             bash scripts/anchor_build.sh "$ANCHOR_ID" /tmp/anchor-rebuild > /tmp/rebuild.json
             cp "/tmp/anchor-rebuild/$ANCHOR_ID.src/$(python3 -c "import json; print(json.load(open('/tmp/rebuild.json'))['binary'])")" "anchors/$ANCHOR_ID"
@@ -156,32 +316,40 @@ jobs:
             exit 11
           fi
           echo "anchor $ANCHOR_ID verified sha256=$GOT (mode=$MODE)"
-          echo "This shard FAILS CLOSED until then." >&2
-          exit 1
 
       - name: Run tournament shard (match.py)
+        env:
+          CFG: ${{ needs.resolve.outputs.config }}
+          MATRIX_I: ${{ matrix.shard_index }}
         run: |
-          python3 scripts/match.py \
-            --white-cmd "./target/release/flawless uci" \
-            --black-cmd "./anchors/${{ github.event.inputs.anchor_id }}" \
-            --white-name Flawless --black-name "${{ github.event.inputs.anchor_id }}" \
-            --tc "${{ github.event.inputs.tc }}" \
-            --openings "${{ github.event.inputs.opening_suite }}" \
-            --repetitions "${{ github.event.inputs.repetitions }}" \
-            --batch-id "${{ github.event.inputs.batch }}" \
-            --shard-index "${{ github.event.inputs.shard_index }}" \
-            --shard-count "${{ github.event.inputs.shard_count }}" \
-            --shard-id "${{ github.event.inputs.batch }}-${{ github.event.inputs.anchor_id }}-${{ github.event.inputs.shard_index }}" \
-            --anchor-json benches/anchor-pool.json \
-            --out "benches/rating-${{ github.event.inputs.batch }}/${{ github.event.inputs.anchor_id }}/shard-${{ github.event.inputs.shard_index }}"
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/match-args.txt
+          import json, os
+          c = json.loads(os.environ["CFG"])
+          out = f"benches/rating-{c['batch']}/{c['anchor_id']}/shard-{os.environ['MATRIX_I']}"
+          print("--white-cmd ./target/release/flawless uci")
+          print(f"--black-cmd ./anchors/{c['anchor_id']}")
+          print(f"--white-name Flawless --black-name {c['anchor_id']}")
+          print(f"--tc {c['tc']}")
+          print(f"--openings {c['opening_suite']}")
+          print(f"--repetitions {c['repetitions']}")
+          print(f"--batch-id {c['batch']}")
+          print(f"--shard-index {os.environ['MATRIX_I']}")
+          print(f"--shard-count {c['shard_count']}")
+          print(f"--shard-id {c['purpose']}-{c['batch']}-{c['anchor_id']}-{os.environ['MATRIX_I']}")
+          print("--anchor-json benches/anchor-pool.json")
+          print(f"--out {out}")
+          PY
+          # one arg per line above is for readability; feed as a single line
+          python3 scripts/match.py $(tr '\n' ' ' < /tmp/match-args.txt)
 
       - name: Upload shard evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rating-${{ github.event.inputs.batch }}-${{ github.event.inputs.anchor_id }}-shard${{ github.event.inputs.shard_index }}-${{ github.run_id }}
+          name: rating-${{ fromJson(needs.resolve.outputs.config).purpose }}-${{ fromJson(needs.resolve.outputs.config).batch }}-${{ fromJson(needs.resolve.outputs.config).anchor_id }}-shard${{ matrix.shard_index }}-${{ github.run_id }}
           path: |
-            benches/rating-${{ github.event.inputs.batch }}/${{ github.event.inputs.anchor_id }}/shard-${{ github.event.inputs.shard_index }}/
+            benches/rating-${{ fromJson(needs.resolve.outputs.config).batch }}/${{ fromJson(needs.resolve.outputs.config).anchor_id }}/shard-${{ matrix.shard_index }}/
             runner-hardware.txt
           if-no-files-found: warn
           retention-days: 90
