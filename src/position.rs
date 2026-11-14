@@ -295,7 +295,9 @@ impl Position {
                 }
             };
             if !valid {
-                return Err("fen: en passant square inconsistent with a legal double pawn push".to_string());
+                return Err(
+                    "fen: en passant square inconsistent with a legal double pawn push".to_string(),
+                );
             }
             pos.ep = sq as i8;
         }
@@ -580,11 +582,7 @@ impl Position {
         if old_ep >= 0 && old_ep_included {
             self.hash ^= zob_ep(file_of(old_ep as Square));
         }
-        let new_ep_included = if self.ep >= 0 {
-            self.hash_ep().is_some()
-        } else {
-            false
-        };
+        let new_ep_included = if self.ep >= 0 { self.hash_ep().is_some() } else { false };
         if self.ep >= 0 && new_ep_included {
             self.hash ^= zob_ep(file_of(self.ep as Square));
         }
@@ -689,7 +687,6 @@ impl Position {
         let ep = self.ep as Square;
         let ep_file = file_of(ep) as i32;
         let us = self.side;
-        let rank = rank_of(ep);
         // white to move captures onto rank 6 from rank 5; black to move onto rank 3 from rank 4
         let pawn_rank = if us == WHITE { 4 } else { 3 };
         let our_pawns = self.pieces[us * 6 + PAWN];
@@ -702,7 +699,6 @@ impl Position {
             if our_pawns & (1u64 << from) == 0 {
                 continue;
             }
-            let _ = rank;
             // Legality including rank-pins on the captured pawn row: probe on a clone.
             let mut probe = self.clone();
             let legal = crate::movegen::generate_legal(&mut probe);
