@@ -114,20 +114,31 @@ signature unchanged `fc907eba40b7869f`, 2,221,199 nodes @ d10 (43% reduction; 25
   vs a credible pool with documented methodology, pinned opponents, paired openings, ≥2 independent
   confirmation batches with ≥2,000 games per anchor per batch, preregistered) is NOT measured and
   NOT met. Nothing may be claimed otherwise.**
-- Blocker (exact): no reachable calibrated pool from this sandbox. CCRL/CEGT listings are pages with
-  documented methodology but match execution at scale (thousands of games, 40/15-class time controls,
-  ratable opponent binaries with known CCRL Elo) cannot be downloaded/run here; crates.io/static
-  rust-lang.org are unreachable; raw.githubusercontent.com is blocked; only github/codeload/api.github.com,
-  npm and pypi registries are reachable. No official rating exists or may be claimed.
-- Pre-registered protocol for when the gate IS executed: `docs/RATING_PROTOCOL.md`.
-- Next actions for the gate (in priority order): (1) run the preregistered protocol on a machine with
-  access to ratable opponent binaries (e.g. licensed CEGT/CCRL-anchored opponents or publicly distributed
-  engine binaries with documented CCRL 40/15 Elo), ≥2 confirmation batches; (2) publish raw PGNs + stats;
-  (3) only then evaluate v1.0.0 authorization.
+- Blocker (exact, UPDATED 2026-11-14 late): the sandbox still cannot reach computerchess.org.uk, but
+  GitHub-hosted runners CAN — `anchor-research.yml` has now captured the official CCRL 40/15 list
+  (URL `https://computerchess.org.uk/4040/rating_list_all.html`, retrieved 2026-11-14T10:49:28Z,
+  HTTP 200, 3,912,738 bytes, SHA-256 `ce365c55b2869502de6addeada4c261d3bd2f50a5a9aef484db9f571aabe15f0`;
+  4,873 parsed rows; November 13, 2026 update; "Bayeselo" computed; **published errors are 95%
+  confidence intervals** → anchor-pool `error_convention: ci95`). What remains external: (a) selecting
+  ≥3 eligible anchors whose EXACT listed versions have legally downloadable binaries (open-source
+  candidates mapped: akimbo 0.1.1=2441±19, Topple 0.2.1=2439±14, WyldChess 1.2=2445±21, Halogen 6=
+  2441±23, Counter 1.2=2447±14, CT800 1.42=2441±23, Cheese 1.4=2448±17, Kimbo 0.3.0=2439±17 — all
+  CCRL 40/15 Nov 13 2026; GitHub homes+licenses resolved via API), plus BELOW-2200 anchors (lower-band
+  extraction in progress) so the pool brackets 2,000; (b) the match execution at scale (thousands of
+  40/15-class games — GitHub Actions shards per rating-run.yml; local 2-vCPU screening cannot); (c) the
+  hardware calibration (Stockfish 10 bench procedure → i7-4770k equivalence) before confirmatory runs.
+- Pre-registered protocol for when the gate IS executed: `docs/RATING_PROTOCOL.md` §9.
+- Next actions for the gate (in priority order): (1) finish anchor vetting: exact-version binary
+  acquisition + SHA-256 + license verification on hosted runners (anchor-research → anchor-verify);
+  fill `benches/anchor-pool.json` (NEVER the template) with verified values incl. ci95 conventions;
+  (2) run null-control + pilot shards via rating-run.yml to measure throughput and TC equivalence;
+  (3) preregister + freeze Batch A/B schedules; (4) execute ≥2 confirmation batches × ≥2,000 games
+  per anchor (60×17×2 shards); (5) rating-gate must pass with all three lower bounds > 2,000;
+  (6) publish raw evidence + stats; only then evaluate v1.0.0 authorization.
 
 ## Reviews (per-reviewer state, head SHA at time of record)
 
-Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, not draft.
+Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, **Draft** (converted 2026-11-14).
 
 | Reviewer | State | Notes |
 |----------|-------|-------|

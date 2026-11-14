@@ -369,24 +369,75 @@ jobs:
                   text = text[3500:]
 
           body = open("fetch/attempt_1.body", encoding="utf-8", errors="replace").read()
-          # CCRL rows link engine names to their homepages: <a href="URL">Name ...</a>
+          all_anchors = re.findall(r"<a\s[^>]*>", body, flags=re.I)
+          emit("notice", f"anchor_tags_total={len(all_anchors)}")
           links = dict()
-          for m in re.finditer(r'<a href="(https?://[^"]+)"[^>]*>([^<]{2,60})</a>', body):
+          for m in re.finditer(r'<a\s[^>]*href=["\']?(https?://[^"\'>\s]+)["\']?[^>]*>([^<]{2,60})</a>',
+                               body, flags=re.I):
               url, name = m.group(1), m.group(2).strip()
               for key in ("akimbo", "Topple", "WyldChess", "Halogen", "Cheese", "Counter",
                           "Kimbo", "CT800", "Gaviota", "Arasan", "Ethereal", "Winter",
                           "Monolith", "Stash", "Fruit", "Toga", "Glaurung", "Crafty",
                           "Vice", "Hakkapeliitta", "Bobcat", "Rodent", "Daydreamer",
                           "Phalanx", "Weiss", "Demolito", "FabChess", "Igel", "Laser",
-                          "Nemorino", "RubiChess", "Berserk", "Texel"):
+                          "Nemorino", "RubiChess", "Berserk", "Texel", "Carballo",
+                          "Hedgehog", "Schola", "Bubble", "Rival", "Mediocre", "Neurosis",
+                          "Weini", "Zevra", "Pirarucu", "AdroitChess", "Embla", "GopherCheck"):
                   if re.search(rf"\b{key}\b", name, flags=re.I):
                       links.setdefault(key, set()).add((name, url))
           out = []
           for key in sorted(links):
               for name, url in sorted(links[key])[:3]:
                   out.append(f"{key}: [{name}] {url}")
+          if not out:
+              out.append("NO matching engine links found in body")
           for chunk_start in range(0, min(len(out), 18), 6):
               emit("notice", "homepages:\n" + "\n".join(out[chunk_start:chunk_start + 6]))
+          PY
+
+      - name: Full tag lists and below-band repo search
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.parse, urllib.request
+
+          def emit(level, text):
+              text = re.sub(r"\r?\n", "%0A", text)
+              while text:
+                  print(f"::{level}::{text[:3500]}")
+                  text = text[3500:]
+
+          def gh(path):
+              req = urllib.request.Request(
+                  "https://api.github.com" + path,
+                  headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "anchor-research"})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+
+          out = []
+          for repo in ("jw1912/akimbo", "konsolas/ToppleChess", "Mk-Chan/WyldChess"):
+              try:
+                  tags = gh(f"/repos/{repo}/tags?per_page=100")
+                  out.append(f"{repo}: ALL tags={[t['name'] for t in tags]}")
+              except Exception as e:
+                  out.append(f"{repo}: TAGS-ERROR {e}")
+          for q in ("carballo chess engine", "Hedgehog chess engine", "schola chess engine",
+                    "rival chess engine", "mediocre chess engine", "neurosis chess engine",
+                    "weini chess", "zevra chess", "pirarucu chess", "CT800 Rasmus",
+                    "bubble chess engine", "adroit chess engine", "embla chess engine",
+                    "gophercheck"):
+              try:
+                  res = gh(f"/search/repositories?q={urllib.parse.quote(q)}&per_page=2")
+                  for it in res.get("items", [])[:2]:
+                      lic = (it.get("license") or {}).get("spdx_id")
+                      out.append(f"{q!r}: hit={it['full_name']} license={lic} stars={it['stargazers_count']}")
+              except Exception as e:
+                  out.append(f"{q!r}: SEARCH ERROR {e}")
+          for chunk_start in range(0, min(len(out), 16), 4):
+              emit("notice", "tags+search probe:\n" + "\n".join(out[chunk_start:chunk_start + 4]))
           PY
 
       - name: Hash all fetched files
