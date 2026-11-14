@@ -21,12 +21,17 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       estimator degenerate-Σ_m + covariances (scripts/test_rating_estimator.py).
 - [ ] Full CI matrix green on the exact FINAL head SHA — must be re-verified at the final head
       after all remaining work (last fully green: 43587593326 at `4d91741`; newer heads pending).
-- [ ] No known unresolved correctness or security blockers — 5 PR review threads still open
-      (2 outdated): covariance-between-anchors (verdict: handled by joint opening-cluster
-      bootstrap — needs thread reply + doc cross-ref), match.py Windows pipe reader (outdated
-      scope: rating runs execute on Linux runners; disposition pending), search.rs TT halfmove
-      (verified fixed — thread to resolve), uci.rs:433 hold/output race (verification pending),
-      uci_smoke wait robustness (outdated; disposition pending).
+- [x] No known unresolved correctness or security blockers — all 5 previously-open PR review
+      threads verified against current code, replied with evidence and resolved 2026-11-14:
+      covariance-between-anchors = valid/fixed (§9.6–8 + joint-cluster-bootstrap GLS estimator,
+      46/46), match.py Windows pipe reader = valid/fixed (reader-thread + Event, no select on
+      pipes), search.rs TT halfmove = valid/fixed (src/tt.rs clock-safe flag + probe suppression
+      + regression test), uci.rs:433 hold/output race = invalid as described (worker
+      hold-check+send and ponderhit clear+try_recv share one flush mutex; proven by analysis and
+      locked in by new jittered stress regression
+      `ponderhit_or_stop_racing_search_end_emits_exactly_one_bestmove`, 30 trials), uci_smoke
+      wait robustness = valid/fixed (post-exit `drain_reader` through channel disconnection +
+      full-line panic-marker scan in both tests).
 
 ## Rating methodology (docs/RATING_PROTOCOL.md §9)
 
@@ -62,8 +67,10 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
 - [ ] CodeRabbit completed review on the exact final head SHA — last substantive review
       5903125228 at f07c4633; manual re-review at final head to be requested (path previously
       rate-limited: "manual review required for this OSS repository").
-- [ ] All relevant CodeRabbit findings dispositioned — 13/13 of 5903125228 dispositioned
-      (AGENTS_LOG.md); 5 review threads need replies/resolution after verification.
+- [x] All relevant CodeRabbit findings dispositioned — 13/13 of review 5903125228 dispositioned
+      (AGENTS_LOG.md) and all 11 of its review threads now carry evidence-based replies and are
+      resolved (6 earlier + 5 on 2026-11-14; per-thread dispositions in the checklist above).
+      Findings of the pending final-head review will be dispositioned the same way before merge.
 - [ ] Documentation and PR description match the final implementation — STATUS.md updated at
       d023ee8+; PR body refresh pending at final head.
 - [ ] All mandatory GitHub branch-protection and review conditions satisfied — verify at merge

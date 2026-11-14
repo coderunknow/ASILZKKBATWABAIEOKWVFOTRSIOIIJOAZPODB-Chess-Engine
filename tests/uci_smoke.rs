@@ -224,3 +224,67 @@ fn seeded_fuzz_command_sequences() {
         assert!(status.success(), "trial {trial}: nonzero exit");
     }
 }
+
+/// Regression for the hold/ponderhit bestmove handoff (PR #1 review thread
+/// PRRT_..D-, src/uci.rs:433): after `go ponder`, exactly one `bestmove` must be
+/// emitted as soon as the search ends or `ponderhit`/`stop` arrives — never
+/// deferred until a later GUI command, never duplicated. The trials race the
+/// worker's end-of-search section against the main thread's command handling
+/// with sub-millisecond jitter and tiny movetimes, hammering both orderings.
+#[test]
+fn ponderhit_or_stop_racing_search_end_emits_exactly_one_bestmove() {
+    for trial in 0..30u32 {
+        let (mut child, reader) = start();
+        {
+            let stdin = child.stdin.as_mut().unwrap();
+            writeln!(stdin, "uci").unwrap();
+            writeln!(stdin, "isready").unwrap();
+        }
+        wait_for(&mut child, &reader, "readyok", Duration::from_secs(10));
+        let mt = 2 + (trial % 7); // 2..8 ms: search ends almost immediately
+        {
+            let stdin = child.stdin.as_mut().unwrap();
+            writeln!(stdin, "position startpos").unwrap();
+            writeln!(stdin, "go ponder movetime {mt}").unwrap();
+            // Jittered arrival: sometimes the command lands before the search ends,
+            // sometimes after the worker already held back bestmove.
+            std::thread::sleep(Duration::from_micros(50 * u64::from(trial % 41)));
+            if trial % 2 == 0 {
+                writeln!(stdin, "ponderhit").unwrap();
+            } else {
+                writeln!(stdin, "stop").unwrap();
+            }
+            stdin.flush().unwrap();
+        }
+        // Exactly one bestmove must arrive WITHOUT any further command.
+        let mut lines = Vec::new();
+        let mut bestmoves = 0u32;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline && bestmoves == 0 {
+            for line in drain_reader(&reader, Duration::from_millis(150)) {
+                if line.starts_with("bestmove") {
+                    bestmoves += 1;
+                }
+                assert!(!line.contains("panicked"), "trial {trial}: {line}");
+                lines.push(line);
+            }
+        }
+        // Grace window: catch a duplicated bestmove if the handoff were broken.
+        for line in drain_reader(&reader, Duration::from_millis(300)) {
+            if line.starts_with("bestmove") {
+                bestmoves += 1;
+            }
+            assert!(!line.contains("panicked"), "trial {trial}: {line}");
+            lines.push(line);
+        }
+        assert_eq!(
+            bestmoves, 1,
+            "trial {trial} (mt={mt}, cmd={}): expected exactly one bestmove without further input; saw lines: {lines:?}",
+            if trial % 2 == 0 { "ponderhit" } else { "stop" }
+        );
+        writeln!(child.stdin.as_mut().unwrap(), "quit").unwrap();
+        let _ = child.stdin.as_mut().unwrap().flush();
+        let status = wait_child(child, Duration::from_secs(10));
+        assert!(status.success(), "trial {trial}: nonzero exit");
+    }
+}
