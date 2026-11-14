@@ -323,25 +323,43 @@ jobs:
           MATRIX_I: ${{ matrix.shard_index }}
         run: |
           set -euo pipefail
-          python3 - <<'PY' > /tmp/match-args.txt
-          import json, os
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+
           c = json.loads(os.environ["CFG"])
-          out = f"benches/rating-{c['batch']}/{c['anchor_id']}/shard-{os.environ['MATRIX_I']}"
-          print("--white-cmd ./target/release/flawless uci")
-          print(f"--black-cmd ./anchors/{c['anchor_id']}")
-          print(f"--white-name Flawless --black-name {c['anchor_id']}")
-          print(f"--tc {c['tc']}")
-          print(f"--openings {c['opening_suite']}")
-          print(f"--repetitions {c['repetitions']}")
-          print(f"--batch-id {c['batch']}")
-          print(f"--shard-index {os.environ['MATRIX_I']}")
-          print(f"--shard-count {c['shard_count']}")
-          print(f"--shard-id {c['purpose']}-{c['batch']}-{c['anchor_id']}-{os.environ['MATRIX_I']}")
-          print("--anchor-json benches/anchor-pool.json")
-          print(f"--out {out}")
+          i = os.environ["MATRIX_I"]
+          out = f"benches/rating-{c['batch']}/{c['anchor_id']}/shard-{i}"
+          cmd = [
+              sys.executable, "scripts/match.py",
+              # NOTE: --white-cmd is ONE argv containing the full command line;
+              # match.py splits it internally (args.white_cmd.split()).
+              "--white-cmd", "./target/release/flawless uci",
+              "--black-cmd", f"./anchors/{c['anchor_id']}",
+              "--white-name", "Flawless",
+              "--black-name", c["anchor_id"],
+              "--tc", c["tc"],
+              "--openings", c["opening_suite"],
+              "--repetitions", str(c["repetitions"]),
+              "--batch-id", c["batch"],
+              "--shard-index", i,
+              "--shard-count", str(c["shard_count"]),
+              "--shard-id", f"{c['purpose']}-{c['batch']}-{c['anchor_id']}-{i}",
+              "--anchor-json", "benches/anchor-pool.json",
+              "--out", out,
+          ]
+          print("invoking:", " ".join(cmd), flush=True)
+          with open("/tmp/match-stderr.txt", "w") as errf:
+              rc = subprocess.call(cmd, stderr=errf)
+          if rc != 0:
+              try:
+                  tail = open("/tmp/match-stderr.txt").read()[-3000:]
+              except OSError:
+                  tail = "(no stderr captured)"
+              for j in range(0, len(tail), 3500):
+                  print(f"::error::match.py stderr {j}: {tail[j:j+3500]}")
+              print(f"::error::match.py exit code {rc}")
+          sys.exit(rc)
           PY
-          # one arg per line above is for readability; feed as a single line
-          python3 scripts/match.py $(tr '\n' ' ' < /tmp/match-args.txt)
 
       - name: Upload shard evidence
         if: always()

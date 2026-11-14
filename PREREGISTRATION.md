@@ -32,4 +32,15 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 
 ### PILOT-1 result (filled after execution — see AGENTS_LOG.md for the raw record)
 
-- status: PENDING EXECUTION
+- status: IN EXECUTION (revision 3)
+- freeze observations (annotations of run 43601528240): runner engine build of the frozen
+  source (rustc 1.99.0, ubuntu-24.04) = SHA-256
+  `fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d`, identical across two
+  independent runner builds (runs 43597866181 verify-flawless and 43601528240) → byte-reproducible
+  on this image/toolchain. Revision 3 pins this hash (strict mode). Any later hash mismatch
+  fails closed and requires a documented re-freeze before further games.
+- harness defects found by the pilot before any game completed (recorded in FAILURE_LEDGER):
+  (1) config job-output double-encoding → checkout fallback to merge commit (rev 2);
+  (2) shell word-splitting of `--white-cmd` argv (match.py: "unrecognized arguments: uci",
+  exit 2) → step now drives match.py via an explicit argv list with stderr annotation capture.
+- game/throughput results: PENDING (games run in revision 3+).
