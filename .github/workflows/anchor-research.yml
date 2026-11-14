@@ -201,6 +201,117 @@ jobs:
               emit("notice", "binary probe:\n" + "\n".join(out[chunk_start:chunk_start + 6]))
           PY
 
+      - name: Fetch about + downloads pages (error convention, binary sources)
+        run: |
+          set -u
+          python3 - <<'PY' > /tmp/urls.txt
+          import glob, re
+          body = open("fetch/attempt_1.body", encoding="utf-8", errors="replace").read()
+          hrefs = set(re.findall(r'href="([^"]+)"', body))
+          for h in sorted(hrefs):
+              if re.search(r"about|download", h, re.I):
+                  print(h)
+          PY
+          cat /tmp/urls.txt
+          i=0
+          while read -r u; do
+            i=$((i+1))
+            case "$u" in http*) url="$u";; /*) url="https://computerchess.org.uk$u";; *) url="https://computerchess.org.uk/4040/$u";; esac
+            code=$(curl -sS -L --max-time 90 -A "FlawLessChess-anchor-research/1.0" -o "fetch/extra_${i}.body" -w '%{http_code}' "$url" 2>fetch/extra_${i}.stderr) || code="curl-exit-$?"
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) url=$url status=$code bytes=$(wc -c < fetch/extra_${i}.body 2>/dev/null || echo 0) sha256=$(sha256sum fetch/extra_${i}.body 2>/dev/null | cut -d' ' -f1)" | tee -a fetch/attempts.txt
+          done < /tmp/urls.txt
+
+      - name: Extract error-bar convention and candidate engine rows
+        run: |
+          python3 - <<'PY'
+          import glob, html, os, re
+
+          def emit(level, text):
+              text = re.sub(r"\r?\n", "%0A", text)
+              while text:
+                  print(f"::{level}::{text[:3500]}")
+                  text = text[3500:]
+
+          # 1) Error-bar / uncertainty convention from any fetched page.
+          emitted_conv = 0
+          for path in sorted(glob.glob("fetch/*.body")):
+              if emitted_conv >= 3:
+                  break
+              raw = open(path, encoding="utf-8", errors="replace").read()
+              text = html.unescape(re.sub(r"<[^>]+>", " ", raw))
+              text = re.sub(r"\s+", " ", text)
+              for pat in (r"[^.]*\berror bars?[^.]*\.", r"[^.]*\bconfidence[^.]*\.",
+                          r"[^.]*Bayeselo[^.]*\.", r"[^.]*\buncertaint[^.]*\.",
+                          r"[^.]*\bElo \+[^.]*\."):
+                  for m in re.finditer(pat, text, flags=re.I):
+                      seg = m.group(0).strip()
+                      if 20 <= len(seg) <= 600:
+                          emit("notice", f"convention ({os.path.basename(path)}): {seg}")
+                          emitted_conv += 1
+                  if emitted_conv:
+                      break
+
+          # 2) ALL rows of candidate engines across the whole list (every version),
+          #    so an exact version<->rating mapping exists per candidate. Chunked
+          #    into few annotations (step cap ~10).
+          names = ["akimbo", "Halogen", "Topple", "Weiss", "Demolito", "FabChess", "Igel",
+                   "Stash", "Counter", "WyldChess", "Kimbo", "Cheese", "CT800", "Winter",
+                   "Monolith", "Laser", "Nemorino", "RubiChess", "Ethereal", "Berserk",
+                   "Gaviota", "Arasan"]
+          rows = [l.rstrip("\n") for l in open("ccrl_4015_parsed.csv", encoding="utf-8", errors="replace")]
+          lines = []
+          for n in names:
+              hits = [r for r in rows if re.search(rf"\b{re.escape(n)}\b", r, flags=re.I)]
+              if hits:
+                  lines.append(f"== {n} ({len(hits)} rows) ==")
+                  lines.extend(hits[:8])
+          text = "\n".join(lines)
+          emit("notice", f"candidate version rows ({len(lines)} lines):\n" + text[:14000])
+          PY
+
+      - name: Probe release tags for resolved anchor-candidate repos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+
+          def emit(level, text):
+              text = re.sub(r"\r?\n", "%0A", text)
+              while text:
+                  print(f"::{level}::{text[:3500]}")
+                  text = text[3500:]
+
+          def gh(path):
+              req = urllib.request.Request(
+                  "https://api.github.com" + path,
+                  headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "anchor-research"})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+
+          repos = ["jw1912/akimbo", "KierenP/Halogen", "konsolas/ToppleChess",
+                   "Mk-Chan/WyldChess", "ChizhovVadim/CounterGo", "lucasart/demolito",
+                   "TerjeKir/Weiss", "fabianvdW/FabChess", "vshcherbyna/igel",
+                   "mhouppin/stash-bot"]
+          out = []
+          for repo in repos:
+              try:
+                  rel = gh(f"/repos/{repo}/releases?per_page=8")
+                  tags = [(r.get("tag_name"), [(a["name"], a["size"]) for a in r.get("assets", [])][:5]) for r in rel[:5]]
+                  out.append(f"{repo}: releases={tags}")
+              except Exception as e:
+                  out.append(f"{repo}: RELEASES-ERROR {e}")
+              try:
+                  tags = gh(f"/repos/{repo}/tags?per_page=8")
+                  out.append(f"{repo}: tags={[t['name'] for t in tags[:8]]}")
+              except Exception as e:
+                  out.append(f"{repo}: TAGS-ERROR {e}")
+          for chunk_start in range(0, min(len(out), 16), 4):
+              emit("notice", "release probe:\n" + "\n".join(out[chunk_start:chunk_start + 4]))
+          PY
+
       - name: Hash all fetched files
         run: |
           {
