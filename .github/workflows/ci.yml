@@ -75,6 +75,9 @@ jobs:
               else:
                   print('::error title={}::{}'.format(code, text[:480]))
               count += 1
+          log = re.sub(r'\x1b\[[0-9;]*m', '', open('clippy.log', errors='replace').read()).replace('%', ' percent ')
+          print('::notice::clippy.log head ::' + log[:400].replace('\n', ' | '))
+          print('::error title=clippy-log-tail::' + log[-1800:].replace('\n', ' | '))
           print('::notice::clippy diagnostics emitted: {} error(s)'.format(count))
           PY
           exit $status
