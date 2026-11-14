@@ -312,6 +312,27 @@ jobs:
               emit("notice", "release probe:\n" + "\n".join(out[chunk_start:chunk_start + 4]))
           PY
 
+      - name: Full version rows for buildable families
+        run: |
+          python3 - <<'PY'
+          import re
+
+          def emit(level, text):
+              text = re.sub(r"\r?\n", "%0A", text)
+              while text:
+                  print(f"::{level}::{text[:3500]}")
+                  text = text[3500:]
+
+          rows = [l.rstrip("\n") for l in open("ccrl_4015_parsed.csv", encoding="utf-8", errors="replace")]
+          lines = []
+          for n in ("Raven", "Stash", "Pirarucu", "Topple", "akimbo", "WyldChess", "FabChess", "Monolith", "Carballo"):
+              hits = [r for r in rows if re.search(rf"\b{re.escape(n)}\b", r, flags=re.I)]
+              lines.append(f"== {n} ({len(hits)} rows) ==")
+              lines.extend(hits)
+          text = "\n".join(lines)
+          emit("notice", f"buildable-family rows ({len(lines)} lines):\n" + text[:13500])
+          PY
+
       - name: Lower-band rows and extra engine families
         run: |
           python3 - <<'PY'
