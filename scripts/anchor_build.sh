@@ -57,7 +57,7 @@ case "$KEY" in
     BUILD='g++ -std=c++17 -O2 -DNDEBUG -pthread -include climits -include cstdint -include cstring bb.cpp board.cpp endgame.cpp eval.cpp hash.cpp main.cpp movegen.cpp movesort.cpp search.cpp -o topple'
     LICENSE="MIT" ;;
   wyldchess-1.1|wyldchess-1.2)
-    REPO="Mk-Chan/WyldChess"; TAG="${KEY#wyldchess-}"; NAME="WyldChess"; VERSION="$TAG"
+    REPO="Mk-Chan/WyldChess"; TAG="v${KEY#wyldchess-}"; NAME="WyldChess"; VERSION="${KEY#wyldchess-}"
     EXPECTED_ID="WyldChess"; BIN="wyldchess"
     BUILD='make CC="gcc -fcommon" -j2'
     LICENSE="GPL-3.0" ;;
@@ -89,7 +89,17 @@ echo "[anchor_build] $KEY: building ($BUILD)" >&2
 
 UCI_ID=$(printf 'uci\nquit\n' | timeout 10 "$SRC_DIR/$BIN" 2>/dev/null | grep -m1 '^id name' | sed 's/^id name //' | tr -d '\r')
 if [ "$UCI_ID" != "$EXPECTED_ID" ]; then
-  echo "UCI ID MISMATCH: got '$UCI_ID' want '$EXPECTED_ID'" >&2; exit 5
+  echo "UCI ID MISMATCH: got '$UCI_ID' want '$EXPECTED_ID'" >&2
+  echo "--- diagnostic run (raw stdout/stderr/rc):" >&2
+  printf 'uci\nquit\n' | timeout 10 "$SRC_DIR/$BIN" >"$WORKDIR/${KEY}.uci.out" 2>"$WORKDIR/${KEY}.uci.err"
+  echo "rc=$? stdout_bytes=$(wc -c < "$WORKDIR/${KEY}.uci.out") stderr_bytes=$(wc -c < "$WORKDIR/${KEY}.uci.err")" >&2
+  head -5 "$WORKDIR/${KEY}.uci.out" >&2
+  head -5 "$WORKDIR/${KEY}.uci.err" >&2
+  echo "--- ulimit/stack:" >&2
+  ulimit -s >&2
+  echo "--- file:" >&2
+  file "$SRC_DIR/$BIN" >&2
+  exit 5
 fi
 
 BIN_SHA=$(sha256sum "$SRC_DIR/$BIN" | cut -d' ' -f1)
