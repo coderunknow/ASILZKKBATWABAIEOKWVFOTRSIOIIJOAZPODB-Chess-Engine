@@ -706,8 +706,7 @@ impl Position {
             // Legality including rank-pins on the captured pawn row: probe on a clone.
             let mut probe = self.clone();
             let legal = crate::movegen::generate_legal(&mut probe);
-            for i in 0..legal.len {
-                let m = legal.moves[i];
+            for m in legal.iter() {
                 if m.from == from as Square && m.to == ep && m.promo == crate::types::PROMO_NONE {
                     return true;
                 }
