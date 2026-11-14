@@ -469,7 +469,9 @@ pub fn clock_limits(
     };
     let mtg = movestogo.unwrap_or(40).max(1);
     let soft = (t / mtg + inc / 2).clamp(20, 30_000);
-    let hard = (soft * 6).clamp(soft, t.saturating_sub(30));
+    // Never panic: min must not exceed max even when t < 30 or soft > t - 30.
+    let cap = t.saturating_sub(30);
+    let hard = soft.saturating_mul(6).min(cap).max(soft);
     (soft, hard)
 }
 

@@ -452,3 +452,20 @@ fn searchmoves_empty_falls_back_to_all_legal() {
     );
     assert_ne!(result.best_move.to_uci(), "0000");
 }
+
+// ---------- Audit regressions: clock handling ----------
+
+#[test]
+fn clock_limits_never_panics_at_zero_time() {
+    use flawless::uci::clock_limits;
+    // t = 0 (flagged on time) must not hit u64::clamp(min > max) and must keep soft <= hard.
+    let (soft, hard) = clock_limits(WHITE, 0, 0, 0, 0, None);
+    assert!(soft <= hard);
+    let (soft, hard) = clock_limits(BLACK, 0, 0, 0, 0, Some(0));
+    assert!(soft <= hard);
+    let (soft, hard) = clock_limits(WHITE, 10, 10, 0, 0, Some(1));
+    assert!(soft <= hard);
+    // normal case: soft < hard and hard within the budget
+    let (soft, hard) = clock_limits(WHITE, 60_000, 60_000, 1_000, 1_000, None);
+    assert!(soft <= hard && hard <= 60_000 - 30 + 1);
+}
