@@ -1,0 +1,229 @@
+# anchor-verify.yml — hosted-runner anchor binary verification (RATING_PROTOCOL §2/§5).
+#
+# Rebuilds every approved anchor from its exact pinned source revision on the hosted
+# runner, verifies UCI identity, records binary SHA-256 + toolchain + source hashes,
+# verifies the Flawless executable (bench signature + SHA-256) under the exact commit,
+# and measures the SF10 hardware-calibration factor against the CCRL reference machine
+# (i7-4770K: SF10 bench 3,939,338 nodes in 2054 ms — Tors3/CCRL_ScirptsTests
+# benchmark/ccrl_bench.py, constants REF_NODES/REF_TIME_MS in Tors3/TorsGUI-CCRL tc.rs).
+#
+# Fail-closed: any build failure, UCI-id mismatch, bench-signature mismatch, or SF10
+# node-count mismatch fails the job. Evidence leaves the runner via check-run
+# annotations (the sandbox cannot read artifacts) and artifacts (durable record).
+
+name: anchor-verify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-anchor:
+    name: build-${{ matrix.anchor }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        anchor:
+          - wowl-1.3.7
+          - raven-0.50
+          - raven-0.70
+          - raven-0.80
+          - raven-0.90
+          - topple-0.1.1
+          - topple-0.2.1
+          - wyldchess-1.1
+          - wyldchess-1.2
+          - akimbo-0.1.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record toolchain and machine
+        run: |
+          {
+            echo "image=$ImageOS $ImageVersion"
+            uname -a
+            lscpu | grep -E "Model name|^CPU\(s\)|Thread|MHz|Flags" | head -5
+            free -h | head -2
+            gcc --version | head -1
+            g++ --version | head -1
+            rustc --version || true
+            cargo --version || true
+          } | tee /tmp/toolchain.txt
+
+      - name: Build and verify ${{ matrix.anchor }}
+        run: |
+          bash scripts/anchor_build.sh "${{ matrix.anchor }}" /tmp/anchor | tee /tmp/anchor.json
+          # License presence is a hard requirement (fail closed).
+          ls /tmp/anchor/${{ matrix.anchor }}.src/LICENSE* /tmp/anchor/${{ matrix.anchor }}.src/COPYING* \
+            /tmp/anchor/${{ matrix.anchor }}.src/license* >/dev/null 2>&1 \
+            || { echo "::error::no LICENSE file in anchor source"; exit 6; }
+          # Stable path for the built binary (used by the artifact upload).
+          python3 -c "import json,sys; print(json.load(open('/tmp/anchor.json'))['binary'])" > /tmp/binpath
+          cp "/tmp/anchor/${{ matrix.anchor }}.src/$(cat /tmp/binpath)" /tmp/anchor-binary
+          {
+            echo "=== anchor-verify ${{ matrix.anchor }} ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
+            cat /tmp/anchor.json
+            echo "--- toolchain:"
+            cat /tmp/toolchain.txt
+            echo "--- build log tail:"
+            tail -3 /tmp/anchor/${{ matrix.anchor }}.build.log
+          } | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' > /tmp/annotation.txt
+          python3 - <<'PY'
+          import re
+          text = open("/tmp/annotation.txt").read()
+          while text:
+              print(f"::notice::{text[:3500]}")
+              text = text[3500:]
+          PY
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: anchor-${{ matrix.anchor }}-${{ github.run_id }}
+          path: |
+            /tmp/anchor.json
+            /tmp/anchor/${{ matrix.anchor }}.build.log
+            /tmp/anchor-binary
+          if-no-files-found: warn
+          retention-days: 90
+
+  verify-flawless:
+    name: verify-flawless
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record toolchain and machine
+        run: |
+          {
+            echo "image=$ImageOS $ImageVersion"
+            uname -a
+            lscpu | grep -E "Model name|^CPU\(s\)|Thread|MHz" | head -5
+            rustc --version
+            cargo --version
+            gcc --version | head -1
+          } | tee /tmp/toolchain.txt
+
+      - name: Build Flawless at frozen commit
+        run: |
+          git rev-parse HEAD | tee /tmp/commit.txt
+          cargo build --release --locked 2>&1 | tail -2
+          BIN=target/release/flawless
+          [ -x "$BIN" ] || BIN=target/release/Flawless
+          ls target/release/ | head -10
+          echo "BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Verify bench signature and hash
+        run: |
+          set -u
+          OUT=$(./"$BIN" bench 2>&1)
+          echo "$OUT" | tail -4
+          SIG=$(echo "$OUT" | grep -oE "signature[ =:]+[0-9a-f]{16}" | grep -oE "[0-9a-f]{16}" | tail -1)
+          echo "signature=$SIG"
+          [ "$SIG" = "fc907eba40b7869f" ] || { echo "::error::bench signature mismatch: got $SIG want fc907eba40b7869f"; exit 7; }
+          SHA=$(sha256sum "./$BIN" | cut -d' ' -f1)
+          echo "binary_sha256=$SHA"
+          {
+            echo "=== verify-flawless ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
+            echo "commit=$(cat /tmp/commit.txt) binary_sha256=$SHA bench_signature=$SIG"
+            cat /tmp/toolchain.txt
+          } | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' > /tmp/annotation.txt
+          python3 - <<'PY'
+          import re
+          text = open("/tmp/annotation.txt").read()
+          while text:
+              print(f"::notice::{text[:3500]}")
+              text = text[3500:]
+          PY
+          echo "{\"commit\":\"$(cat /tmp/commit.txt)\",\"binary_sha256\":\"$SHA\",\"bench_signature\":\"$SIG\"}" > /tmp/flawless.json
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-verify-${{ github.run_id }}
+          path: |
+            /tmp/flawless.json
+            /tmp/toolchain.txt
+          retention-days: 90
+
+  sf10-calibration:
+    name: sf10-calibration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record machine
+        run: |
+          {
+            echo "image=$ImageOS $ImageVersion"
+            uname -a
+            lscpu | grep -E "Model name|^CPU\(s\)|Thread|Core|Socket|MHz|Hypervisor" | head -8
+            free -h | head -2
+            gcc --version | head -1
+          } | tee /tmp/machine.txt
+
+      - name: Build Stockfish 10 from official sf_10 tag
+        run: |
+          curl -sSL --fail --max-time 300 -o /tmp/sf10.tar.gz \
+            "https://codeload.github.com/official-stockfish/Stockfish/tar.gz/refs/tags/sf_10"
+          echo "sf10_source_sha256=$(sha256sum /tmp/sf10.tar.gz | cut -d' ' -f1)" | tee /tmp/sf10-source.txt
+          mkdir -p /tmp/sf10 && tar xzf /tmp/sf10.tar.gz -C /tmp/sf10 --strip-components=1
+          make -C /tmp/sf10/src -j2 build ARCH=x86-64 > /tmp/sf10-build.log 2>&1 \
+            || { tail -5 /tmp/sf10-build.log; echo "::error::SF10 build failed"; exit 8; }
+          ls /tmp/sf10/src/stockfish
+
+      - name: Measure SF10 bench (3 runs) and compute i7-4770K factor
+        run: |
+          set -u
+          # CCRL reference machine (i7-4770K): SF10 bench = 3,939,338 nodes in 2054 ms.
+          REF_NODES=3939338
+          REF_MS=2054.0
+          TIMES=""
+          for i in 1 2 3; do
+            OUT=$(/tmp/sf10/src/stockfish bench 2>&1)
+            NODES=$(echo "$OUT" | grep -oE "Nodes searched:[ ]*[0-9]+" | grep -oE "[0-9]+")
+            MS=$(echo "$OUT" | grep -oE "Total time[^:]*:[ ]*[0-9.]+" | sed -E 's/.*: *//')
+            if [ -z "$MS" ]; then
+              NPS=$(echo "$OUT" | grep -oE "Nodes/second:[ ]*[0-9]+" | grep -oE "[0-9]+" | tail -1)
+              MS=$(python3 -c "print(round($NODES / $NPS * 1000, 1))")
+              echo "run$i: nodes=$NODES nps=$NPS derived_ms=$MS"
+            else
+              echo "run$i: nodes=$NODES total_time=$MS"
+            fi
+            [ "$NODES" = "$REF_NODES" ] || { echo "::error::SF10 bench node count mismatch: $NODES != $REF_NODES"; exit 9; }
+            TIMES="$TIMES $MS"
+          done
+          MEDIAN=$(python3 -c "xs=sorted(float(x) for x in '$TIMES'.split()); print(xs[len(xs)//2])")
+          FACTOR=$(python3 -c "print(round($REF_MS / $MEDIAN, 4))")
+          EQ_TC=$(python3 -c "print(round(15.0 / ($REF_MS / $MEDIAN), 4))")
+          echo "median_ms=$MEDIAN factor_vs_i7-4770k=$FACTOR equivalent_tc_minutes_per_40=$EQ_TC"
+          {
+            echo "=== sf10-calibration ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
+            echo "ref: SF10 bench $REF_NODES nodes on i7-4770K in ${REF_MS}ms (Tors3/CCRL_ScirptsTests ccrl_bench.py)"
+            echo "runs (seconds):$TIMES median_s=$MEDIAN factor_k=$FACTOR (k>1 = runner faster than i7-4770K)"
+            echo "CCRL-40/15-equivalent TC on this runner: 40 moves in ${EQ_TC} min"
+            cat /tmp/machine.txt
+            cat /tmp/sf10-source.txt
+          } | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' > /tmp/annotation.txt
+          python3 - <<'PY'
+          import re
+          text = open("/tmp/annotation.txt").read()
+          while text:
+              print(f"::notice::{text[:3500]}")
+              text = text[3500:]
+          PY
+          echo "{\"ref_nodes\":$REF_NODES,\"ref_ms\":$REF_MS,\"runs_s\":\"$TIMES\",\"median_s\":$MEDIAN,\"factor_k\":$FACTOR,\"equivalent_tc_min_per40\":$EQ_TC}" > /tmp/calibration.json
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sf10-calibration-${{ github.run_id }}
+          path: |
+            /tmp/calibration.json
+            /tmp/machine.txt
+            /tmp/sf10-source.txt
+            /tmp/sf10-build.log
+          retention-days: 90
