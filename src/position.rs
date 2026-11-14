@@ -696,7 +696,7 @@ impl Position {
         let our_pawns = self.pieces[us * 6 + PAWN];
         for d in [-1i32, 1] {
             let f = ep_file + d;
-            if f < 0 || f > 7 {
+            if !(0..=7).contains(&f) {
                 continue;
             }
             let from = make_square(f as u8, pawn_rank);
