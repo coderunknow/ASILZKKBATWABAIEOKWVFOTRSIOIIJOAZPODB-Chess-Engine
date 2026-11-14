@@ -40,7 +40,53 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --release --all-targets -- -D warnings
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          cargo clippy --release --all-targets --message-format=json -- -D warnings > clippy.log 2>&1
+          status=$?
+          set -e
+          python3 - << 'PY'
+          import json, re
+          count = 0
+          for raw in open('clippy.log', errors='replace'):
+              raw = raw.strip()
+              if not raw.startswith('{'):
+                  continue
+              try:
+                  obj = json.loads(raw)
+              except Exception:
+                  continue
+              if obj.get('reason') != 'compiler-message':
+                  continue
+              m = obj.get('message', {})
+              if m.get('level') not in ('error',):
+                  continue
+              code = (m.get('code') or {}).get('code', 'rustc')
+              text = re.sub(r'\x1b\[[0-9;]*m', '', m.get('message', '')).replace('\n', ' | ').replace('%', ' percent ').strip()
+              spans = [s for s in m.get('spans', []) if s.get('is_primary')] or m.get('spans', [])
+              if spans:
+                  s0 = spans[0]
+                  print('::error file={},line={},col={},title={}::{}'.format(
+                      s0.get('file_name', '?'), s0.get('line_start', 1),
+                      s0.get('column_start', 1), code, text[:480]))
+              else:
+                  print('::error title={}::{}'.format(code, text[:480]))
+              count += 1
+          if status != 0:
+              log = re.sub(r'\x1b\[[0-9;]*m', '', open('clippy.log', errors='replace').read()).replace('%', ' percent ')
+              print('::error title=clippy-log-tail::' + log[-1500:].replace('\n', ' | '))
+          print('::notice::clippy diagnostics emitted: {} error(s)'.format(count))
+          PY
+          exit $status
+
+      - name: Clippy verdict
+        if: steps.clippy.outcome == 'failure'
+        run: |
+          echo "::error::clippy failed"
+          exit 1
 
       - name: Tests (release)
         run: cargo test --release --locked
