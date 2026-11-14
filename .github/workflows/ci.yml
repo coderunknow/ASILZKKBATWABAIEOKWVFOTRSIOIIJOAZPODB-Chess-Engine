@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo clippy --release --all-targets --message-format=json -D warnings > clippy.log 2>&1
+          cargo clippy --release --all-targets --message-format=json -- -D warnings > clippy.log 2>&1
           status=$?
           set -e
           python3 - << 'PY'
