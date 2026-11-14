@@ -56,9 +56,10 @@ on:
         description: "Time control (moves/minutes)"
         required: true
         default: "40/15"
-  pull_request:
-    paths:
-      - ".github/workflows/rating-run.yml"
+  # NOTE: no pull_request trigger — this workflow cannot do anything without its
+  # dispatch inputs (frozen commit/hashes/shard identity). Until the file is on
+  # the default branch (where workflow_dispatch is delivered), pilot runs are
+  # executed locally with the same commands; see docs/RATING_PROTOCOL.md §9.
 
 jobs:
   pilot-or-shard:

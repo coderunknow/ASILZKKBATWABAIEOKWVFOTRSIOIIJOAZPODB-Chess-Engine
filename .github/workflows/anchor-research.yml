@@ -130,6 +130,65 @@ jobs:
             [ -f fetch_manifest.json ] && sha256sum fetch_manifest.json
           } | tee SHA256SUMS.txt
 
+      # Annotations are the only channel readable from the dev sandbox (job logs
+      # and artifact blobs are unreachable there). Emit compact provenance +
+      # candidate anchor rows in the ~2,000-2,450 band as check annotations.
+      - name: Report fetch provenance via annotations
+        run: |
+          python3 - <<'PY'
+          import os, re, json
+
+          def emit(level, text):
+              text = re.sub(r"\r?\n", "%0A", text)
+              while text:
+                  print(f"::{level}::{text[:3500]}")
+                  text = text[3500:]
+
+          for line in open("fetch/attempts.txt"):
+              emit("notice", "fetch: " + line.strip())
+          if not os.path.exists("fetch_manifest.json"):
+              emit("error", "no fetch_manifest.json produced")
+              raise SystemExit(0)
+          m = json.load(open("fetch_manifest.json"))
+          emit("notice", f"parse: {json.dumps(m['parse'])} best_source={m.get('best_source')}")
+          PY
+
+      - name: Report candidate anchor rows via annotations
+        run: |
+          python3 - <<'PY'
+          import os, re
+
+          def emit(level, text):
+              text = re.sub(r"\r?\n", "%0A", text)
+              while text:
+                  print(f"::{level}::{text[:3500]}")
+                  text = text[3500:]
+
+          if not os.path.exists("ccrl_4015_parsed.csv"):
+              emit("error", "no rows parsed from any fetched list body")
+              raise SystemExit(0)
+          rows = [l.rstrip("\n") for l in open("ccrl_4015_parsed.csv", encoding="utf-8", errors="replace")]
+          emit("notice", f"parsed_rows_total={len(rows)}")
+
+          def row_rating(cells):
+              for c in cells.split(","):
+                  c = c.strip().strip('"')
+                  if re.fullmatch(r"\d{3,4}(\.\d+)?", c):
+                      v = float(c)
+                      if 800 <= v <= 4000:
+                          return v
+              return None
+
+          band = [r for r in rows if (rt := row_rating(r)) and 1950 <= rt <= 2450]
+          emit("notice", f"candidate_rows_in_1950_2450_band={len(band)}")
+          for chunk_start in range(0, min(len(band), 45), 15):
+              emit("notice", "band rows (csv):\n" + "\n".join(band[chunk_start:chunk_start + 15]))
+          if not band:
+              for chunk_start in range(0, min(len(rows), 30), 15):
+                  emit("notice", f"first rows (csv) [{chunk_start}..]:\n"
+                        + "\n".join(rows[chunk_start:chunk_start + 15]))
+          PY
+
       - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4

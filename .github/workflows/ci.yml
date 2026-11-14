@@ -49,9 +49,25 @@ jobs:
         shell: bash
         run: |
           PY=$(command -v python3 || command -v python)
-          "$PY" -m pip install --user chess==1.11.2
-          "$PY" scripts/test_match.py
-          "$PY" scripts/test_rating_estimator.py
+          "$PY" --version 2>&1 | sed 's/^/::notice::python: /'
+          "$PY" -m pip install --user chess==1.11.2 2> pip-err.txt || "$PY" -m pip install chess==1.11.2 2>> pip-err.txt
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::pip install chess==1.11.2 failed"
+            tr '\n' '%0A' < pip-err.txt | head -c 3500 | sed 's/^/::error::pip: /'
+            exit $status
+          fi
+          "$PY" -c "import chess; print('::notice::chess', chess.__version__)"
+          for suite in scripts/test_match.py scripts/test_rating_estimator.py; do
+            if ! "$PY" "$suite" > suite-out.txt 2>&1; then
+              echo "::error::$suite FAILED"
+              # Surface the REAL diagnostic through annotations (logs are unreadable
+              # from the dev sandbox; annotations API is the only reliable channel).
+              tail -c 3500 suite-out.txt | tr '\n' '%0A' | sed 's/^/::error::out: /'
+              exit 1
+            fi
+            tail -1 suite-out.txt | sed 's/^/::notice::ok: /'
+          done
 
       - name: Release build
         run: cargo build --release --locked
