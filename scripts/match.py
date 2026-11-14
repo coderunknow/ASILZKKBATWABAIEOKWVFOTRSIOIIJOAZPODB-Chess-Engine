@@ -517,19 +517,24 @@ def main() -> int:
         "skill_black": args.skill_black,
         "openings_file": os.path.abspath(args.openings),
         "n_games_planned": len(pairs),
-        "date_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         # Probe archaeology: which exact binaries produced this batch, and which commit.
         "white_artifact": probe_artifact(args.white_cmd, args.white_artifact),
         "black_artifact": probe_artifact(args.black_cmd, args.black_artifact),
         "git_commit": git_head(),
         "hardware": hardware_info(),
         "anchor_pool": anchor_pool,
-        "match_utc_start": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "color_pairs": "AB/BA alternating per opening (exact color reversal)",
         "adjudication": "FIDE termination via python-chess outcome(claim_draw=True); max_moves cap; flag/illegal/exit => forfeit",
     }
-    with open(jsonl_path, "w") as jf, open(pgn_path, "w") as pgn, open(os.path.join(args.out, "meta.json"), "w") as mf:
+    # Persist the manifest BEFORE any game runs and before the game streams open.
+    # Provenance must survive a crash/interrupt mid-batch: a completed meta.json is the
+    # difference between "batch interrupted, all metadata intact" and "empty meta.json next
+    # to a partial games.jsonl". The manifest is immutable during the match, so write and
+    # close it here rather than holding it buffered for the whole run.
+    meta["match_utc_start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with open(os.path.join(args.out, "meta.json"), "w") as mf:
         json.dump(meta, mf, indent=2)
+    with open(jsonl_path, "w") as jf, open(pgn_path, "w") as pgn:
         for idx, (opening, pair) in enumerate(pairs, 1):
             if pair == "AB":
                 w_spec, b_spec = white, black
