@@ -149,3 +149,27 @@ Current head: see `git log --oneline -1`. PR #1 is OPEN, unmerged, **Draft** (co
 | Kilo | BLOCKED | "Kilo Code Review could not run — your account is out of credits." (2026-11-14). No code findings. |
 
 Review policy: a reviewer FINISHED only when the service actually completes and findings are dispositioned.
+
+## CHECKPOINT — 2026-11-14T15:10Z (pre-waiting-boundary)
+
+- HEAD `f2176b6` (branch arena/b756c5f1-…, PR #1 open/draft, mergeable).
+- Completed this segment: rating-run marker-dispatch mechanism (revs 1–6) + fixes
+  (config double-encoding; --white-cmd word-split; top-commit marker gate); PILOT-1
+  dispatched + 2 harness defects found/fixed pre-game; runner engine hash frozen
+  `fd75726d…` (2 reproducible builds); both null controls REGISTERED + dispatched;
+  5 CodeRabbit threads dispositioned + resolved (uci.rs:433 stress regression added);
+  estimator key-matching fix (pool names non-unique) + 4 tests (suite 50/50, match 104/104,
+  rust 34); aggregate mixed-hardware policy; evidence job + evidence-bridge workflows.
+- In flight (server-side): pilot 43602273258 + dup 43603558950 (4+4 games); CTRL-2
+  43603826611 (240 games, shards running); CTRL-1 43604654709 (240 games, queued).
+  In-flight runs predate the evidence job -> collect via evidence-bridge after completion.
+- Next exact actions: (1) poll runs to completion; (2) dispatch evidence-bridge
+  (benches/evidence-request.json: 43602273258->pilot, 43603558950->pilot-dup,
+  43603826611->control, 43604654709->control); (3) evaluate controls vs fixed thresholds
+  (±75 Elo; 0.5 in 95% binomial CI) + pilot throughput; (4) preregister Batch A/B
+  (2,040 games/anchor, engine hash fd75726d…, suites hashes frozen, seeds fixed);
+  (5) dispatch batches progressively; (6) aggregate + rating_estimator gate (all three
+  unrounded lower bounds > 2000); (7) §4 audit finish + fresh CodeRabbit at final SHA;
+  (8) MERGE_READINESS + final audit + "Is this complete?".
+- Missing evidence: pilot results; CTRL-1/CTRL-2 results; batch A/B games + CIs;
+  fresh final-head CodeRabbit review; final full CI on final SHA.
