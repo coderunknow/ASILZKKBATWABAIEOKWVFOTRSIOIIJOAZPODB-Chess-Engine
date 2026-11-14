@@ -105,3 +105,48 @@ Consequences:
   PVs shifted after the unsound-pruning removal and mate-precedence fix (deterministic per build).
 - 24/24 tests incl. 6 new audit regressions. DIFTEST (perft d=2, 2321 positions): 0 mismatches.
 - The bench change is a correctness consequence, NOT an optimization; no strength gain claimed.
+
+## 2026-11-14 — CodeRabbit 13a316e findings addressed + sandbox restore survival incident
+
+Context: workspace restore (~07:43Z) wiped `target/`, the entire Rust toolchain
+(`/home/user/.toolchain`, `.rustup`, `.cargo`) and the Python venv (`python-chess`). Only the repo
+(excluding `target/`) and a base-only `.git` pack survived.
+
+Recovery (no data lost from history — remote is authoritative):
+- `.git` objects for the branch were missing locally; `git fetch origin` restored them (tip
+  `13a316e` verified). Uncommitted source fixes on disk were preserved and re-applied.
+- Toolchain is unrecoverable offline (static.rust-lang.org unreachable; npm `rustc@1.74.0` too old
+  for `std::sync::LazyLock`/MSRV 1.80 semantics). Local builds are IMPOSSIBLE until a toolchain
+  returns; verification moved to (a) CI and (b) a pinned npm WASM rustfmt
+  (`rustfmt@0.1.0`, only for files without `let-else`; its `single_line_if_else_max_width` rule = 50).
+- Copilot cloud agent ("Agent Merge on PR #1") pushed `6c749d8` "Fix rustfmt CI formatting diffs"
+  (co-authored copilot-swe-agent[bot]) with the same two canonical transforms this session derived
+  (position.rs if-else expansion; search.rs if-condition collapse). Local duplicate was discarded.
+- Bot push does not auto-trigger `pull_request` CI (GITHUB_TOKEN recursion guard) and
+  `workflow_dispatch` is 403 for this integration — CI for 6c749d8 was re-triggered by an ordinary
+  session push instead. PR remains OPEN, never merged by this project.
+
+Engine/UCI fixes (9548467, 15526ed, 6c749d8):
+- FIDE "same position" ep-hash (file included only when an ep capture is actually legal, incl.
+  rank-pin probes); unpack FEN validation for ep squares and side-to-move-attacking-king rejection;
+  castling emission now requires the king on e1/e8.
+- Mate takes precedence over claimable draws; draws honored in check and in qsearch; NOT-in-check
+  draw fast path before the TT probe; TT score cutoffs disabled past halfmove ≥ 90; delta pruning
+  is per-capture (victim + promotion swing), sound vs the stand_pat<alpha queen-capture example;
+  restricted-root (`go searchmoves`) scores never stored as unrestricted TT bounds; root PV head
+  comes from an explicit `root_best`.
+- `go infinite`/`go ponder`/bare `go`: clock/node abort inert until ponderhit/stop (should_stop_now);
+  bestmove printed exactly once per `go`; ponder holds bestmove until ponderhit/stop; ponderhit
+  converts to timed search; `bestmove 0000` on NULL; clock caps soft ≤ remaining, hard ∈ [soft, cap].
+- match.py: deadline-safe buffered line reader; broken pipes → engine-error losses (never batch
+  crashes); full-move-history `position startpos moves ...`; batch artifacts write-fresh-only with
+  refusal to overwrite; meta.json records artifact binary path + SHA-256 and git commit.
+- stats.py: 0/1 scores are boundary notation, never clamped finite "Elo" (probe-001 +2400 artifact).
+- CI: MSRV job explicit RUSTUP_TOOLCHAIN=1.80.0 + --locked; informational bench step (signature may
+  be read from run logs). Note bench signature pending re-measurement on this tree — expect it to
+  differ from `fc907eba40b7869f` (3,899,001 nodes @ d10, pre-per-capture-delta-pruning measurement).
+
+Process honesty:
+- DIFTEST/bench local verification NOT re-run (needs toolchain + venv, both gone) — PENDING.
+- Kilo ACTION_REQUIRED remains a billing limitation, not a code issue. CodeRabbit SKIPPED (bot
+  auto-skip); its findings are being addressed commit-by-commit regardless.

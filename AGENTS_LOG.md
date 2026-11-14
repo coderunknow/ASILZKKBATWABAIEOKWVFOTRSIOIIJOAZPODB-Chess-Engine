@@ -84,3 +84,11 @@
   CLI docs match reality, fuzz status made reproducible (tests/uci_smoke.rs), ENVIRONMENT
   snapshot-restore runbook, RATING_PROTOCOL.md pre-registered (not executed; gate BLOCKED).
 - 2026-11-14 commit b85b3f7 also contained a corrupted shell-chained clippy run; 837361f is the fix.
+- 2026-11-14 workspace restore wiped target/ + toolchain + venv (~07:43Z); git repaired via
+  `git fetch origin` (tip 13a316e) + re-applied uncommitted fixes; zero history lost.
+- 2026-11-14 Copilot cloud agent pushed 6c749d8 (rustfmt fix identical to concurrent local work);
+  its push did not auto-trigger CI; this session re-triggered CI with a log-only push. Never merged.
+- 2026-11-14 local toolchain unavailable offline; rustfmt canonicality verified via npm WASM
+  rustfmt (rustfmt@0.1.0) + CI; DIFTEST/bench re-verification PENDING until toolchain returns.
+- 2026-11-14 MSRV job green with RUSTUP_TOOLCHAIN=1.80.0 + --locked (msrv job: 1.80.0 accepted
+  the ep-hash/UCI changes without code changes).
