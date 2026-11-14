@@ -50,3 +50,16 @@
   pinned Skill 5 and Skill 10; far from any 2000-Elo gate; results are in-sandbox internal
   estimates only, never to be presented as official ratings.
 - NNUE still NOT built; classical eval unchanged pending measured need.
+
+## 2026-11-14 — Search strength experiment: reverse futility pruning + check extensions
+
+- Change (src/search.rs): (1) reverse futility pruning at depth ≤ 3, non-PV, not in check,
+  mate-bound-safe (s − 150·depth ≥ beta → fail high); (2) check extension — when in check, child
+  searches are made at depth−1+1 instead of depth−1.
+- Correctness re-verified: fmt/clippy −D warnings/tests 18/18/diftest PASSED.
+- bench signature changed a7a9f01893e9f1a5 → d790483532d87af0 (2,798,466 nodes @ depth 10) — expected.
+- A/B (benches/ab-004-rfp-checkext, 40 paired games vs the previous build at movetime 50 ms):
+  ours-rfp-cext 18 W / 13 D / 9 L vs ours-before → score 0.613, opening-clustered 95% bootstrap CI
+  [0.487, 0.725], logistic Elo diff +80 (CI [−9, +168]). Positive direction; NOT conclusive at this
+  sample size/TC; lesson: treat as directional only, keep change since standard and safe, verify
+  no correctness regressions (all gates pass).

@@ -457,6 +457,15 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        // Reverse futility pruning (static null-move): far-above-beta quiet
+        // positions fail high without searching. Non-PV, not in check, mate-bound safe.
+        if depth <= 3 && !in_chk && !is_pv && beta.abs() < MATE_BOUND {
+            let s = self.static_eval(pos);
+            if s - 150 * depth >= beta {
+                return beta;
+            }
+        }
+
         let mut moves = generate_legal(pos);
         if moves.len == 0 {
             return if in_chk {
@@ -469,6 +478,8 @@ impl<'a> Searcher<'a> {
 
         let mut best_score = -INF_SCORE;
         let mut best_move: Option<Move> = None;
+
+        let extension = if in_chk { 1 } else { 0 };
 
         let mut quiet_tried: [Move; 32] = [Move::NULL; 32];
 
@@ -486,14 +497,20 @@ impl<'a> Searcher<'a> {
             }
 
             let score = if searched_count == 0 {
-                -self.search(pos, depth - 1, -beta, -alpha, ply + 1)
+                -self.search(pos, depth - 1 + extension, -beta, -alpha, ply + 1)
             } else {
-                let mut s = -self.search(pos, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1);
+                let mut s = -self.search(
+                    pos,
+                    depth - 1 - reduction + extension,
+                    -alpha - 1,
+                    -alpha,
+                    ply + 1,
+                );
                 if reduction > 0 && s > alpha {
-                    s = -self.search(pos, depth - 1, -alpha - 1, -alpha, ply + 1);
+                    s = -self.search(pos, depth - 1 + extension, -alpha - 1, -alpha, ply + 1);
                 }
                 if s > alpha && s < beta {
-                    s = -self.search(pos, depth - 1, -beta, -alpha, ply + 1);
+                    s = -self.search(pos, depth - 1 + extension, -beta, -alpha, ply + 1);
                 }
                 s
             };

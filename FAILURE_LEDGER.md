@@ -35,3 +35,18 @@ what was learned, next experiment.
   `benches/probe-001-sf19lite-skill0` launched.
 - Lesson: any panic inside the search thread must not desynchronize the UCI loop — always emit
   bestmove; index tables must be sized for the true worst case (218 legal moves, depth 64).
+
+## 2026-11-14 — Sandbox workspace reset (git HEAD reverted to 98b1a00; toolchain and venv lost)
+
+- Attempt: continue session after a runtime interruption.
+- What happened: `git log` showed only the starting commit `98b1a00` and all project files appeared
+  as untracked; `/home/user/.toolchain` (Rust 1.99.0) and `/home/user/.venv` (python-chess) and
+  `/home/user/opponents/` were gone. The repo working tree itself was intact.
+- Recovery (all verified): origin still held branch tip `1dc2500`; re-pointed local branch ref and
+  rebuilt the index with `git update-ref` + `git reset` — working tree matched the commit exactly
+  (no data lost). Toolchain reinstalled from npm `@toolchain-bin/*` tarballs (rustc/cargo 1.99.0,
+  clippy 0.1.99, rustfmt 1.10.0) — same versions as before; venv recreated (python-chess 1.11.2);
+  pinned Stockfish 19 WASM reinstalled and SHA-256 re-verified identical (ccb130d7…, ee4f115b…).
+- Lesson: push every commit immediately; keep raw-evidence artifacts committed; document toolchain
+  provenance so it can be rebuilt from npm without network to rust-lang.org; the branch on origin is
+  the source of truth.

@@ -1,0 +1,14 @@
+{
+  "white_cmd": "./target/release/asilzkkbbatwabaieokwvfotrsioiij uci",
+  "black_cmd": "/home/user/opponents/asilzkk-before uci",
+  "white_name": "ours-rfp-cext",
+  "black_name": "ours-before",
+  "movetime_ms": 50,
+  "depth": null,
+  "hash_mb": null,
+  "skill_white": null,
+  "skill_black": null,
+  "openings_file": "/home/user/ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB-Chess-Engine/benches/openings-20.txt",
+  "n_games_planned": 40,
+  "date_utc": "2026-11-14T04:21:12Z"
+}
