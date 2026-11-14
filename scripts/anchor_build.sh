@@ -75,7 +75,9 @@ SRC_TGZ="$WORKDIR/${KEY}.src.tar.gz"
 SRC_DIR="$WORKDIR/${KEY}.src"
 
 echo "[anchor_build] $KEY: downloading $URL" >&2
-curl -sSL --fail --max-time 120 -o "$SRC_TGZ" "$URL" || { echo "DOWNLOAD FAILED" >&2; exit 3; }
+CURL_AUTH=()
+if [ -n "${GITHUB_TOKEN:-}" ]; then CURL_AUTH=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
+curl -sSL --fail --max-time 120 "${CURL_AUTH[@]}" -o "$SRC_TGZ" "$URL" || { echo "DOWNLOAD FAILED" >&2; exit 3; }
 SRC_SHA=$(sha256sum "$SRC_TGZ" | cut -d' ' -f1)
 rm -rf "$SRC_DIR"; mkdir -p "$SRC_DIR"
 tar xzf "$SRC_TGZ" -C "$SRC_DIR" --strip-components=1 || { echo "UNTAR FAILED" >&2; exit 3; }

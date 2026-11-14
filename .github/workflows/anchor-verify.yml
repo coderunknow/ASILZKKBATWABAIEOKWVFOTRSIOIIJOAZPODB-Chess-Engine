@@ -62,8 +62,34 @@ jobs:
           } | tee /tmp/toolchain.txt
 
       - name: Build and verify ${{ matrix.anchor }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          bash scripts/anchor_build.sh "${{ matrix.anchor }}" /tmp/anchor | tee /tmp/anchor.json
+          set +e
+          bash scripts/anchor_build.sh "${{ matrix.anchor }}" /tmp/anchor > /tmp/anchor.json 2> /tmp/anchor.err
+          RC=$?
+          {
+            echo "=== anchor-verify ${{ matrix.anchor }} rc=$RC ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
+            echo "--- stdout:"
+            cat /tmp/anchor.json
+            echo "--- stderr:"
+            cat /tmp/anchor.err
+            echo "--- src dir:"
+            ls -la /tmp/anchor/${{ matrix.anchor }}.src 2>/dev/null | head -12
+            echo "--- toolchain:"
+            cat /tmp/toolchain.txt
+            echo "--- build log tail:"
+            tail -3 /tmp/anchor/${{ matrix.anchor }}.build.log 2>/dev/null
+          } > /tmp/annotation.txt
+          python3 - <<'PY'
+          text = open("/tmp/annotation.txt").read()
+          text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          while text:
+              print(f"::notice::{text[:3500]}")
+              text = text[3500:]
+          PY
+          if [ "$RC" -ne 0 ]; then echo "::error::anchor_build.sh failed rc=$RC"; exit "$RC"; fi
           # License presence is a hard requirement (fail closed).
           ls /tmp/anchor/${{ matrix.anchor }}.src/LICENSE* /tmp/anchor/${{ matrix.anchor }}.src/COPYING* \
             /tmp/anchor/${{ matrix.anchor }}.src/license* >/dev/null 2>&1 \
@@ -71,21 +97,6 @@ jobs:
           # Stable path for the built binary (used by the artifact upload).
           python3 -c "import json,sys; print(json.load(open('/tmp/anchor.json'))['binary'])" > /tmp/binpath
           cp "/tmp/anchor/${{ matrix.anchor }}.src/$(cat /tmp/binpath)" /tmp/anchor-binary
-          {
-            echo "=== anchor-verify ${{ matrix.anchor }} ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
-            cat /tmp/anchor.json
-            echo "--- toolchain:"
-            cat /tmp/toolchain.txt
-            echo "--- build log tail:"
-            tail -3 /tmp/anchor/${{ matrix.anchor }}.build.log
-          } | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' > /tmp/annotation.txt
-          python3 - <<'PY'
-          import re
-          text = open("/tmp/annotation.txt").read()
-          while text:
-              print(f"::notice::{text[:3500]}")
-              text = text[3500:]
-          PY
 
       - name: Upload evidence
         uses: actions/upload-artifact@v4
@@ -138,10 +149,10 @@ jobs:
             echo "=== verify-flawless ($(date -u +%Y-%m-%dT%H:%M:%SZ)) ==="
             echo "commit=$(cat /tmp/commit.txt) binary_sha256=$SHA bench_signature=$SIG"
             cat /tmp/toolchain.txt
-          } | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' > /tmp/annotation.txt
+          } > /tmp/annotation.txt
           python3 - <<'PY'
-          import re
           text = open("/tmp/annotation.txt").read()
+          text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           while text:
               print(f"::notice::{text[:3500]}")
               text = text[3500:]
@@ -174,8 +185,11 @@ jobs:
           } | tee /tmp/machine.txt
 
       - name: Build Stockfish 10 from official sf_10 tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          curl -sSL --fail --max-time 300 -o /tmp/sf10.tar.gz \
+          AUTH=(); [ -n "${GITHUB_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer $GITHUB_TOKEN")
+          curl -sSL --fail --max-time 300 "${AUTH[@]}" -o /tmp/sf10.tar.gz \
             "https://codeload.github.com/official-stockfish/Stockfish/tar.gz/refs/tags/sf_10"
           echo "sf10_source_sha256=$(sha256sum /tmp/sf10.tar.gz | cut -d' ' -f1)" | tee /tmp/sf10-source.txt
           mkdir -p /tmp/sf10 && tar xzf /tmp/sf10.tar.gz -C /tmp/sf10 --strip-components=1
@@ -215,10 +229,10 @@ jobs:
             echo "CCRL-40/15-equivalent TC on this runner: 40 moves in ${EQ_TC} min"
             cat /tmp/machine.txt
             cat /tmp/sf10-source.txt
-          } | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' > /tmp/annotation.txt
+          } > /tmp/annotation.txt
           python3 - <<'PY'
-          import re
           text = open("/tmp/annotation.txt").read()
+          text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           while text:
               print(f"::notice::{text[:3500]}")
               text = text[3500:]
