@@ -17,6 +17,14 @@
 #   wyldchess-1.2  WyldChess 1.2       2445 +21/-21  (520 games)   Mk-Chan/WyldChess    v1.2
 #   raven-0.90     Raven 0.90          2451 +23/-23  (438 games)   sgriffin53/raven     0.90
 #   wyldchess-1.1  WyldChess 1.1       2474 +21/-21  (506 games)   Mk-Chan/WyldChess    v1.1
+# ANCHOR-2 ladder (>3,000-phase coverage; PREREGISTRATION.md ANCHOR-2 + execution notes 1):
+#   leorik-2.5     Leorik 2.5          2922 +18/-18  (684 games)   lithander/Leorik     2.5
+#   akimbo-0.5.0   akimbo 0.5.0        3026 (+?/-?)  (CCRL row)    jw1912/akimbo        v0.5.0
+#   weiss-1.2      Weiss 1.2           3017 +12/-12  (1578 games)  TerjeKir/weiss       v1.2
+#   stockfish-5    Stockfish 5 64-bit  3238 +10/-10  (1936 games)  official-stockfish   sf_5
+#   stockfish-8    Stockfish 8 64-bit  3358 +7/-7    (3886 games)  official-stockfish   sf_8
+# Berserk 3.2.1 / Seer 1.2.1 EXCLUDED (no verifiable source tag at those versions —
+# fail-closed source-identity rule; PREREGISTRATION.md ANCHOR-2 execution notes 1).
 #
 # UCI id expectations include documented id-string lags (raven 0.50/0.70, topple 0.1.1
 # tag sources print the previous version; see benches/anchor-research-20261114.md).
@@ -71,6 +79,42 @@ case "$KEY" in
     REPO="jw1912/akimbo"; TAG="v0.1.1"; NAME="akimbo"; VERSION="0.1.1"
     EXPECTED_ID="akimbo 0.1.1"; BIN="target/release/akimbo"
     BUILD='cargo build --release --locked --offline'
+    LICENSE="MIT" ;;
+  akimbo-0.5.0)
+    REPO="jw1912/akimbo"; TAG="v0.5.0"; NAME="akimbo"; VERSION="0.5.0"
+    EXPECTED_ID="akimbo 0.5.0"; BIN="target/release/akimbo"
+    # ANCHOR-2: tag tarball ships no Cargo.lock (zero external dependencies), so
+    # --locked is unavailable; --offline keeps the build deterministic. Verified
+    # locally 2026-11-15: id "akimbo 0.5.0" (CCRL 3026).
+    BUILD='cargo build --release --offline'
+    LICENSE="MIT" ;;
+  weiss-1.2)
+    REPO="TerjeKir/weiss"; TAG="v1.2"; NAME="Weiss"; VERSION="1.2"
+    EXPECTED_ID="Weiss 1.2"; BIN="src/weiss"
+    # ANCHOR-2 (CCRL 3017±12, g=1578). GPL-3.0 at tag (COPYING.txt verified 2026-11-15).
+    BUILD='cd src && make'
+    LICENSE="GPL-3.0" ;;
+  stockfish-5)
+    REPO="official-stockfish/Stockfish"; TAG="sf_5"; NAME="Stockfish"; VERSION="5"
+    EXPECTED_ID="Stockfish 5 64 by Tord Romstad, Marco Costalba and Joona Kiiski"; BIN="src/stockfish"
+    # ANCHOR-2 (CCRL 3238±10, g=1936). GPL-3.0 at tag (COPYING.txt verified 2026-11-15;
+    # local smoke: build rc=0, bench 8.7M nodes @ 2.44M nps).
+    BUILD='cd src && make build ARCH=x86-64'
+    LICENSE="GPL-3.0" ;;
+  stockfish-8)
+    REPO="official-stockfish/Stockfish"; TAG="sf_8"; NAME="Stockfish"; VERSION="8"
+    EXPECTED_ID="Stockfish 8 64 by T. Romstad, M. Costalba, J. Kiiski, G. Linscott"; BIN="src/stockfish"
+    # ANCHOR-2 (CCRL 3358±7, g=3886). GPL-3.0 at tag (COPYING.txt verified 2026-11-15;
+    # local smoke: build rc=0, bench 5.9M nodes @ 2.42M nps).
+    BUILD='cd src && make build ARCH=x86-64'
+    LICENSE="GPL-3.0" ;;
+  leorik-2.5)
+    REPO="lithander/Leorik"; TAG="2.5"; NAME="Leorik"; VERSION="2.5"
+    EXPECTED_ID="Leorik 2.5"; BIN="publish/Leorik"
+    # ANCHOR-2 (CCRL 2922±18, g=684). C#/.NET: self-contained linux-x64 publish
+    # produces a directly-executable apphost (runner image ships the .NET SDK).
+    # Source identity = tag 2.5; MIT at tag.
+    BUILD='dotnet publish -c Release -r linux-x64 --self-contained true -o publish'
     LICENSE="MIT" ;;
   *)
     echo "unknown anchor key: $KEY" >&2; exit 2 ;;
