@@ -264,3 +264,47 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
       probe-005 band (0.600, CI [0.463, 0.725], +70 [−26, +168]; overlapping CIs). 0 engine
       errors. Raw evidence committed: benches/probe-006-engine1-validation/. Local build hash
       a3325011… (sandbox build; the RUNNER build hash is the one pinned for batches).
+
+## ANCHOR-2 — anchor pool expansion for the >3,000 Elo phase (registered 2026-11-15, before any verification build or game)
+
+- **Purpose:** mission §2 (anchor coverage) — the frozen 6-anchor pool (1849–2474) CANNOT
+  calibrate ratings above ~2,600; the 3,000 milestone requires independently rated anchors
+  bracketing and exceeding 3,000. This registration PRE-COMMITS the expansion procedure; the
+  2,000 gate proceeds UNCHANGED on the frozen pool.
+- **Rating source (provenance):** CCRL 40/15 list, computed 2026-11-13 (Bayeselo, ponder off,
+  3-4-5 EGTB, i7-4770K equivalence — same reference machine as pool calibration k=1.0291);
+  fetched by anchor-research workflow run 43587593393 (artifact `ccrl-4015-fetch-43587593393`,
+  SHA256SUMS.txt inside, 200 OK on the runner); parsed locally (1,480 single-CPU rows with
+  ≥1 game; 4CPU rows excluded — our engines are single-threaded; error convention ci95 per
+  the verified list text).
+- **Candidate ladder to verify (single-CPU published ratings; repos verified reachable with
+  the listed SPDX license AT HEAD — license AT THE EXACT TAG is checked during verification,
+  fail-closed):**
+  | candidate | repo | tag to verify | CCRL 40/15 single-CPU | license (HEAD) |
+  |---|---|---|---|---|
+  | Leorik 2.5 | lithander/Leorik | release for v2.5 | 2922±18 (g=684) | MIT |
+  | Berserk 3.2.1 | jhonnold/berserk | v3.2.1 | 2958±20 (g=504) | GPL-3.0 |
+  | Seer 1.2.1 | connormcmonigle/seer-nnue | v1.2.1 | 3088±18 (g=659) | GPL-3.0 |
+  | Stockfish 5 | official-stockfish/Stockfish | sf_5 | 3238±10 (g=1936) | GPL (verify at tag; historically GPL-2.0) |
+  | Stockfish 6 | official-stockfish/Stockfish | sf_6 | 3280±10 (g=2272) | GPL (verify at tag) |
+  | Stockfish 7 | official-stockfish/Stockfish | sf_7 | 3302±9 (g=2692) | GPL (verify at tag) |
+  | Stockfish 8 | official-stockfish/Stockfish | sf_8 | 3358±7 (g=3886) | GPL (verify at tag) |
+  | Leorik 3.1 | lithander/Leorik | release for v3.1 | 3367±11 (g=1670) | MIT |
+  | (reserve rungs) Berserk 4.7.0 3445±17; Seer 2.x; SF 9 3422±9; SF 10 3443±7; SF 11 3494±11; Caissa 1.24 3593±9 (MIT, Witek902/Caissa) |
+  Mid-band (2,475–2,920) additions are required later for interpolation (Berserk 1.x/2.x,
+  Leorik 2.3/2.4, Igel/Halogen/Viridithas older versions) — registered as ANCHOR-2b when the
+  candidate's level makes them decisive; NOT needed for the 2,000 gate.
+- **Verification procedure (identical discipline to the frozen pool):** rebuild from SOURCE at
+  the exact tag on the hosted runner (anchor-verify.yml pattern: matrix build + UCI
+  identity-string check + SHA-256 recording + LICENSE-at-revision check + verify-flawless
+  control; fail closed on any mismatch); record runner binary SHA-256 + toolchain + image in
+  the new pool file `benches/anchor-pool-3000.json`; NO source patches (Raven-style hardened-
+  build accommodations documented if ever needed, with ASAN evidence).
+- **Usage rule (pre-committed):** the 3,000-phase gate plan (gate-plan v2) will select anchors
+  by the SAME registered selection rule applied to the expanded pool; the plan, the pool file,
+  and any protocol amendment are committed BEFORE any 3,000-phase confirmatory games; the
+  2,000 gate (gate-plan v1, frozen pool) is untouched. UCI id-string mapping quirks (tag vs
+  printed id) documented per engine, as done for Topple 0.1.1.
+- **No games are played under this registration; it registers verification + expansion work
+  only.** Every verification failure (unverifiable license, id mismatch, build failure) is
+  recorded with the exclusion reason in the pool file, mirroring the frozen-pool discipline.
