@@ -314,3 +314,19 @@
   chain rehearsed end-to-end on old screening evidence (exact reproduction: est=1632.0,
   rule unsatisfiable, escape clause intact; old candidate flagged 57/120 — SCREEN-2 must
   show ≤10 for ENGINE-1 acceptance 4).
+
+- 2026-11-15 (seg 18 end — cutoff boundary ~14:25Z): remote tip 8bb5a84. SCREEN-2 attempt 1
+  failure fully processed (SHAPE-1 registered 4166703 + hash pinned + ledger); SCREEN-2R
+  dispatched (rev 11 = 430cc37 run 43714600687, rev 12 = bba4950 run 43714620645, 60×2
+  shape); at 14:03Z rev11 has 3 shards COMPLETE (87 min/shard — faster than the 120-min
+  estimate; run could finish ~15:00-15:15Z + evidence job), rev12 resolve queued behind
+  runner capacity (no workflow-level concurrency block; capacity-limited only). Tooling
+  validated for the new shape: recover_screen2.py (60 shards + pinned-hash fail-closed),
+  test_aggregate_60.py (synthetic 60-shard aggregation PASS, 8bb5a84), merge_batch_runs.py
+  self-tested (a5689b2), make_batch_dispatch.py SHAPE-1 slice gen (dcf0ea6, rev-99 dry run).
+  PR body updated at head dcf0ea6. ENGINE-2 audit reconciled (search/eval unchanged since
+  14e2e1c — implementation deferred past >2000). Next: monitor 43714600687/43714620645 →
+  evidence commits → recover_screen2.py → flag rate + estimates → CTRL-2-R (rev 13) →
+  SCREEN-3 (rev 14, conditional) → gate-plan commit → Batch A (revs 15-18) → Batch B
+  (revs 19-22) → merge → verify_evidence → 2000 gate. Full commands in
+  download/FLAWLESS_checkpoint_2026-11-15.md §3.
