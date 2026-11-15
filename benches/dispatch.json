@@ -1,15 +1,15 @@
 {
   "schema": 1,
-  "revision": 11,
+  "revision": 12,
   "purpose": "screening-2",
-  "description": "SCREEN-2R (SHAPE-1): Flawless vs topple-0.1.1 re-screening after the timeout-shaped first attempt, 120 games (60 shards x 2), exploratory/selection-only (PREREGISTRATION.md#screen-2-partial-evidence--shape-1). engine_sha256 pinned 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428.",
+  "description": "SCREEN-2R (SHAPE-1): Flawless vs topple-0.2.1 re-screening after the timeout-shaped first attempt, 120 games (60 shards x 2), exploratory/selection-only (PREREGISTRATION.md#screen-2-partial-evidence--shape-1). engine_sha256 pinned 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428.",
   "preregistration": "PREREGISTRATION.md#screen-2-partial-evidence--shape-1-execution-shape-amendment-recorded-2026-11-15-after-the-timeout-before-the-screen-2r-re-dispatch",
   "target_commit": "auto",
   "engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
   "batch": "A",
-  "anchor_id": "topple-0.1.1",
+  "anchor_id": "topple-0.2.1",
   "white_engine": "flawless",
-  "black_engine": "topple-0.1.1",
+  "black_engine": "topple-0.2.1",
   "shard_count": 60,
   "shard_indices": [
     0,
@@ -76,6 +76,6 @@
   "opening_suite": "benches/rating-openings-batchA.txt",
   "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
   "repetitions": 1,
-  "seed": 20261123,
+  "seed": 20261124,
   "tc": "40/15"
 }
