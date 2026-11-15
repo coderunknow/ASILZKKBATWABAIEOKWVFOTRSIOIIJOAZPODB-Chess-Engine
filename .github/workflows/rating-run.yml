@@ -480,6 +480,12 @@ jobs:
           white_sha = sha_of(c["white_engine"])
           black_sha = sha_of(c["black_engine"])
           out = f"benches/evidence/{c['purpose']}/{c['anchor_id']}"
+          # SHAPE-1: confirmatory batches are split across 4 runs of 255 shards;
+          # each run commits its own per-run evidence dir, and the canonical
+          # batch dir (benches/evidence/batch{A,B}/<anchor>/) is produced ONCE
+          # by scripts/merge_batch_runs.py with strict cross-run validation.
+          if c['purpose'] == 'confirmatory':
+              out += f"/run-{os.environ['GITHUB_RUN_ID']}"
           os.makedirs(out, exist_ok=True)
           cmd = [
               sys.executable, "scripts/aggregate_shards.py",

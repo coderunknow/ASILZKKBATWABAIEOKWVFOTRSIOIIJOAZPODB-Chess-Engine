@@ -429,3 +429,24 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   20261123) and 12 (vs topple-0.2.1, seed 20261124). Fresh evidence dirs; the in-run
   evidence job aggregates strictly (all 60 shards × 2 games = 120 counted games required).
   Acceptance unchanged: flag rate ≤ 10/120 per screening; hash must equal the pin.
+
+## SHAPE-1 addendum — batch evidence aggregation across the 4 runs (registered 2026-11-15, before any batch dispatch)
+
+- **Problem:** a confirmatory batch (2,040 games/anchor) is 4 rating-run instances of 255
+  shards each (SHAPE-1). The evidence job previously wrote one dir per (purpose, anchor);
+  run 2 would have overwritten run 1's committed evidence.
+- **Design (fail-closed):**
+  1. For purpose=confirmatory only, the evidence job now writes per-run dirs
+     `benches/evidence/confirmatory/<anchor>/run-<run_id>/` (each strictly aggregating its
+     own 255 shards → 510 games, 60 openings × 17 reps × AB/BA slice, identities checked).
+  2. The canonical batch dir `benches/evidence/batchA/<anchor>/` (the layout
+     verify_evidence.py/rating_estimator.py consume) is produced EXACTLY ONCE by
+     `scripts/merge_batch_runs.py` after the batch's 4th run completes. Checks: per-run
+     manifest merged_sha256 matches games.jsonl bytes; identical identities across runs
+     (engine/anchor/suite hashes, tc, seed, schedule_sha256); counted schedule_index must
+     cover 0..2039 exactly once (no gaps/dupes); uncounted replays must reference a counted
+     index and are excluded. Self-tested: 1 happy path + 4 fail-closed cases all pass
+     (scripts/test_merge_batch_runs.py).
+  3. Single-run purposes (screening/screening-2/control) keep the existing layout
+     (benches/evidence/<purpose>/<anchor>/); unchanged behavior.
+- **No acceptance criterion changes.** The gate recomputes from the canonical dir only.

@@ -25,6 +25,7 @@ ENGINE_REPO = "coderunknow/FlawLessChess"
 ANCHORS = {0: ("topple-0.1.1", "db75d4d816710b77810fb3b5d544b0f6f025542ff992a1c12301d7dffad5ffac"),
            1: ("topple-0.2.1", "c5443e6f81aef3bfa033ee6233e2064c9fcc50c64cd41f74adbbf66d61c38ac6")}
 SUITE = "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96"
+PINNED_ENGINE = "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428"
 PUBLISHED = {"topple-0.1.1": 2324, "topple-0.2.1": 2439}
 
 def _token():
@@ -92,19 +93,20 @@ def main():
         eng = None
         for m in glob.glob(os.path.join(rdir, "**", "meta.json"), recursive=True):
             d = json.load(open(m))
-            for a in d.get("white_artifact", {}).get("artifacts", []):
-                if a.get("sha256"):
-                    eng = a["sha256"]
-                    break
+            eng = d.get("white_artifact", {}).get("sha256")
             if eng: break
         if not eng:
             sys.exit("cannot discover runner engine hash from shard manifests")
+        if eng != PINNED_ENGINE:
+            print(f"HASH MISMATCH: runner built {eng}, pin is {PINNED_ENGINE} — fail closed")
+            overall = False
+            continue
         engine_hashes.add(eng)
         agg = subprocess.run(["python3", os.path.join(REPO, "scripts", "aggregate_shards.py"),
                               "--shards-root", rdir, "--batch", "A", "--anchor", anchor,
                               "--engine-sha256", eng, "--anchor-sha256", anchor_sha,
                               "--opening-suite-sha256", SUITE, "--tc-moves", "40",
-                              "--tc-seconds", "900", "--expected-shards", "15",
+                              "--tc-seconds", "900", "--expected-shards", "60",
                               "--out", os.path.join(out_dir, "games.jsonl"),
                               "--manifest", os.path.join(out_dir, "manifest.json")],
                              capture_output=True, text=True)
