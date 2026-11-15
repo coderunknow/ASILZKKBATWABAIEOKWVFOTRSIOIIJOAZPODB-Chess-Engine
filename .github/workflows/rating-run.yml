@@ -259,7 +259,7 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.run == 'true' || needs.resolve.outputs.run == ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 330
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:

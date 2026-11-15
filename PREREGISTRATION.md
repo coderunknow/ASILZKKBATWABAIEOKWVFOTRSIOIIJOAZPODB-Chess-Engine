@@ -379,3 +379,53 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   3,000 instead of 2,000).
 - **No affected evidence is collected until this amendment is implemented, tested, and the
   gate-plan-3000.json is committed.** The >2,000 pipeline never reads pool-3000.
+
+## SCREEN-2 partial evidence & SHAPE-1 execution-shape amendment (recorded 2026-11-15, after the timeout, BEFORE the SCREEN-2R re-dispatch)
+
+- **What happened:** both SCREEN-2 runs (43685671431, 43686056730; 15 shards × 8 sequential
+  games each) were killed by the workflow's own `timeout-minutes: 330` at 11:59:43Z/12:05Z
+  (shards started 06:29:43Z). All 30 shard jobs cancelled; evidence jobs skipped; 15
+  artifacts per run recovered. This is a WORKFLOW-SHAPE failure, not an engine defect:
+  the shards played correctly until the kill.
+- **Root cause (measured):** the shard shape was sized from PILOT-1's 29.43 min/game mean
+  (4 games, OLD candidate whose flagged games ended early). The ENGINE-1 clock fix makes
+  games use their full clock budget. Empirical duration over the 173 hash-verified counted
+  games recovered from the cancelled runs: mean 52.0, median 50, p95 82.8, p99 125.9,
+  max 147.5 minutes. 8 × mean ≈ 416 min + build ≫ 330 → guaranteed timeout. SHAPE failure
+  predicted in registration ("longer games"), magnitude under-estimated.
+- **Partial evidence status (fail-closed):** 87 counted games per run (174 total), identities
+  verified per shard (engine binary byte-identical across all 30 runner builds, anchor
+  binaries match the frozen pool, suite hash matches, schedule ranges contiguous, 0 engine
+  errors, 1 flag end total). These games are VALID per-game records but do NOT constitute
+  the registered 120-game screenings (incomplete schedule ⇒ strict aggregation fails). They
+  are exploratory/selection-support evidence only; the official SCREEN-2 measurement is the
+  full re-run below. No partial aggregation is used for any acceptance decision.
+- **Runner engine hash (PINNED NOW, provenance recorded):** the ENGINE-1 candidate binary
+  built by all 30 independent hosted-runner builds across both runs:
+  `9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428`
+  (byte-identical across every shard manifest in both runs; recorded in
+  `white_artifact.sha256`). This is the pinned hash for ALL confirmatory dispatches
+  (CTRL-2-R, Batch A/B). SCREEN-2R re-verifies it fail-closed (aggregation compares each
+  shard's recorded hash against this pin).
+- **SHAPE-1 rule (applies to every future dispatch of this mission):**
+  1. `rating-run.yml` shard job timeout: 330 → **350 minutes** (hosted max 360).
+  2. Games per shard job: **2** (worst observed shard 2 × 147.5 + ~15 build = 310 < 350;
+     empirical p99 shard 2 × 125.9 + 15 = 267).
+  3. Screening shape: shard_count **60** (120 games = 60 × 2), matrix 60 jobs.
+  4. Batch shape: **1020 shard_count per anchor per batch** (2040 games = 1020 × 2),
+     dispatched as **4 sequential runs of 255 shard-indices each** (GitHub matrix cap 256);
+     same registered openings/suite/seeds/TC; ≥2,000 counted games per anchor per batch
+     unchanged.
+  5. CTRL-2-R: 240 games = **120 shards × 2**, one run.
+  6. Tail risk accepted and documented: a single game longer than ~165 min times out its
+     job; that run then fails closed; recovery = GitHub "re-run failed jobs" (successful
+     shards' artifacts persist and are reused). No acceptance criterion changes.
+  7. Seeds, suites, repetitions, TC, anchor identities, engine hash: **UNCHANGED**. The
+     schedule (schedule_sha256 87ee566f…) is seed-derived and shard-count-independent —
+     shard_count only changes how the SAME 120/2040-game schedule is sliced (verified at
+     match.py:799-800: lo = i*n // count, hi = (i+1)*n // count).
+- **SCREEN-2R (re-dispatch, registered here BEFORE execution):** identical to SCREEN-2
+  except shard_count 60 (2 games/shard) and marker revisions 11 (vs topple-0.1.1, seed
+  20261123) and 12 (vs topple-0.2.1, seed 20261124). Fresh evidence dirs; the in-run
+  evidence job aggregates strictly (all 60 shards × 2 games = 120 counted games required).
+  Acceptance unchanged: flag rate ≤ 10/120 per screening; hash must equal the pin.

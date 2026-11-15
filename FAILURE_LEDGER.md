@@ -289,3 +289,29 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   diagnostic run), not the banner; C# repos publish the ENGINE project, not the solution
   root; case-sensitive license globs must include Copying* for SF-family tags. All three
   fixes are in scripts/anchor_build.sh / anchor-verify.yml with annotated diagnosis trails.
+
+## SCREEN-2-TIMEOUT (recorded 2026-11-15)
+
+- **Experiment id:** SCREEN-2 (runs 43685671431 vs topple-0.1.1 seed 20261123; 43686056730
+  vs topple-0.2.1 seed 20261124), marker rev 10.
+- **Baseline SHA:** ENGINE-1 candidate, runner-built binary
+  9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428 (30 builds, byte-identical).
+- **Configuration:** 15 shards × 8 sequential games per run; TC 40/15 repeating 'add';
+  batch-A suite 2c4a54d8…; workflow timeout-minutes 330.
+- **Hypothesis under test:** ENGINE-1 flag rate ≤ 10/120 per screening + screening estimates.
+- **Outcome:** FAILED (execution shape, not engine): all 30 shard jobs killed at the 330-min
+  workflow timeout (started 06:29:43Z, killed 11:59:43Z/12:05Z); evidence jobs skipped
+  (strict 15-shard aggregation precondition unmet).
+- **Raw evidence location:** 30 artifacts (15 per run) downloaded to /tmp/scr2-<run_id> at
+  inspection time; per-shard manifests + games.jsonl + games.pgn + runner-hardware.txt.
+  Partial stats: 174 counted games, 1 flag, 0 engine errors, identities verified.
+- **Measured uncertainty (selection-only, partial):** vs topple-0.1.1 score 0.3547 (n=86)
+  → est ≈ 2428; vs topple-0.2.1 score 0.1724 (n=87) → est ≈ 2712. NOT acceptance evidence;
+  recorded as exploratory signal only.
+- **Failure/rejection reason:** shard sizing used PILOT-1's 29.43 min/game (old candidate,
+  flag-shortened games); the fixed clock makes games run full-length (measured mean 52.0,
+  max 147.5 min) ⇒ 8-game shards cannot fit any hosted timeout.
+- **Lessons for subsequent experiments:** size every shard from MEASURED durations of the
+  actual binary (SHAPE-1: 2 games/job, timeout 350; batches 1020 × 2 in 4 runs of 255;
+  CTRL-2-R 120 × 2); a timeout kills jobs silently — check run conclusions, not just
+  artifact presence; recovery = re-run failed jobs, never mix partial evidence.
