@@ -358,3 +358,24 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 - **Analysis:** identical (d̂_a; per-anchor estimate R_a + d̂_a; selection-only uncertainty);
   then make_gate_plan.py --anchors <all screened anchors> applies the UNCHANGED rule to
   produce the gate plan. Screening remains selection-only, never gate evidence.
+
+## GATE-PLAN-V2 — protocol amendment for the >3,000 phase (registered 2026-11-15; implementation deferred until the >2,000 gate is resolved)
+
+- **Purpose:** enable confirmatory evidence against `benches/anchor-pool-3000.json` without
+  weakening anything used by the >2,000 gates.
+- **Amendment content (to be implemented + tested BEFORE any 3,000-phase dispatch):**
+  1. `benches/dispatch.json` gains an OPTIONAL `pool_file` field (default
+     `benches/anchor-pool.json`, exactly the current behavior). When set to
+     `benches/anchor-pool-3000.json`, the resolver validates anchor slots against the
+     pool-3000 keys and `rating_estimator.py`/`make_gate_plan.py` consume the same pool.
+  2. `purpose` remains `confirmatory`; the gate workflow requires the plan file
+     (`benches/gate-plan-3000.json`) produced by the UNCHANGED registered selection rule
+     applied to the expanded pool (make_gate_plan.py --pool benches/anchor-pool-3000.json).
+  3. Controls: both null controls re-run at the candidate hash with pool-3000 anchors
+     (CTRL-1R: anchor-vs-anchor pair from pool-3000; CTRL-2R: self-match) — fail-closed
+     thresholds identical to the registered CTRL values.
+- **Estimator/statistics:** UNCHANGED (same estimator, same opening-cluster bootstrap, same
+  three unrounded CI lower bounds, same ≥2,000-games-per-anchor-per-batch floor — target
+  3,000 instead of 2,000).
+- **No affected evidence is collected until this amendment is implemented, tested, and the
+  gate-plan-3000.json is committed.** The >2,000 pipeline never reads pool-3000.
