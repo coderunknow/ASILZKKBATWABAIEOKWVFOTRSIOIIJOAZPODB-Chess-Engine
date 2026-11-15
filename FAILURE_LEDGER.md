@@ -196,3 +196,54 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Hosted verification: evidence-bridge revision 3 (deliberate marker dispatch) re-collected
   all recovered runs and its commit step PUSHED successfully from Actions — recorded in
   AGENTS_LOG.md with the run id. Not a green light for anything beyond pipeline correctness.
+
+## 2026-11-15 — Estimator self-match metric could not implement the registered CTRL-2 definition — FIXED + regression-tested
+
+- Observation: CTRL-2 (flawless vs identical binary, 240 games) evaluated from the committed
+  evidence scored 0.6604 white-perspective, CI [0.571, 0.746] — outside the registered
+  0.5-in-CI acceptance. The `control_self_match` implementation derives the score from engine
+  NAME matching, which is degenerate for self-match records (both labels identical, "Flawless"):
+  every game took the white branch, so the metric measured the CHESS color advantage, not the
+  seat-symmetry quantity the registration defines ("identical binary must score 0.5 within its
+  95% binomial CI" — the color advantage cancels only under the schedule's AB/BA seat reversal).
+- Fix: when both seat labels are identical, the seat perspective is taken from the recorded
+  `color_pair` field (AB: seat A white; BA: seat A black) — `self_match_seat_score()`; missing
+  `color_pair` fails closed; `white_perspective_score` is reported for transparency. The
+  registered threshold (0.5 in 95% CI) is UNCHANGED. Regression tests:
+  `test_self_match_seat_perspective` + updated `test_focus_label_case_insensitive`.
+- Re-evaluation (seed 20261116, unchanged inputs): seat-perspective score 0.5146, 95% CI
+  [0.4792, 0.5500] → 0.5 inside → CTRL-2 PASS. White-perspective 0.6604 recorded as the
+  chess color advantage (consistent with ~55-58% typical white edge plus a second-side time
+  penalty; see the flag-race entry below).
+- Related fix in the same change: focus-engine matching is now case-insensitive
+  (`same_engine`, casefold) — the harness historically seated the focus engine under the
+  display name "Flawless" while the estimator focus and pool keys are lowercase; the old
+  exact-match `load_games` would have failed closed on ALL committed flawless evidence (and
+  would have failed any confirmatory gate). Labels are display metadata; engine identity is
+  the manifest-verified binary SHA-256; no two pool keys differ by case. Suite: 65/65.
+
+## 2026-11-15 — SCREENING-1/2 root-cause: ~95% of Flawless losses are FLAG FALLS (time forfeits) — engine time-management defect identified
+
+- Raw evidence (benches/evidence/screening/*): SCREENING-1 end reasons = 113 flag / 4 checkmate
+  / 3 repetition; SCREENING-2 = 114 flag / 4 checkmate / 1 repetition / 1 stalemate. Flawless
+  lost 116/120 and 118/120, ALL decisive losses but 3-4 by flag. Winner remaining clock at
+  flag ≈ 2 s; loser (Flawless) at −1 ms. Flag plies concentrate in period 3 (p10/p50/p90 =
+  81/84/87). The self-match (CTRL-2) shows the same regime: 199/240 flag ends.
+- Root cause (code inspection, src/uci.rs clock_limits): `soft = clamp(t/mtg, 20, 30_000).min(t)`
+  with `hard = min(6*soft, max(t-30, soft))`. The 30 s soft cap makes the engine OVERSPEND its
+  period plan in the late period (soft pinned at 30 s while the clock shrinks below the plan),
+  and hard = 6×soft permits single-move spends down to a ~30 ms remaining clock. Across the
+  observed long games (83+ plies) the engine reaches period 3 with ~zero reserve and loses the
+  flag race against anchors that budget with reserves. This is an implementation defect, not
+  evidence that the search/eval strength equals a 1632-Elo level: the 100 ms-movetime probes
+  (STATUS.md) measured search/eval strength without clock effects.
+- Secondary observation (harness): in the self-match the second side to move loses flag races
+  138:61 — a small per-move time-charging asymmetry (~tens of ms/move) consistent with the
+  move-loop's second-side latency. The seat-perspective control passes (0.5146 ∈ CI); after
+  reserve-bearing engine time management lands, flag races become rare and the asymmetry's
+  impact shrinks; recorded here for the harness audit trail.
+- Remediation: registered as ENGINE-1 (see PREREGISTRATION.md) BEFORE any new games: replace
+  the budget formula with a reserve-bearing one (never plan past the period, keep a safety
+  reserve, bound the hard limit), add clock-allocation regression tests, re-verify suites,
+  re-screen the new candidate (SCREEN-2, fresh seeds), and only then re-apply the anchor
+  selection rule. Batch A/B dispatch is DEFERRED — see PREREGISTRATION.

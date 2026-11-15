@@ -544,6 +544,88 @@ def test_gate_full():
         check(proc.returncode != 0, "missing evidence -> gate refuses (fail closed)")
 
 
+def test_focus_label_case_insensitive():
+    # Harness history: the focus engine was seated under the display name
+    # "Flawless" while pool keys / estimator focus are lowercase. Labels are
+    # display metadata (identity = binary SHA-256); matching must be
+    # case-insensitive or valid committed evidence fails closed.
+    games = make_games("topple-0.1.1", uniform_openings(20, 12, 4, 4))
+    res = re.batch_estimate({"topple-0.1.1": games},
+                            [pool_entry("topple-0.1.1", 2324, 17)], "flawless", 400, 3)
+    check(math.isfinite(res["theta"]),
+          "batch_estimate: lowercase focus matches 'Flawless'-recorded games")
+    s = sum(re.score_of(g["result"], "white" if g["white"] == "Flawless" else "black")
+            for g in games) / len(games)
+    check(close(res["per_anchor"][0]["d_flawless_minus_anchor"], re.elo_from_score(s)),
+          "case-insensitive focus matching preserves the observed d")
+
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "games.jsonl")
+        with open(p, "w") as f:
+            for g in games:
+                f.write(json.dumps(g) + "\n")
+        try:
+            loaded = re.load_games(p, "flawless")
+            check(len(loaded) == len(games),
+                  "load_games accepts 'Flawless'-recorded games under focus 'flawless'")
+        except re.EvidenceError:
+            check(False, "load_games accepts 'Flawless'-recorded games under focus 'flawless'")
+        p2 = os.path.join(td, "other.jsonl")
+        with open(p2, "w") as f:
+            f.write(json.dumps({"opening": "op0", "white": "topple-0.1.1",
+                                "black": "topple-0.2.1", "result": "1-0",
+                                "counted": True, "engine_error": False}) + "\n")
+        try:
+            re.load_games(p2, "flawless")
+            check(False, "load_games rejects games without the focus engine")
+        except re.EvidenceError:
+            check(True, "load_games rejects games without the focus engine")
+
+    self_games = []
+    for oname, w, l, d in uniform_openings(20, 6, 6, 8):
+        for i, r_ in enumerate(["1-0"] * w + ["0-1"] * l + ["1/2-1/2"] * d):
+            self_games.append({"opening": oname, "white": "Flawless", "black": "Flawless",
+                               "result": r_, "counted": True, "engine_error": False,
+                               "color_pair": "AB" if i % 2 == 0 else "BA"})
+    sm = re.control_self_match(self_games, "flawless", 500, 11)
+    check(close(sm["score"], 0.5),
+          "self-match control: display-cased games score via lowercase focus")
+
+
+def test_self_match_seat_perspective():
+    # Registered CTRL-2 semantics: identical binaries must score ~0.5 FROM THE
+    # SEAT perspective — the chess color advantage cancels only via the AB/BA
+    # seat reversal. Self-match records cannot distinguish seats by name (both
+    # 'Flawless'), so the seat perspective comes from the recorded color_pair.
+    # Construct data with a strong white advantage: AB games white wins, BA
+    # games (seat A = black) white still wins -> seat A scores 1 and 0.
+    games = []
+    for oname, w, l, d in uniform_openings(30, 7, 3, 0, prefix="sm"):
+        games.append({"opening": oname, "white": "Flawless", "black": "Flawless",
+                      "result": "1-0", "counted": True, "engine_error": False,
+                      "color_pair": "AB"})
+        games.append({"opening": oname, "white": "Flawless", "black": "Flawless",
+                      "result": "1-0", "counted": True, "engine_error": False,
+                      "color_pair": "BA"})
+    sm = re.control_self_match(games, "flawless", 2000, 20261116)
+    check(close(sm["score"], 0.5),
+          f"seat perspective cancels white advantage (score={sm['score']:.4f})")
+    check(sm["pass"] is True, "balanced seat data passes the 0.5-in-CI control")
+    check(close(sm["white_perspective_score"], 1.0),
+          "white-perspective score reported for transparency (1.0 here)")
+    # Unbalanced seat colors must fail closed (cannot measure seat fairness).
+    bad = [dict(g, color_pair=None) for g in games]
+    try:
+        re.control_self_match(bad, "flawless", 100, 1)
+        check(False, "self-match without color_pair fails closed")
+    except re.EvidenceError:
+        check(True, "self-match without color_pair fails closed")
+    # All-BA data: seat A always black -> seat score = 1 - white score.
+    ba_only = [dict(g, color_pair="BA") for g in games]
+    sm2 = re.control_self_match(ba_only, "flawless", 1000, 7)
+    check(close(sm2["score"], 0.0), "BA-only: seat A scores the black side exactly")
+
+
 def main():
     test_eps_conversion()
     test_gls_math()
@@ -555,6 +637,8 @@ def main():
     test_missing_invalid_evidence()
     test_null_controls()
     test_anchor_label_key_matching()
+    test_focus_label_case_insensitive()
+    test_self_match_seat_perspective()
     test_verify_evidence_fail_closed()
     test_gate_uses_eligible_subset_of_pool()
     test_gate_full()

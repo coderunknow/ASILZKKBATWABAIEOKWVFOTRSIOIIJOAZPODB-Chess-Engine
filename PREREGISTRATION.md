@@ -154,3 +154,79 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 ### BATCH results (filled after execution)
 
 - status: PENDING EXECUTION (anchor set pending SCREENING-1/2)
+
+### PILOT-1 / PILOT-dup results (filled 2026-11-15 after evidence recovery)
+
+- status: COMPLETE (both pilot collections recovered via evidence-bridge rev 3, run
+  43683839993, commit 2ec762e; independently re-aggregated from original shard artifacts —
+  byte-identical merged_sha256 aeb4d5a0… / a811d9d1…).
+- throughput: PILOT-1 29.43 min/game (4/4 games, per-record wall_seconds 1776.7/1755.0/1776.8/
+  1755.4); duplicate pilot 29.53 min/game (4/4). 8-game batch shard ≈ 236 min < 330-min job cap.
+- engine hash freeze verified on runners (fd75726d…, two independent builds byte-identical).
+- Both pilot collections remain EXPLORATORY ONLY (pipeline measurement; excluded from gate).
+
+### CTRL-1 / CTRL-2 results (filled 2026-11-15 after evaluation)
+
+- CTRL-1 anchor-vs-anchor: **PASS.** 240/240 counted, 0 engine errors. Measured
+  topple-0.1.1 − topple-0.2.1 = −125.32 vs published −115.00 → error −10.32, |err| ≤ 75 ✓
+  (estimator seed 20261115). Evidence: benches/evidence/control/topple-0.1.1-vs-topple-0.2.1/.
+- CTRL-2 self-match: **PASS** (see FAILURE_LEDGER 2026-11-15 metric-defect entry). Seat-
+  perspective score 0.5146, 95% CI [0.4792, 0.5500] → 0.5 inside ✓ (estimator seed 20261116).
+  White-perspective 0.6604 recorded as the color advantage. Evidence:
+  benches/evidence/control/flawless-self/.
+
+### SCREENING-1 / SCREENING-2 results (filled 2026-11-15 after evaluation)
+
+- status: COMPLETE (120/120 counted each, recovered from original shard artifacts; byte-
+  identical to the in-run aggregate mirrors 147cec4f… / 9e26b8cd…).
+- SCREENING-1 (vs topple-0.1.1, 2324±17): score 0.0208 → d̂ = −668.8 → abs estimate 1655.2
+  (cluster-bootstrap 95% score CI [0.004, 0.046]).
+- SCREENING-2 (vs topple-0.2.1, 2439±14): score 0.0083 → d̂ = −830.2 → abs estimate 1608.8.
+- Screening estimate (registered rule, mean of R_a + d̂_a): **est ≈ 1632 Elo**.
+- Selection rule outcome: at est ≈ 1632 the only non-saturating pool anchor is wowl-1.3.7
+  (expected |d| = 217 ≤ 400); every other anchor (2324+) is saturating (|expected d| ≥ 692).
+  The ≥3-anchor gate requirement is UNSATISFIABLE at the frozen pool — the registered
+  anchor-set rule produces no compliant set. Per the registered escape clause the tension is
+  documented (not silently tuned); per mission §8 the batch dispatch is DEFERRED and the
+  engine-improvement cycle is registered below. NOTE: the screening root-cause analysis found
+  ~95% of Flawless losses are flag falls (time forfeits) from a clock-management defect —
+  the 1632 figure measures the DEFECTIVE candidate, not the engine's search/eval strength.
+- Screening data remain SELECTION-ONLY, never gate evidence.
+
+## ENGINE-1 — time-management remediation (registered 2026-11-15, BEFORE any new game)
+
+- **Purpose:** improvement cycle step 1 (mission §8). Hypothesis: the flag-fall defect in
+  `clock_limits` (soft clamp 20–30_000 ms causing late-period overspend; hard = 6×soft
+  permitting near-zero-reserve single-move spends) causes ~95% time forfeits at 40/15;
+  fixing it converts forfeits into real chess results.
+- **Change (frozen before implementation):** replace the budget with a reserve-bearing
+  formula — reserve = clamp(t/16, 300 ms, 8 s); soft = max(20 ms, (t − reserve)/mtg) with NO
+  upper clamp; hard = min(4×soft, (t − reserve)/2, t − max(300 ms, reserve/2)); keep the
+  never-exceed-remaining invariant. Rationale: full-period utilization is correct for
+  repeating 'add' schedules, but with a safety reserve that absorbs per-move overhead and
+  bounded hard limits that cannot consume the whole remaining clock.
+- **Acceptance (fixed now):** (1) new clock-allocation regression tests pass (period-plan
+  sums stay ≤ t; no single move can spend more than half the usable clock; reserve always
+  positive); (2) all existing suites stay green (cargo 34+, test_match 104, estimator suite);
+  (3) bench signature change recorded; (4) hosted SCREEN-2 (below) shows flag rate ≈ 0
+  (registered: ≤ 10 flag ends out of 120 games per screening); (5) no regression in the
+  SF19-lite skill-5 A/B probe band (relative statistic, in-sandbox only).
+- **Expected measurable effect:** screening score vs topple-0.1.1 rises from 0.0208 to
+  ≥ 0.10 (est ≥ ~1920); if the engine's true 40/15 strength is ≥ ~2000, ≥3 non-saturating
+  anchors become selectable and Batch A/B proceed with the new frozen hash. If the new
+  screening estimate still yields no compliant ≥3-anchor set, the improvement cycle
+  continues (mission §8) — the threshold and selection rule remain frozen.
+
+## SCREEN-2 — re-screening of the ENGINE-1 candidate (registered 2026-11-15, before dispatch)
+
+- **Purpose:** exploratory screening (selection-only, never gate evidence) of the
+  time-management-fixed candidate, identical methodology to SCREENING-1/2.
+- **Methodology:** Flawless (engine_sha256 "freeze" — first runner build records the new
+  hash, pinned in PREREGISTRATION before any confirmatory dispatch) vs topple-0.1.1 AND
+  topple-0.2.1; 60 openings (batch-A suite, suite hash 2c4a54d8…) × 1 paired rep × AB/BA =
+  120 games each (15 shards × 8); TC 40/15; seeds 20261123 (vs 0.1.1) / 20261124 (vs 0.2.1);
+  marker-file dispatches with distinct revisions; fresh evidence dirs
+  benches/evidence/screening-2/<anchor>/.
+- **Analysis (pre-defined):** identical to SCREENING-1/2 (d̂ per anchor; est = mean(R_a + d̂_a);
+  selection-only uncertainty); then re-apply the UNCHANGED anchor-set selection rule.
+- **Expected evidence:** benches/evidence/screening-2/topple-0.1.1/ and …/topple-0.2.1/.

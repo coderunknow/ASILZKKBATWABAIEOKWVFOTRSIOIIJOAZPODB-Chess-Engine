@@ -197,3 +197,24 @@
   written. Next: hosted verification via evidence-bridge revision 3 (deliberate marker
   dispatch), local strict re-aggregation of all six datasets from original shard artifacts,
   controls + screening evaluation, anchor selection, gate-plan.json, Batch A dispatch.
+
+- 2026-11-15 (seg 13 continued — evidence recovery COMPLETE; controls PASS; screening evaluates; ENGINE-1 registered):
+  evidence-bridge rev 3 (run 43683839993, SUCCESS) committed pilot/pilot-dup/CTRL-2/CTRL-1
+  evidence to the branch (2ec762e) with the FIXED detached-HEAD push — hosted verification of
+  the repair. SCREENING-1/2 recovered locally from original shard artifacts (bridge fail-closed
+  on their failed run conclusions; aggregate mirrors byte-match local re-aggregation) and
+  committed. ALL SIX datasets independently re-aggregated from original artifacts = committed
+  bytes (pilot aeb4d5a0…, pilot-dup a811d9d1…, ctrl-self dd8bb94a…, ctrl-av a bdc70d1e…,
+  screening 147cec4f… / 9e26b8cd…). Pilot throughput re-verified 29.43/29.53 min/game.
+  CTRL-1 PASS (err −10.3 ≤ 75). CTRL-2: estimator metric defect found (self-match white-
+  perspective vs registered seat-perspective; case-sensitive focus matching) — FIXED with
+  regression tests (suite 65/65); re-evaluated 0.5146 CI [0.4792, 0.5500] → PASS; threshold
+  UNCHANGED. SCREENING-1/2: scores 0.0208 / 0.0083 → est ≈ 1632 Elo; selection rule yields
+  only wowl-1.3.7 non-saturating → ≥3-anchor gate UNSATISFIABLE at frozen pool; Batch A/B
+  DEFERRED (never dispatched — no doomed 300-runner-hour campaign). Root-cause analysis of
+  the screening losses: ~95% flag falls (time forfeits), flags in period 3, winner reserve ≈2s
+  — ENGINE DEFECT in src/uci.rs clock_limits (soft clamp 20–30_000 ms → late-period overspend;
+  hard = 6×soft → zero-reserve death march). ENGINE-1 remediation + SCREEN-2 re-screening
+  (seeds 20261123/20261124, freeze-mode hash) REGISTERED in PREREGISTRATION.md BEFORE any new
+  game. Next: implement ENGINE-1, regression tests, full suites, bench signature, commit,
+  dispatch SCREEN-2, pin new hash, re-apply selection.

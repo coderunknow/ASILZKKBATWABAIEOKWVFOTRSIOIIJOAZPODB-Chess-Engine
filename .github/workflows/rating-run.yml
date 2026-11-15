@@ -375,8 +375,12 @@ jobs:
           out = f"benches/rating-{c['batch']}/{c['anchor_id']}/shard-{i}"
 
           def cmd_for(slot_value):
+              # Seat engines under their canonical identifier: pool keys
+              # verbatim for anchors, the lowercase key 'flawless' for the
+              # focus engine (matches the estimator's focus matching and the
+              # frozen pool schema; the binary SHA-256 is the real identity).
               if slot_value == "flawless":
-                  return "./target/release/flawless uci", "Flawless"
+                  return "./target/release/flawless uci", "flawless"
               return f"./anchors/{slot_value}", slot_value
 
           w_cmd, w_name = cmd_for(c["white_engine"])

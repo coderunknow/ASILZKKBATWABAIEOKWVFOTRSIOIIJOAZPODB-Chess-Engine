@@ -69,6 +69,19 @@ def anchor_label(entry: dict) -> str:
     return entry.get("key") or entry["name"]
 
 
+def same_engine(a: str | None, b: str | None) -> bool:
+    """Engine-label equality, case-insensitive.
+
+    The match harness historically seats the focus engine under its display
+    name ("Flawless") while pool keys and the estimator focus are the lowercase
+    key ("flawless"). Labels are display metadata — engine identity is the
+    binary SHA-256 verified in every manifest — so focus matching is
+    case-insensitive. No two frozen pool keys differ only by case (keys are
+    [a-z0-9._-]+), so this cannot merge distinct engines.
+    """
+    return (a or "").casefold() == (b or "").casefold()
+
+
 def load_games(path: str, focus: str | None) -> list[dict]:
     games = []
     try:
@@ -86,7 +99,8 @@ def load_games(path: str, focus: str | None) -> list[dict]:
                 continue
             if g.get("result") not in ("1-0", "0-1", "1/2-1/2"):
                 continue
-            if focus is not None and focus not in (g.get("white"), g.get("black")):
+            if focus is not None and not (same_engine(g.get("white"), focus)
+                                          or same_engine(g.get("black"), focus)):
                 raise EvidenceError(f"{path}:{ln}: focus engine {focus!r} not in game")
             games.append(g)
     return games
@@ -103,7 +117,7 @@ def score_of(result: str, perspective: str) -> float:
 def focus_scores_by_opening(games: list[dict], focus: str) -> dict[str, list[float]]:
     out: dict[str, list[float]] = defaultdict(list)
     for g in games:
-        if g["white"] == focus:
+        if same_engine(g["white"], focus):
             out[g["opening"]].append(score_of(g["result"], "white"))
         else:
             out[g["opening"]].append(score_of(g["result"], "black"))
@@ -421,9 +435,37 @@ def control_anchor_vs_anchor(games: list[dict], entry_a: dict, entry_b: dict,
     }
 
 
+def self_match_seat_score(g: dict, focus: str) -> float:
+    """Seat-A perspective score of one self-match game (0.5-fairness metric).
+
+    The registered CTRL-2 definition ("identical binary must score 0.5 within
+    its 95% CI") is a SEAT-symmetry quantity: the color advantage is real chess
+    and cancels only under the schedule's AB/BA seat reversal. For self-match
+    data both seat labels are identical, so the seat perspective must come from
+    the recorded color_pair (AB: seat A was white; BA: seat A was black).
+    """
+    w = score_of(g["result"], "white")
+    pair = g.get("color_pair")
+    if pair == "AB":
+        return w
+    if pair == "BA":
+        return 1.0 - w
+    raise EvidenceError(
+        f"self-match game missing color_pair (schedule {g.get('schedule_index')}): "
+        "cannot compute the registered seat-perspective score")
+
+
 def control_self_match(games: list[dict], focus: str, n_boot: int, seed: int) -> dict:
     """Swapped-color self-match must be statistically consistent with 0.5."""
-    clusters = focus_scores_by_opening(games, focus)
+    # Distinct-name data (synthetic/legacy): focus-perspective by name.
+    distinct = any(not same_engine(g["white"], g["black"]) for g in games)
+    if not distinct:
+        # Real self-match records: identical labels both sides — seat perspective.
+        clusters = defaultdict(list)
+        for g in games:
+            clusters[g["opening"]].append(self_match_seat_score(g, focus))
+    else:
+        clusters = focus_scores_by_opening(games, focus)
     if not clusters:
         raise EvidenceError("self-match control: no counted games")
     sums = [sum(v) for v in clusters.values()]
@@ -444,6 +486,9 @@ def control_self_match(games: list[dict], focus: str, n_boot: int, seed: int) ->
     return {
         "mode": "self-match",
         "focus": focus, "score": point,
+        "seat_perspective": not distinct,
+        "white_perspective_score": (sum(score_of(g["result"], "white") for g in games)
+                                    / len(games)),
         "ci95_score": [lo, hi], "pass": ok,
     }
 
