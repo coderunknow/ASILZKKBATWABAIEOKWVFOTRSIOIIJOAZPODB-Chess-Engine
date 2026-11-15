@@ -270,3 +270,22 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   criterion) and the SF19-lite skill-5 A/B probe — to be recorded when executed. The new
   engine binary hash is UNFROZEN until the runner build records it (freeze mode), then pinned
   in PREREGISTRATION before any confirmatory dispatch.
+
+## 2026-11-15 — anchor-verify ANCHOR-2 legs: 3 iterative failures resolved via runner annotations (evidence preserved)
+
+- Run 43692582888 (head 4dbeeec): stockfish-5/8 rc=5 UCI ID MISMATCH — the SF id line is
+  "Stockfish N 64"; I had wrongly embedded the AUTHOR banner into EXPECTED_ID (local smoke
+  misread the banner line as the id). leorik-2.5 rc=4 BINARY MISSING — the repo root holds
+  only Leorik.sln; the engine project is Leorik.Engine/ so `dotnet publish` at root has no
+  project. akimbo-0.5.0 + weiss-1.2 + all 6 pool legs green on the first attempt.
+- Run 43693256193 (head 56ef6a5): SF legs rc=0 (id now matches, binary recorded) but the
+  WORKFLOW license step failed: "no LICENSE file" — the license glob is case-sensitive and
+  SF ships `Copying.txt` (the pool anchors happened to use exact-case LICENSE/COPYING);
+  leorik still BINARY MISSING — dotnet names the apphost after the PROJECT
+  (publish/Leorik.Engine).
+- Run 43693679899 (head 932ae99): SUCCESS — all 11 legs green; license glob now matches
+  Copying*; leorik publishes its engine project and the apphost path corrected.
+- Lessons: expected UCI ids must come from the actual id-name line (captured via the
+  diagnostic run), not the banner; C# repos publish the ENGINE project, not the solution
+  root; case-sensitive license globs must include Copying* for SF-family tags. All three
+  fixes are in scripts/anchor_build.sh / anchor-verify.yml with annotated diagnosis trails.

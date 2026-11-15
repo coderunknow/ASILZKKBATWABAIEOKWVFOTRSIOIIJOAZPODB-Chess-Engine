@@ -325,3 +325,18 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   verified present); SF 5 (3238, tag sf_5); SF 8 (3358, tag sf_8, smoke-verified).
 - Revised ANCHOR-2 ladder (order of hosted verification): akimbo 0.5.0 → Weiss 1.2 →
   Leorik 2.5 → SF 5 → SF 8 (reserves: SF 9/10/11, Caissa 1.24, Berserk 4.7.0).
+
+### ANCHOR-2 verification result (2026-11-15 — COMPLETE for the registered ladder)
+
+- **Hosted verification run 43693679899 (SUCCESS, head 932ae99): ALL 11 legs green** —
+  6 frozen-pool anchors (re-verified) + 5 ANCHOR-2 rungs: leorik-2.5 (bin 84e1d60d…),
+  akimbo-0.5.0 (eee14678…), weiss-1.2 (fb9e0434…), stockfish-5 (3cb291f2…),
+  stockfish-8 (6ec5eda2…) — each with exact UCI identity match, license-at-tag verified,
+  source + binary SHA-256 recorded, artifacts `anchor-<key>-43693679899`.
+- **Expansion pool frozen: benches/anchor-pool-3000.json** (schema mirrors the frozen pool;
+  5 engines spanning 2922–3358, 8,762 CCRL games total; exclusions berserk-3.2.1 / seer-1.2.1
+  documented with reasons). Consumed only by the preregistered gate-plan v2 for the 3,000
+  phase — the 2,000 gate uses the frozen pool unchanged.
+- Reserves for later rungs (registered in execution notes 1): weiss-1.3/1.4, sf_9/10/11,
+  caissa-1.24, berserk-4.7.0 — added to the same matrix when the candidate's level makes
+  them decisive.

@@ -264,3 +264,16 @@
   5. If unsatisfiable: continue the §8 improvement cycle with the next registered experiment.
   6. All tools ready in-repo: scripts/make_gate_plan.py, scripts/download_artifacts.py,
      scripts/aggregate_shards.py, scripts/rating_estimator.py (gate), scripts/verify_evidence.py.
+
+- 2026-11-15 (seg 16 — SCREEN-2 wait utilized: ANCHOR-2 executed end-to-end; expansion pool frozen):
+  live reconciliation (PR 19526a43 open/draft/unmerged; both SCREEN-2 runs in_progress, 30
+  shards playing). ANCHOR-2 ladder verified: 5 candidates registered → tag/source/license
+  checks (berserk-3.2.1 + seer-1.2.1 EXCLUDED fail-closed: no verifiable source tags) →
+  local smokes (sf_8/sf_5 builds + ids; weiss-1.2 id exact; akimbo-0.5.0 id exact) →
+  anchor-verify.yml matrix extended (+5 legs) → 3 annotated failures diagnosed+fixed
+  (SF id line vs banner; leorik Engine project path; Copying* license glob) →
+  HOSTED RUN 43693679899 SUCCESS all 11 legs → benches/anchor-pool-3000.json frozen
+  (5 engines 2922-3358, 8,762 CCRL games, schema mirrors frozen pool). ENGINE-2 design
+  draft (SEE) recorded in DESIGN_LOG; make_gate_plan.py + make_batch_dispatch.py tools
+  ready; verify_screen2.py orchestrator ready for the evidence landing. Workspace-root
+  append trap (cwd resets) hit twice — repaired both times, workspace repo restored.
