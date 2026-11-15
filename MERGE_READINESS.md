@@ -11,7 +11,9 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
 - [x] Project correctness and reliability audit complete — engine audit pass recorded in
       DESIGN_LOG.md (2026-11-14 adversarial review entry + TT clock-unsafety verification);
       differential perft 76,240 positions 0 mismatches (BENCHMARKING.md / AGENTS_LOG.md);
-      full Rust suite 33/33, match.py 104/104, rating_estimator 46/46 at `d023ee8`.
+      full Rust suite 35/35, match.py 104/104, rating_estimator 65/65 at `2e46fc9`
+      (evidence-push regression 10/10; ENGINE-1 clock regression included; bench signature
+      unchanged fc907eba40b7869f).
 - [x] Critical/major findings fixed or technically dispositioned — CodeRabbit review 5903125228
       (13 findings) dispositioned in AGENTS_LOG.md; TT halfmove-clock finding verified FIXED in
       src/tt.rs (clock-safe flag + probe suppression + regression test
@@ -50,16 +52,23 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       3 runs 1998/1984/1996 ms vs i7-4770K reference 2054 ms for 3,939,338 nodes
       (Tors3/CCRL_ScirptsTests ccrl_bench.py) → factor k=1.0291, equivalent TC 40/14.58 min;
       batches play 40/15 wall-clock with the ~3% deviation documented (pool `calibration` block).
-- [ ] Throughput pilots complete — PILOT-1 EXECUTED (run 43602273258, success): 4/4 games,
-      **29.5 min/game measured** (match step 13:57–14:56Z), engine fd75726d… verified;
-      duplicate pilot (43603558950) also completed — exploratory only, never counted toward
-      confirmatory samples. Box stays open until the raw evidence is committed and verified
-      (evidence-bridge collection of run 43602273258 queued).
-- [ ] Both null controls pass — anchor-vs-anchor (published diff ±75 Elo) and color-swapped
-      self-match (score consistent with 0.5): DISPATCHED and RUNNING (CTRL-1 run 43604654709
-      240 games; CTRL-2 run 43603826611 240 games, 0 shard failures so far). Thresholds frozen
-      in PREREGISTRATION.md before dispatch. Also in flight: SCREENING-1/2 (120 games each,
-      anchor selection only, never gate evidence).
+- [x] Throughput pilots complete — PILOT-1 (run 43602273258) + duplicate pilot (43603558950)
+      both executed and RECOVERED: raw evidence committed via evidence-bridge rev 3
+      (run 43683839993 SUCCESS, commit 2ec762e) and independently re-aggregated from the
+      original shard artifacts (byte-identical, merged_sha256 aeb4d5a0… / a811d9d1…).
+      Throughput re-verified from committed per-game records: 29.43 / 29.53 min/game
+      (8-game batch shard ≈ 236 min < 330-min cap). Exploratory only, never gate evidence.
+- [x] Both null controls pass (frozen candidate fd75726d…) — CTRL-1: measured −125.32 vs
+      published −115.00 → error −10.32 within ±75 (240/240 counted, 0 engine errors; evidence
+      control/topple-0.1.1-vs-topple-0.2.1/). CTRL-2: seat-perspective 0.5146, 95% CI
+      [0.4792, 0.5500] → 0.5 inside (after the registered metric fix, threshold UNCHANGED;
+      evidence control/flawless-self/). Caveat recorded: ENGINE-1 changes the candidate, so
+      CTRL-2-R (registered 2026-11-15, PREREGISTRATION.md) re-runs the self-match with the new
+      binary before any gate; CTRL-1 stands (candidate-independent).
+- [ ] Anchor selection applied to SCREEN-2 (ENGINE-1 candidate) with the frozen rule —
+      IN FLIGHT (runs 43685671431 + 43686056730). SCREENING-1/2 of the OLD candidate measured
+      est ≈ 1632 with a ~95% flag-fall defect; the selection rule was unsatisfiable there and
+      Batch A/B were DEFERRED rather than dispatched to a doomed campaign.
 - [ ] Batch A independently passes the strict rating gate — NOT RUN (needs ≥2,000 completed
       games per eligible anchor; 60×17×2=2,040 games/anchor planned).
 - [ ] Batch B independently passes the strict rating gate — NOT RUN (fresh disjoint openings).
