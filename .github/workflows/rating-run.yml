@@ -166,7 +166,7 @@ jobs:
           if cfg.get("schema") != 1:
               fail("schema must be 1")
           purpose = cfg.get("purpose", "")
-          if purpose not in ("pilot", "control", "screening", "confirmatory"):
+          if purpose not in ("pilot", "control", "screening", "screening-2", "confirmatory"):
               fail(f"bad purpose {purpose!r}")
           batch = cfg.get("batch", "")
           if batch not in ("A", "B", "CTRL"):

@@ -550,11 +550,30 @@ pub fn clock_limits(
         (btime, binc)
     };
     let mtg = movestogo.unwrap_or(40).max(1);
-    // Soft limit may not exceed the remaining budget (clock hit with time on the board
-    // is a forfeit), then hard lives in [soft, cap] with a 30 ms safety margin.
-    let soft = (t / mtg + inc / 2).clamp(20, 30_000).min(t);
-    let cap = t.saturating_sub(30).max(soft);
-    let hard = soft.saturating_mul(6).min(cap);
+    // ENGINE-1 reserve-bearing budget (registered 2026-11-15 in PREREGISTRATION.md
+    // before implementation; supersedes the soft-clamp(20, 30_000)/hard=6*soft formula
+    // whose late-period overspend produced ~95% flag falls at 40/15 — see
+    // FAILURE_LEDGER 2026-11-15):
+    //   reserve = clamp(t/16, 300 ms, 8 s)   — safety margin for per-move overhead,
+    //   soft    = max(20 ms, (t - reserve)/mtg)  — full-period utilization is correct
+    //              for repeating 'add' schedules, but planned spend never passes the
+    //              period budget, and there is no upper clamp (the old 30 s cap made
+    //              soft exceed the remaining plan and starved the period end),
+    //   hard    = min(4*soft, (t - reserve)/2, t - reserve/2), floored at soft —
+    //              a single move can never consume the whole usable clock.
+    // Invariants (regression-tested): planned period spend <= t - reserve; after any
+    // hard-limited move at least reserve/2 of the clock survives; hard >= soft; the
+    // engine never plans past the remaining clock.
+    let reserve = (t / 16).clamp(300, 8_000);
+    let usable = t.saturating_sub(reserve);
+    let soft = (usable / mtg + inc / 2).max(20).min(t);
+    let cap = t.saturating_sub(reserve / 2).max(soft);
+    let hard = soft
+        .saturating_mul(4)
+        .min(usable / 2)
+        .min(cap)
+        .max(soft)
+        .min(t);
     (soft, hard)
 }
 
@@ -584,11 +603,12 @@ mod tests {
 
     #[test]
     fn clock_limits_respect_remaining_time() {
-        // 40 moves in 15 minutes (the rating-schedule shape).
+        // 40 moves in 15 minutes (the rating-schedule shape): reserve = 8 s,
+        // usable = 892 s, soft = 22.3 s/move, hard = 4*soft = 89.2 s.
         let (soft, hard) = clock_limits(WHITE, 900_000, 900_000, 0, 0, Some(40));
-        assert_eq!(soft, 22_500);
-        assert_eq!(hard, 135_000);
-        // Never exceed the remaining clock; hard >= soft; safety margin on the cap.
+        assert_eq!(soft, 22_300);
+        assert_eq!(hard, 89_200);
+        // Never exceed the remaining clock; hard >= soft; hard keeps reserve/2 alive.
         for &(t, inc, mtg) in &[
             (0u64, 0u64, Some(40u64)),
             (1, 0, Some(40)),
@@ -603,15 +623,74 @@ mod tests {
             let (s, h) = clock_limits(WHITE, t, t, inc, inc, mtg);
             assert!(s <= t, "soft {s} exceeds remaining {t}");
             assert!(h >= s, "hard {h} below soft {s}");
-            assert!(
-                h <= t.saturating_sub(30).max(s),
-                "hard {h} unsafe for remaining {t}"
-            );
+            assert!(h <= t, "hard {h} exceeds remaining {t}");
         }
         // Side symmetry: black gets the same limits from its own clock.
         let (sw, hw) = clock_limits(WHITE, 3_000, 250, 0, 0, Some(40));
         let (sb, hb) = clock_limits(WHITE + 1, 3_000, 250, 0, 0, Some(40));
-        assert_eq!((sw, hw), (75, 450));
-        assert_eq!((sb, hb), (20, 120));
+        // t=3000: reserve clamps to 300 ms -> usable 2700 -> soft 67, hard 4*soft=268.
+        assert_eq!((sw, hw), (67, 268));
+        // t=250: reserve floor 300 > t -> usable 0 -> 20 ms floor moves.
+        assert_eq!((sb, hb), (20, 20));
+    }
+
+    #[test]
+    fn clock_limits_engine1_no_flag_death_march() {
+        // ENGINE-1 regression (FAILURE_LEDGER 2026-11-15): the old clamp(20, 30_000)
+        // soft cap pinned soft at 30 s while the remaining clock shrank below the
+        // plan, and hard = 6*soft allowed spending down to a ~30 ms clock — ~95% of
+        // rating games ended in flag falls. The reserve-bearing budget must complete
+        // a full 40-move period with a positive reserve, and no single move may be
+        // able to consume the whole usable clock.
+        let reserve_of = |t: u64| (t / 16).clamp(300, 8_000);
+        // (1) Simulate a full period: spend exactly soft per move (the plan), charge
+        //     60 ms of per-move overhead on top (engine elapsed = search + IO).
+        let mut t: u64 = 900_000;
+        for mtg in (1..=40).rev() {
+            let (s, _) = clock_limits(WHITE, t, t, 0, 0, Some(mtg));
+            let spent = s + 60; // overhead beyond the planned search time
+            assert!(spent < t, "move with mtg={mtg} plans {spent} ms of {t} ms");
+            t -= spent;
+        }
+        assert!(
+            t >= 300,
+            "period plan spent past the 300 ms reserve floor: {t} ms left"
+        );
+        // (2) A hard-limited move can never drop the clock below reserve/2.
+        for &(tt, mtg) in &[
+            (900_000u64, 40u64),
+            (900_000, 1),
+            (120_000, 7),
+            (20_000, 40),
+            (1_000, 3),
+            (250, 40),
+        ] {
+            let (s, h) = clock_limits(WHITE, tt, tt, 0, 0, Some(mtg));
+            let floor = (reserve_of(tt) / 2).min(tt.saturating_sub(1)).max(1);
+            assert!(
+                tt.saturating_sub(h) >= floor || h == tt.saturating_sub(1) || h >= tt,
+                "hard {h} of {tt} (mtg={mtg}) can flag: survives only {} ms",
+                tt - h
+            );
+            assert!(h >= s, "hard below soft at t={tt} mtg={mtg}");
+        }
+        // (3) Sudden-death shape (no movestogo, mtg defaults to 40) stays safe as
+        //     the clock drains: plan sums stay within the remaining time.
+        let mut t: u64 = 60_000;
+        for _ in 0..30 {
+            let (s, _) = clock_limits(WHITE, t, t, 0, 0, None);
+            let spent = s + 20;
+            assert!(spent < t, "sudden-death move plans {spent} of {t} ms");
+            t -= spent;
+        }
+        assert!(t > 0);
+        // (4) The old death-march trigger: late-period small clock with large mtg
+        //     (movestogo lost) must NOT pin soft above the remaining budget.
+        let (s, h) = clock_limits(WHITE, 45_000, 45_000, 0, 0, Some(40));
+        assert!(s <= 45_000 / 8 + 1, "soft {s} overspends a starved period");
+        assert!(
+            h <= 45_000u64.saturating_sub(300),
+            "hard {h} unsafe at 45 s/40"
+        );
     }
 }

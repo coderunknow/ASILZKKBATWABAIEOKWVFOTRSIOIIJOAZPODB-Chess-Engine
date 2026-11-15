@@ -247,3 +247,26 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   reserve, bound the hard limit), add clock-allocation regression tests, re-verify suites,
   re-screen the new candidate (SCREEN-2, fresh seeds), and only then re-apply the anchor
   selection rule. Batch A/B dispatch is DEFERRED — see PREREGISTRATION.
+
+## 2026-11-15 — ENGINE-1 implemented and locally verified (registered 2026-11-15 before implementation)
+
+- Change: `src/uci.rs clock_limits` replaced with the registered reserve-bearing budget:
+  reserve = clamp(t/16, 300 ms, 8 s); soft = max(20 ms, (t−reserve)/mtg) with the old
+  30 s upper clamp removed; hard = min(4·soft, (t−reserve)/2, t−reserve/2), floored at soft.
+  Full-period utilization for repeating 'add' schedules is retained; a safety reserve now
+  absorbs per-move overhead and the hard limit can no longer consume the whole clock.
+- Verification (ENGINE-1 acceptance 1–3):
+  (1) NEW regression test `clock_limits_engine1_no_flag_death_march` — full 40-move period
+      simulation with 60 ms/move overhead completes with the reserve intact; no hard-limited
+      move can flag; sudden-death drain stays within budget; the old starved-period trigger
+      (45 s clock, movestogo lost) no longer overspends;
+  (2) all suites green: cargo test --release 35/35 (lib 7 incl. the new test + clock_smoke 3
+      + correctness 21 + uci_smoke 4), cargo fmt --check clean, cargo clippy --all-targets
+      -D warnings clean, scripts/test_match.py 104/104, scripts/test_rating_estimator.py 65/65;
+  (3) bench signature UNCHANGED `fc907eba40b7869f` (2,221,199 nodes @ depth 10) — the clock
+      fix touches time allocation only; search/eval are byte-identical, so all prior
+      correctness verification (perft 27/27, differential 76,240 positions) remains valid.
+- Acceptance (4)/(5) are hosted/local play checks: SCREEN-2 (flag rate ≤ 10/120 per registered
+  criterion) and the SF19-lite skill-5 A/B probe — to be recorded when executed. The new
+  engine binary hash is UNFROZEN until the runner build records it (freeze mode), then pinned
+  in PREREGISTRATION before any confirmatory dispatch.

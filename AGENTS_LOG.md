@@ -218,3 +218,18 @@
   (seeds 20261123/20261124, freeze-mode hash) REGISTERED in PREREGISTRATION.md BEFORE any new
   game. Next: implement ENGINE-1, regression tests, full suites, bench signature, commit,
   dispatch SCREEN-2, pin new hash, re-apply selection.
+
+- 2026-11-15 (seg 14 — ENGINE-1 implemented + verified locally; SCREEN-2 preparation):
+  rustc/cargo 1.99.0 toolchain rebuilt from npm @toolchain-bin pins (docs/ENVIRONMENT.md
+  procedure, sysroot assembled + chmod fix). ENGINE-1 implemented exactly as registered:
+  reserve-bearing clock_limits in src/uci.rs (reserve=clamp(t/16,300ms,8s), soft without the
+  30s cap, hard=min(4*soft,(t-reserve)/2,t-reserve/2)); NEW regression test
+  clock_limits_engine1_no_flag_death_march (period simulation + hard-limit floors + starved-
+  period trigger); suites: cargo 35/35, fmt clean, clippy -D warnings clean, test_match 104/104,
+  test_rating_estimator 65/65; bench signature UNCHANGED fc907eba40b7869f (search/eval
+  untouched). rating-run.yml purpose list extended with "screening-2" (registered fresh
+  evidence dirs benches/evidence/screening-2/<anchor>/; resolve validator + evidence path +
+  artifact names all derive from purpose). Next: commit, dispatch SCREEN-2 rev 9 (vs topple-
+  0.1.1, seed 20261123) then rev 10 (vs topple-0.2.1, seed 20261124), engine_sha256 "freeze",
+  verify each event fires (dropped-dispatch discipline), monitor, pin the runner hash,
+  re-apply the selection rule.
