@@ -316,3 +316,27 @@ fetched via the GitHub API 2026-11-14): at a repeating-TC period boundary cutech
 matches cutechess (and hence CCRL 40/15) semantics exactly; `--tc-policy reset` would DEVIATE from
 cutechess. The earlier residual risk is CLOSED; the default stands and is the one used by PILOT-1,
 the null controls and the planned batches.
+
+## 2026-11-15 — ENGINE-2 design draft (SEE-based pruning) — baseline-gated, registration after SCREEN-2
+
+Audit of src/search.rs (18 fns) + src/eval.rs at 14e2e1c: implemented = PVS-style null-window
+re-search (first move full window, rest −alpha−1), iterative deepening, TT, quiescence with
+per-capture delta pruning, reverse futility (150·depth), null-move, LMR table (quiet, ≥3rd
+move, ≥d3, not-in-check), aspiration, killers + history (±depth²), passed-pawn terms
+(passed_pawn_bits @ eval.rs:200). Verified ABSENT (grep): SEE, singular extensions,
+countermove heuristic, check-extension policy audit (an `extension` term exists in the
+re-search path; its assignment needs review when ENGINE-2 lands).
+
+ENGINE-2 hypothesis (smallest justified change with the largest classical search gain among
+verified gaps): add a static exchange evaluation and use it (a) in quiescence to prune
+captures losing material after swaps (SEE < 0 when not in check, stand-pat-aware), and
+(b) in move ordering so winning captures sort above losing ones (bad-capture demotion after
+TT/killer moves). Expected effect (classical-engine literature + our anchors' lineage):
++30–80 Elo at fixed time; measurable at 40/15 via the registered A/B probe (vs SF19-lite
+skill-5 band) and, if adopted, via a fresh screening. Risks: SEE mis-scoring promotions/king
+captures → guarded implementation (king-capture truncation, promotion add-back), regression
+suite (new unit tests with hand-computed SEE values incl. x-rays), bench signature WILL change
+(pruning alters node counts) — perft/differential must stay identical (move legality
+untouched). Acceptance criteria will be fixed in the registration BEFORE implementation,
+using the SCREEN-2 + (candidate) batch baseline as the reference. This entry is a DESIGN
+DRAFT ONLY — no code changes under this entry.
