@@ -161,3 +161,38 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 ## 2026-11-14 (seg-12) FALSE-GREEN local gate invocation — corrected
 
 - `python -m unittest test_match` / `python -m unittest test_rating_estimator` run **0 tests** (both files use custom `main()` runners with `check()` counters, no unittest.TestCase). My local-gate claims invoking them ("104/104, 46/46 (unittest)") were mis-described: the counts are real but came from the proper runners (`python scripts/test_match.py` -> 104 checks; `python scripts/test_rating_estimator.py` -> 46 checks then, 50 now). CI (.github/workflows/ci.yml) was never affected — it runs the suite files directly. Correct invocation recorded; AGENTS_LOG entry 251/257 wording superseded by this entry.
+
+## 2026-11-15 — Evidence-commit pushes failed from DETACHED HEAD ("src refspec ... does not match any") — FIXED + regression-tested
+
+- Affected executions (all observed live):
+  - evidence-bridge rev 2, run `43611827091` (head 93abb1e): aggregated pilot + pilot-dup
+    evidence successfully, FAILED at the "Commit evidence to the branch" step — the commit
+    existed only on the ephemeral runner and was never pushed (runner commits 6cbfdd2/0cb06ef
+    are NOT on the remote branch).
+  - SCREENING-1 run `43609372547` and SCREENING-2 run `43609636030`: all 15 shard jobs
+    completed and uploaded shard artifacts + aggregate mirror artifacts, but the in-run
+    `evidence` job failed at its commit step for the same reason → run conclusion = failure
+    (fail-closed; no partial evidence claimed). Aggregate mirrors WERE uploaded (if: always()).
+- Root cause: both workflows check out with `actions/checkout@v4` at
+  `ref: ${{ github.event.pull_request.head.sha }}` → DETACHED HEAD. The publish step then ran
+  `git push origin "$BRANCH"` — a local-ref refspec that matches no branch in detached HEAD,
+  failing with `error: src refspec arena/... does not match any`. The preceding
+  `git pull --rebase origin "$BRANCH"` succeeded (rebase onto the fetched remote branch works
+  detached), which masked the real defect until the push step failed 5/5 retries.
+- Fix (both `evidence-bridge.yml` and the `evidence` job in `rating-run.yml`):
+  1. publish with the EXPLICIT refspec `HEAD:refs/heads/$BRANCH` (valid from detached HEAD);
+  2. wrong-branch safeguard: refuse any destination that is not the PR's `arena/*` branch
+     (never main, never another branch);
+  3. verified rebase-retry loop for concurrent evidence commits: fetch the remote tip,
+     `git rebase origin/$BRANCH` (patch-identical commits are dropped → idempotent no-op
+     push), abort-with-diagnostics on conflict; ancestor-state check prevents force-like
+     surprises;
+  4. push/pull attempt diagnostics logged each attempt;
+  5. evidence-bridge gained an `if: always()` aggregate mirror upload so an Actions-side
+     aggregation can never again be lost to a failed commit.
+- Regression coverage: `scripts/test_evidence_push.sh` (T1 detached-HEAD explicit-refspec
+  push; T2 concurrent-advance rebase-retry; T3 wrong-branch refusal; T4 static guard on both
+  workflow files) — 10/10 PASS 2026-11-15.
+- Hosted verification: evidence-bridge revision 3 (deliberate marker dispatch) re-collected
+  all recovered runs and its commit step PUSHED successfully from Actions — recorded in
+  AGENTS_LOG.md with the run id. Not a green light for anything beyond pipeline correctness.

@@ -505,13 +505,42 @@ jobs:
           set -euo pipefail
           git config user.name "flawless-evidence-bot"
           git config user.email "flawless-evidence-bot@users.noreply.github.com"
+          # SAFEGUARD: evidence pushes are only ever allowed to the PR's arena
+          # working branch. Anything else (e.g. main, another PR) is refused.
+          case "$BRANCH" in
+            arena/*) ;;
+            *) echo "::error::refusing to push to non-arena branch '$BRANCH'"; exit 1 ;;
+          esac
           git add benches/evidence
           if git diff --cached --quiet; then
             echo "no new evidence to commit"; exit 0
           fi
           git commit -m "evidence: raw per-game results (${{ fromJson(needs.resolve.outputs.config).purpose }} ${{ fromJson(needs.resolve.outputs.config).batch }} ${{ fromJson(needs.resolve.outputs.config).anchor_id }}, run ${{ github.run_id }})"
+          # NOTE: actions/checkout with ref=<head sha> leaves this job in
+          # DETACHED HEAD state — "git push origin $BRANCH" is a refspec that
+          # matches no local branch and fails with "src refspec ... does not
+          # match any". Publish with an EXPLICIT refspec instead, and rebase
+          # onto the verified remote tip if a concurrent evidence commit
+          # advanced the branch (a rebase that drops our patch-identical
+          # commit makes the retry a no-op push — safe and idempotent).
+          git fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          echo "remote tip: $(git rev-parse --verify "origin/$BRANCH")"
           for i in 1 2 3 4 5; do
-            git pull --rebase origin "$BRANCH" && git push origin "$BRANCH" && exit 0
+            echo "push attempt $i: HEAD=$(git rev-parse HEAD) origin/$BRANCH=$(git rev-parse origin/$BRANCH)"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then
+              echo "evidence commit $(git rev-parse HEAD) pushed to refs/heads/$BRANCH"
+              exit 0
+            fi
+            git fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            if git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
+              echo "::error::push failed but origin/$BRANCH is an ancestor of HEAD — unexpected remote state"
+              exit 1
+            fi
+            if ! git rebase "origin/$BRANCH"; then
+              git rebase --abort
+              echo "::error::evidence rebase onto origin/$BRANCH failed"
+              exit 1
+            fi
             sleep $((10 * i))
           done
           echo "::error::evidence push failed after retries"

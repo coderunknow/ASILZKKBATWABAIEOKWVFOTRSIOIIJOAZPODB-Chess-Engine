@@ -90,3 +90,9 @@ Gate note: `scripts/rating_estimator.py gate` independently recomputes every rep
 from raw `games.jsonl` evidence (never trusts a hand-entered rating). It is the implementation
 behind the `rating-gate` check (`.github/workflows/rating-gate.yml`) and fails closed on any
 missing artifact.
+
+## Evidence pipeline push regression suite (2026-11-15)
+
+| Suite | Scope | Status |
+|---|---|---|
+| `scripts/test_evidence_push.sh` (10 checks) | evidence-commit push from DETACHED HEAD (actions/checkout ref=sha): explicit refspec `HEAD:refs/heads/$BRANCH` publishes; concurrent remote advancement → rebase-retry publishes; wrong-branch safeguard refuses non-arena destinations; static guard that both `evidence-bridge.yml` and `rating-run.yml` keep the explicit refspec and never reintroduce `git push origin "$BRANCH"` | PASS 2026-11-15 (10/10) |

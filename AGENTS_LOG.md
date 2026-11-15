@@ -179,3 +179,21 @@
 274. BATCH-A/B PREREGISTERED before dispatch (all fixed inputs frozen now: engine fd75726d..., suite hashes + disjointness verified, 2,040 games/anchor/batch (60x17x2), 255 shards x 8, TC 40/15 cutechess-add, bootstrap seeds 20261121/20261122, threshold 2000.0 strict unrounded, adjudication rules); ONLY rule-derived input = anchor set via the already-registered SCREENING rule, committed in gate-plan.json together with the Batch-A dispatch, before any game.
 275. bridge dispatch recovery: the 1eddd0e push event (evidence-request rev 1) was DROPPED by GitHub event processing (no workflow run was ever created — same failure mode as the 4bb6016 CTRL-1 dispatch); subsequent bridge runs correctly skipped via the top-commit marker gate (43609372543/43609636019/43609996200 = success, run=false). NOTE for the mechanism: a dropped marker dispatch cannot be recovered by later pushes (their top commits do not move the marker) — recovery = a NEW marker revision (deliberate re-dispatch), documented here. rev 2 dispatched with BOTH completed pilot runs (43602273258 -> evidence/pilot/, 43603558950 -> evidence/pilot-dup/, disjoint dirs per the never-mix rule).
 276. Dispatches all covered (CTRL-1 resolves from the QUEUED run 43604654709 when scheduled; earlier drop already recovered by rev 6/7/8). BENCHMARKING.md = policy only, no stale claims. CHECKPOINT 15:55Z: local gates green at 315c6fc (104/55/34); runs: CTRL-2 43603826611 39 done/36 running/25 queued/0 failed; CTRL-1 resolve 43604654709 queued (starved behind CTRL-2); bridge rev 2 run 43611827091 queued; SCREENING-1 43609372547 queued; SCREENING-2 dispatched (rev 8); evidence not yet collected (bridge run queued). NEXT: poll runs; when bridge completes -> git fetch + verify benches/evidence/pilot{,-dup}/*/ (manifest counts, merged_sha256, engine hash, disjoint dirs) then ctrl entries in PREREGISTRATION.md; when CTRL-2 completes -> evidence-collection marker for it + run control self-match at the frozen threshold; when CTRL-1 resolve completes -> rev 9 dispatch with the resolved run id; when SCREENING-1/2 complete -> run the anchor selection rule + commit gate-plan.json + Batch-A dispatch (preregistered at a5a24c0).
+
+- 2026-11-15 (seg 13 — workspace restore #6; evidence pipeline repair; artifact recovery start):
+  fresh sandbox cloned coderunknow/FlawLessChess, checked out PR #1 branch
+  arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij; local HEAD verified == live PR head
+  4d9e828c5f498f12383dedc105d7580bc57fd81d (PR open/draft/unmerged). Reconciled live state:
+  all six evidence runs completed server-side — PILOT-1 43602273258 success, pilot-dup
+  43603558950 success, CTRL-2 43603826611 success (120 shard artifacts), CTRL-1 43604654709
+  success (120 shard artifacts), SCREENING-1 43609372547 / SCREENING-2 43609636030 conclusion
+  FAILURE with all 15 shard artifacts + aggregate mirrors uploaded each (failure isolated to
+  the evidence-commit step; fail-closed, no partial evidence claimed). Artifact inventory
+  fetched via API with pagination (583 repo artifacts, 0 expired). ROOT-CAUSED + FIXED the
+  detached-HEAD evidence-push defect in BOTH evidence-bridge.yml and the rating-run evidence
+  job: explicit refspec HEAD:refs/heads/$BRANCH, arena-branch safeguard, verified rebase-retry
+  loop with ancestor-state check + diagnostics, bridge aggregate mirror upload (if: always());
+  regression suite scripts/test_evidence_push.sh added (10/10 PASS local). FAILURE_LEDGER entry
+  written. Next: hosted verification via evidence-bridge revision 3 (deliberate marker
+  dispatch), local strict re-aggregation of all six datasets from original shard artifacts,
+  controls + screening evaluation, anchor selection, gate-plan.json, Batch A dispatch.
