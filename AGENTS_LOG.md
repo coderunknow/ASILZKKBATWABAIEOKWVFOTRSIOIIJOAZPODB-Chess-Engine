@@ -233,3 +233,34 @@
   0.1.1, seed 20261123) then rev 10 (vs topple-0.2.1, seed 20261124), engine_sha256 "freeze",
   verify each event fires (dropped-dispatch discipline), monitor, pin the runner hash,
   re-apply the selection rule.
+
+- 2026-11-15 (seg 15 — ENGINE-1 acceptance 5 PASS; local TC smoke healthy; SCREEN-2 in flight at segment end):
+  probe-006 (probe-005 methodology, 80 games = 2 reps, SF19-lite Skill 5, movetime 100 ms,
+  pinned npm hashes verified): flawless 0.556, opening-clustered 95% CI [0.469, 0.644],
+  logistic +39 — inside the probe-005 band; 0 engine errors; local build hash a3325011…
+  (sandbox; runner hash pins at SCREEN-2). Local real-clock smoke (40/5 self-match, AB/BA):
+  game 1 draw at 63 plies, BOTH clocks finished healthy (w 47.9 s / b 52.7 s of the 300 s
+  period) — NO flag, exactly the reserve-bearing behavior ENGINE-1 registered (old code would
+  have entered the period-end death march). Interim CodeRabbit review requested 06:37Z at
+  91c4c08 (comment id 6890453480) — NO response recorded yet (rate-limit history known);
+  the MANDATORY final review remains at the exact final SHA. SCREEN-2 runs 43685671431 (rev 9)
+  + 43686056730 (rev 10) dispatched, events verified, all 15 rev-9 shards playing at segment
+  end; rev-10 shards partially queued behind the 20-job concurrency cap. Segment boundary:
+  turn quota exhausted while the server-side screening executes; classification
+  ACTIVE / INCOMPLETE with WAITING_EXTERNAL execution boundary — the workflows continue on
+  GitHub infrastructure independently of this session.
+- EXACT RESUME POINT (next session):
+  1. `git fetch` in /home/z/my-project/FlawLessChess; check runs 43685671431 + 43686056730
+     concluded SUCCESS; two evidence commits expected on the branch
+     (benches/evidence/screening-2/topple-0.1.1/ + …/topple-0.2.1/ via the FIXED evidence job).
+  2. Download the 15 shard artifacts per run; strict aggregate_shards.py; byte-compare vs
+     committed; verify flag rate ≤ 10/120 (ENGINE-1 acceptance 4); read the new engine hash
+     from the manifests and PIN it in PREREGISTRATION.md (SCREEN-2 result section).
+  3. Evaluate: python3 scripts/make_gate_plan.py --anchors topple-0.1.1 topple-0.2.1
+     (est = mean(R_a + d̂_a)); apply the frozen selection rule (≥3 non-saturating anchors).
+  4. If satisfied: commit benches/gate-plan.json + Batch A dispatch (confirmatory, pinned
+     hash, seed 20261121, 255 shards × 8, suite batchA) BEFORE any batch game; then Batch B
+     (seed 20261122, suite batchB); dispatch CTRL-2-R (registered) with the pinned hash.
+  5. If unsatisfiable: continue the §8 improvement cycle with the next registered experiment.
+  6. All tools ready in-repo: scripts/make_gate_plan.py, scripts/download_artifacts.py,
+     scripts/aggregate_shards.py, scripts/rating_estimator.py (gate), scripts/verify_evidence.py.
