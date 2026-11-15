@@ -230,3 +230,22 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 - **Analysis (pre-defined):** identical to SCREENING-1/2 (d̂ per anchor; est = mean(R_a + d̂_a);
   selection-only uncertainty); then re-apply the UNCHANGED anchor-set selection rule.
 - **Expected evidence:** benches/evidence/screening-2/topple-0.1.1/ and …/topple-0.2.1/.
+
+## CTRL-2-R — self-match null control re-run for the ENGINE-1 candidate (registered 2026-11-15, before dispatch)
+
+- **Purpose:** mission §8.16 — the candidate changed (ENGINE-1 clock budget), so the old
+  CTRL-2 evidence (binary fd75726d…) no longer covers the candidate's clock interaction with
+  the harness. CTRL-1 (anchor-vs-anchor) does not seat the candidate and its PASS stands.
+- **Methodology:** identical binary both sides at the PINNED SCREEN-2 hash (freeze recorded
+  by SCREEN-2 runners, pinned in PREREGISTRATION before this dispatch); 60 openings (batch-A
+  suite, 2c4a54d8…) × 2 paired reps × AB/BA = **240 games**; 120 shards × 2; TC 40/15;
+  dispatch seed 20261125; purpose control, batch CTRL, label flawless-self-r; evidence dir
+  benches/evidence/control/flawless-self-r/.
+- **Acceptance criterion (fixed, unchanged):** seat-perspective score 0.5 within its 95%
+  opening-cluster bootstrap CI (the registered CTRL-2 definition with the color_pair metric
+  fix; estimator seed 20261125). White-perspective score is recorded for transparency.
+- **Timing:** runs BEFORE any confirmatory gate evaluation (the gate consumes both controls
+  at their registered paths; gate-plan.json will point the self-match control at the
+  CTRL-2-R evidence for the ENGINE-1 candidate).
+- **Expected evidence:** artifacts rating-control-CTRL-flawless-self-r-shard*-<run_id> +
+  manifests; strict aggregation identical to CTRL-2.
