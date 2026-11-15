@@ -249,3 +249,18 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   CTRL-2-R evidence for the ENGINE-1 candidate).
 - **Expected evidence:** artifacts rating-control-CTRL-flawless-self-r-shard*-<run_id> +
   manifests; strict aggregation identical to CTRL-2.
+
+### ENGINE-1 acceptance record (updated 2026-11-15 after local verification)
+
+- (1) clock regression test: PASS (cargo 35/35 incl. `clock_limits_engine1_no_flag_death_march`).
+- (2) suites: cargo 35/35, fmt clean, clippy -D warnings clean, test_match 104/104,
+      test_rating_estimator 65/65.
+- (3) bench signature UNCHANGED fc907eba40b7869f (search/eval byte-identical; the fix touches
+      time allocation only).
+- (4) SCREEN-2 flag rate ≤ 10/120 per screening: PENDING (runs 43685671431 + 43686056730).
+- (5) SF19-lite skill-5 probe: probe-006 (probe-005 methodology, 80 games = 2× repetitions,
+      movetime 100 ms, skill_black 5, hash 16, batch PROBE): flawless 44.5/80 = 0.556,
+      opening-clustered 95% CI [0.469, 0.644], logistic +39 vs this setting — inside the
+      probe-005 band (0.600, CI [0.463, 0.725], +70 [−26, +168]; overlapping CIs). 0 engine
+      errors. Raw evidence committed: benches/probe-006-engine1-validation/. Local build hash
+      a3325011… (sandbox build; the RUNNER build hash is the one pinned for batches).
