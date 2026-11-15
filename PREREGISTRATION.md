@@ -308,3 +308,20 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 - **No games are played under this registration; it registers verification + expansion work
   only.** Every verification failure (unverifiable license, id mismatch, build failure) is
   recorded with the exclusion reason in the pool file, mirroring the frozen-pool discipline.
+
+### ANCHOR-2 execution notes 1 (2026-11-15 — tag availability verified, rungs adjusted)
+
+- Stockfish 8: tag `sf_8`, **COPYING at tag = GPL-3.0**, local build smoke SUCCESS (g++,
+  ARCH=x86-64, bench 5.9M nodes @ 2.42M nps, UCI id "Stockfish 8 64 by T. Romstad, …"
+  matching the CCRL row). Hosted verification still required.
+- Berserk 3.2.1: NO tag/release exists (tags start 8.5.1, releases start 4.3.0) → EXCLUDED
+  under the fail-closed source-identity rule; substituted by Seer/akimbo/Weiss rungs below.
+- Seer 1.2.1: repo tags start `v2.1.0`; only CCRL row = 1.2.1 (3088±18) → EXCLUDED unless a
+  verifiable source revision is found; lower priority given alternatives.
+- SUBSTITUTED RUNGS (3,000-straddle band, all with known repos): **akimbo 0.5.0 (3026,
+  amanjpro/akimbo — same repo as the frozen-pool akimbo 0.1.1, existing verification flow,
+  tags to be checked at execution)**; **Weiss 1.2 (3017, version↔rating map already extracted
+  by anchor-research run 43587593326-series)**; Leorik 2.5 (2922, release tags 2.4/2.5/3.1
+  verified present); SF 5 (3238, tag sf_5); SF 8 (3358, tag sf_8, smoke-verified).
+- Revised ANCHOR-2 ladder (order of hosted verification): akimbo 0.5.0 → Weiss 1.2 →
+  Leorik 2.5 → SF 5 → SF 8 (reserves: SF 9/10/11, Caissa 1.24, Berserk 4.7.0).
