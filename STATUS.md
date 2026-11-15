@@ -1,6 +1,6 @@
 # STATUS — Flawless Chess Engine
 
-**Project state: `ACTIVE`** (V1 is NOT complete; the 2,000 Elo release gate has not been met and has NOT been measured — no calibrated absolute rating exists; see "Rating status" below)
+**Project state: `ACTIVE / INCOMPLETE`** (V1 NOT complete; the 2,000 Elo gate NOT met. Evidence pipeline repaired + all exploratory/control evidence recovered; SCREENING-1/2 measured the frozen candidate at ~1632 Elo and root-caused a ~95% flag-fall defect; ENGINE-1 clock fix implemented + registered; SCREEN-2 re-screening of the fixed candidate is IN FLIGHT on GitHub Actions. See "Checkpoint" below.)
 
 **Current branch:** `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij`
 **Starting commit (verified 2026-11-14):** `98b1a00203183d9c7ccb175f7d6eb8f5ef5eb429` (only an Apache-2.0 `LICENSE` present)
@@ -27,7 +27,7 @@
 - [x] Identity migration to Flawless (ADR-0002) — historical evidence kept under old identifiers
 - [x] Correctness audit pass 1 + 2 (mate>draw precedence, quiesce/RFP terminals, searchmoves MultiPV=1, clock_limits panic, panic-fallback plumbing) — all reproduced by regression tests; bench signature `d790483532d87af0` → `3086f65159758c9d`
 - [x] UCI integration smoke + seeded deterministic fuzz (`tests/uci_smoke.rs`)
-- [ ] Absolute rating > 2,000 (two-sided 95% CI lower bound STRICTLY GREATER THAN 2,000, per docs/RATING_PROTOCOL.md §9 amendment) — NOT MEASURED, NOT MET (in execution: verified anchor pool frozen `benches/anchor-pool.json` 6 anchors 1849–2474, SF10 factor_k 1.0291; PILOT-1 complete 29.5 min/game; both null controls + 2 screening runs dispatched; Batch A/B pending screening-based anchor selection)
+- [ ] Absolute rating > 2,000 (two-sided 95% CI lower bound STRICTLY GREATER THAN 2,000, per docs/RATING_PROTOCOL.md §9 amendment) — NOT MEASURED, NOT MET. Verified state 2026-11-15: frozen pool 6 anchors 1849–2474 (SF10 factor_k 1.0291); PILOT throughput re-verified 29.43 min/game; CTRL-1 PASS (err −10.3 ≤ 75); CTRL-2 PASS (seat-perspective 0.5146, CI [0.4792, 0.5500], after a registered metric fix — threshold unchanged); SCREENING-1/2 (frozen candidate fd75726d…): scores 0.0208/0.0083 → est ≈ 1632 → ≥3-anchor selection rule UNSATISFIABLE, Batch A/B DEFERRED (never dispatched); root cause: ~95% flag falls from the old clock budget; ENGINE-1 reserve-bearing clock fix implemented (cargo 35/35, bench signature unchanged) and SCREEN-2 re-screening IN FLIGHT (runs 43685671431 + 43686056730). The gate remains unmet; nothing may be claimed otherwise.
 - [ ] Reviews: CodeRabbit review 5903125228 fully dispositioned (13/13 findings; 11/11 threads replied+resolved 2026-11-14); FRESH review at the exact final SHA still required; Copilot BLOCKED (quota, lower-effort retry needs web UI); Codex RATE_LIMITED; Qodo BLOCKED (trial ended); Kilo BLOCKED (credits)
 - [x] PR #1 returned to **Draft** (2026-11-14, `gh pr ready --undo` verified): open, unmerged, draft=true. Earlier "not marked ready" claim was inaccurate (GitHub had it open/non-draft); corrected. PR stays open+unmerged; never merge/tag/release without explicit authorization.
 - [ ] Correctness, reliability, documentation, release gates (see TESTING.md)
@@ -173,3 +173,52 @@ Review policy: a reviewer FINISHED only when the service actually completes and 
   (8) MERGE_READINESS + final audit + "Is this complete?".
 - Missing evidence: pilot results; CTRL-1/CTRL-2 results; batch A/B games + CIs;
   fresh final-head CodeRabbit review; final full CI on final SHA.
+
+## CHECKPOINT — 2026-11-15T07:00Z (SCREEN-2 in flight; workspace restore #6 session)
+
+- HEAD `c24020b9` on `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij` (PR #1 open/draft/unmerged — verified).
+- Completed this segment (all committed):
+  1. Evidence pipeline: detached-HEAD push defect FIXED in evidence-bridge.yml + rating-run
+     evidence job (explicit refspec HEAD:refs/heads/$BRANCH, arena-branch safeguard, verified
+     rebase-retry, bridge aggregate mirror); regression suite scripts/test_evidence_push.sh
+     10/10; HOSTED VERIFICATION: evidence-bridge rev 3 run **43683839993 SUCCESS** — pilot,
+     pilot-dup, CTRL-1, CTRL-2 evidence committed to the branch (2ec762e).
+  2. Evidence recovery COMPLETE: all six datasets committed under benches/evidence/
+     (pilot, pilot-dup, control/flawless-self, control/topple-0.1.1-vs-topple-0.2.1,
+     screening/topple-0.1.1, screening/topple-0.2.1); every dataset independently
+     re-aggregated from original run artifacts = committed bytes (hashes in AGENTS_LOG).
+  3. Evaluations: pilot throughput 29.43/29.53 min/game; CTRL-1 PASS (−125.32 vs −115 → err
+     −10.3 ≤ 75); CTRL-2 PASS after estimator metric fix (self-match must measure the SEAT
+     perspective via recorded color_pair; focus matching case-insensitive; suite 65/65;
+     threshold unchanged): 0.5146, CI [0.4792, 0.5500].
+  4. SCREENING-1/2 evaluated per the registered rule: est ≈ 1632 Elo (scores 0.0208/0.0083);
+     selection rule yields only wowl-1.3.7 non-saturating → Batch A/B DEFERRED (a doomed
+     ~300-runner-hour campaign was NOT dispatched; compute not wasted).
+  5. Root cause: ~95% of rating losses are FLAG FALLS; src/uci.rs clock_limits overspend
+     (soft clamp 20–30_000 ms; hard=6×soft). ENGINE-1 reserve-bearing budget REGISTERED then
+     implemented; cargo 35/35, fmt/clippy clean, test_match 104/104, estimator 65/65; bench
+     signature UNCHANGED fc907eba40b7869f.
+- IN FLIGHT (server-side, GitHub Actions): SCREEN-2 re-screening of the ENGINE-1 candidate —
+  rev 9 run **43685671431** (vs topple-0.1.1, seed 20261123) + rev 10 run **43686056730**
+  (vs topple-0.2.1, seed 20261124); 15 shards × 8 games each at 40/15; engine_sha256 "freeze"
+  (runner build records the new candidate hash); expected wall time ≈ 4–9 h; the evidence job
+  (fixed push path) auto-commits benches/evidence/screening-2/<anchor>/ when all 15 shards of
+  a run succeed.
+- Next exact actions (resume procedure):
+  1. `git fetch && git log --oneline -5` — expect 2 evidence commits (screening-2 dirs) after
+     the runs complete; verify run conclusions + artifacts (both runs must be SUCCESS).
+  2. Verify each screening-2 dataset: strict re-aggregation from the 15 shard artifacts,
+     byte-compare vs committed; check flag rate ≤ 10/120 (ENGINE-1 acceptance 4); measure the
+     freeze hash from manifests and PIN it in PREREGISTRATION (SCREEN-2 result section).
+  3. Evaluate: d̂ per anchor; est = mean(R_a + d̂_a); re-apply the UNCHANGED selection rule.
+  4. If ≥3 non-saturating anchors: commit benches/gate-plan.json (rule-derived set + documented
+     span interpretation) with the Batch A dispatch revision BEFORE any batch game; update
+     dispatch.json (confirmatory, pinned hash, seeds 20261121/20261122, 255 shards × 8,
+     suites batchA/batchB); dispatch Batch A then B progressively; re-run CTRL-2 self-match
+     with the new binary (registered decision — see ENGINE-1 acceptance notes) before the gate.
+  5. If still no compliant set: continue the §8 improvement cycle (next most promising
+     independently testable improvement; do not tune to the screening outcome).
+  6. Fresh CodeRabbit review at the exact final SHA; CI green there; final manifest.
+- Missing evidence: SCREEN-2 results (in flight); new-candidate controls (CTRL-2 re-run with
+  the new binary registered as pre-gate requirement); Batch A/B games + CIs; fresh final-SHA
+  CodeRabbit review; final full CI.
