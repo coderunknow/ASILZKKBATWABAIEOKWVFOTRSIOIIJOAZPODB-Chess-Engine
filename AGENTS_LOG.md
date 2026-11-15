@@ -295,3 +295,22 @@
   --batch A --seed 20261121 --anchor <sel> --revision <next>) THEN Batch B (20261122);
   CTRL-2-R dispatch (seed 20261125) with the pinned hash; (6) if unsatisfiable → ENGINE-2
   registration (SEE design draft in DESIGN_LOG) with SCREEN-2 as the measured baseline.
+
+- 2026-11-15 (seg 17 end — cutoff boundary ~11:45Z): remote tip 00e7401 (this log pending push).
+  SCREEN-2 runs 43685671431 + 43686056730 STILL IN PROGRESS at 11:31Z (started 06:29/06:34Z;
+  30/30 shards playing; 0 artifacts). Duration analysis: old-candidate SCREENING took ~3h40m;
+  the ENGINE-1 clock fix makes games LONGER (flag ends ≈ 0 → full games); PILOT mean 29.43
+  min/game with small sample; at ~36 min/game shards finish ≈ 12:00-12:10Z; GitHub job
+  timeout 360 min → hard kill ~12:29Z. IF SHARDS TIME OUT: evidence job fails closed (strict
+  15-shard aggregation) → recovery = re-dispatch the affected run via rating-run.yml
+  workflow_dispatch inputs (registered config: purpose=screening-2, target_commit=HEAD at
+  00e7401+, seed unchanged, engine_sha256=freeze or the pinned hash) — document the rerun in
+  PREREGISTRATION when it happens; never mix partial evidence. This segment also: recover_
+  screen2.py committed (9a61259, repo-portable gh/curl dual-path, smoke-tested); SCREEN-3
+  conditional registration (f04e657); GATE-PLAN-V2 amendment registered (00e7401); PR body
+  updated to current verified state; mode-only file churn from sandbox restore reverted
+  (git restore); local suites re-verified 104/104 + 65/65 (local Rust toolchain lost in the
+  recycle — hosted CI is authoritative for cargo tests, latest green at 9a61259); gate-plan
+  chain rehearsed end-to-end on old screening evidence (exact reproduction: est=1632.0,
+  rule unsatisfiable, escape clause intact; old candidate flagged 57/120 — SCREEN-2 must
+  show ≤10 for ENGINE-1 acceptance 4).
