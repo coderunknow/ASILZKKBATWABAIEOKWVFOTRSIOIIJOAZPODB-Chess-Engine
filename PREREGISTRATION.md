@@ -450,3 +450,15 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   3. Single-run purposes (screening/screening-2/control) keep the existing layout
      (benches/evidence/<purpose>/<anchor>/); unchanged behavior.
 - **No acceptance criterion changes.** The gate recomputes from the canonical dir only.
+
+### SHAPE-1 clarification (recorded 2026-11-15, verified from live SCREEN-2R shards)
+
+- `schedule_sha256` in each shard manifest is computed over the SHARD'S OWN scheduled-game
+  slice (match.py:450/861), not the global 120-game list — so it legitimately differs
+  between shard shapes (SCREEN-2 attempt 1: 87ee566f… for the 8-game slice; SCREEN-2R:
+  shard-scoped values). The identity guarantee that matters was verified EMPIRICALLY:
+  the games at global schedule_index 114/115 in SCREEN-2R shard 57 are field-identical
+  (opening, seats, color_pair, repetition) to the same global indices played in the
+  cancelled SCREEN-2 run — the global 120-game schedule is seed-derived and
+  shard-count-independent, as registered. Strict aggregation binds the schedule via
+  schedule_index coverage + per-shard lo/hi ranges, not via this hash.
