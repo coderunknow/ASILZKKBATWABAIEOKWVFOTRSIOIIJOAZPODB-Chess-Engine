@@ -340,3 +340,21 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
 - Reserves for later rungs (registered in execution notes 1): weiss-1.3/1.4, sf_9/10/11,
   caissa-1.24, berserk-4.7.0 — added to the same matrix when the candidate's level makes
   them decisive.
+
+## SCREEN-3 — conditional third screening to complete the ≥3-anchor selection set (registered 2026-11-15, BEFORE any SCREEN-2 result is observed)
+
+- **Purpose:** the frozen anchor-set rule requires ≥3 non-saturating screened anchors;
+  SCREEN-2 screens exactly two (topple-0.1.1, topple-0.2.1). If the SCREEN-2 estimate makes
+  ≥3 frozen-pool anchors non-saturating (|est − R_a| ≤ 400), a third screening is required
+  before gate-plan.json; if it does not, SCREEN-3 is NOT dispatched and the improvement
+  cycle continues (registration is a plan, not an obligation to run).
+- **Anchor choice (mechanical, rule-derived):** among non-saturating pool anchors NOT yet
+  screened in SCREEN-2, pick the one minimizing |est − R_a|; deterministic tie-break =
+  higher published_elo. No human discretion.
+- **Methodology:** identical to SCREEN-2 (120 games = 60 openings × 1 paired rep × AB/BA,
+  batch-A suite 2c4a54d8…, 15 shards × 8, TC 40/15, marker-file dispatch revision = next
+  sequential, purpose "screening", white flawless at the PINNED SCREEN-2 hash, seed
+  20261126, fresh evidence dir benches/evidence/screening-3/<anchor>/).
+- **Analysis:** identical (d̂_a; per-anchor estimate R_a + d̂_a; selection-only uncertainty);
+  then make_gate_plan.py --anchors <all screened anchors> applies the UNCHANGED rule to
+  produce the gate plan. Screening remains selection-only, never gate evidence.
