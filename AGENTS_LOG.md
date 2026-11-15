@@ -277,3 +277,21 @@
   draft (SEE) recorded in DESIGN_LOG; make_gate_plan.py + make_batch_dispatch.py tools
   ready; verify_screen2.py orchestrator ready for the evidence landing. Workspace-root
   append trap (cwd resets) hit twice — repaired both times, workspace repo restored.
+
+- 2026-11-15 (seg 16 end — turn quota boundary at 09:15Z): SCREEN-2 runs 43685671431 +
+  43686056730 still IN PROGRESS (all 30 shards playing, 0 artifacts yet — shard artifacts
+  upload at completion; ETA ≈ 10:30-10:45Z + ~10-15 min evidence job → evidence commits
+  ≈ 10:45-11:00Z). ANCHOR-2 fully executed + frozen this segment (hosted run 43693679899
+  SUCCESS all 11 legs; benches/anchor-pool-3000.json at d42c751). All tools staged:
+  verify_screen2.py (orchestrator), make_gate_plan.py, make_batch_dispatch.py,
+  download_artifacts.py. NEXT SESSION: (1) git fetch; check both runs concluded success;
+  (2) python3 /home/z/my-project/scripts/verify_screen2.py 43685671431 43686056730
+  (downloads 15 shard artifacts per run, strict-aggregates, byte-compares vs committed
+  evidence, checks flag rate ≤ 10/120 = ENGINE-1 acceptance 4, reports the runner engine
+  hash); (3) PIN the hash in PREREGISTRATION (SCREEN-2 result section); (4) est =
+  mean(R_a + d̂_a) via the screening data; re-apply the FROZEN selection rule
+  (make_gate_plan.py --anchors topple-0.1.1 topple-0.2.1); (5) if ≥3 non-saturating anchors
+  → gate-plan.json commit + Batch A dispatch (make_batch_dispatch.py --hash <pinned>
+  --batch A --seed 20261121 --anchor <sel> --revision <next>) THEN Batch B (20261122);
+  CTRL-2-R dispatch (seed 20261125) with the pinned hash; (6) if unsatisfiable → ENGINE-2
+  registration (SEE design draft in DESIGN_LOG) with SCREEN-2 as the measured baseline.
