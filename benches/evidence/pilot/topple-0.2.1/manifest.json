@@ -1,0 +1,20 @@
+{
+  "batch": "A",
+  "anchor": "topple-0.2.1",
+  "engine_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
+  "anchor_sha256": "c5443e6f81aef3bfa033ee6233e2064c9fcc50c64cd41f74adbbf66d61c38ac6",
+  "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+  "shard_ids": [
+    "pilot-A-topple-0.2.1-0",
+    "pilot-A-topple-0.2.1-1"
+  ],
+  "n_shards": 2,
+  "n_attempts": 4,
+  "n_counted": 4,
+  "n_engine_errors": 0,
+  "n_unadjudicated": 0,
+  "hardware_cpu_model": [
+    "AMD EPYC 7763 64-Core Processor"
+  ],
+  "merged_sha256": "aeb4d5a0c40741d70eeb7fa95cc05612a8fcc7c1d5fb271d10478f2b70465922"
+}
