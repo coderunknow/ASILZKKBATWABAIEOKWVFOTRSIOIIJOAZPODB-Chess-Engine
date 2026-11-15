@@ -111,7 +111,7 @@ case "$KEY" in
     LICENSE="GPL-3.0" ;;
   leorik-2.5)
     REPO="lithander/Leorik"; TAG="2.5"; NAME="Leorik"; VERSION="2.5"
-    EXPECTED_ID="Leorik 2.5"; BIN="publish/Leorik"
+    EXPECTED_ID="Leorik 2.5"; BIN="publish/Leorik.Engine"
     # ANCHOR-2 (CCRL 2922±18, g=684). C#/.NET solution with the engine project in
     # Leorik.Engine/ (repo root holds only Leorik.sln) — publish THAT project;
     # self-contained linux-x64 produces a directly-executable apphost (runner image

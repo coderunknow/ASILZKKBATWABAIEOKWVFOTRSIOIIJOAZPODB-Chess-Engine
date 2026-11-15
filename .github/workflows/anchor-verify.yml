@@ -100,7 +100,7 @@ jobs:
           if [ "$RC" -ne 0 ]; then echo "::error::anchor_build.sh failed rc=$RC"; exit "$RC"; fi
           # License presence is a hard requirement (fail closed).
           shopt -s nullglob
-          lic=(/tmp/anchor/${{ matrix.anchor }}.src/LICENSE* /tmp/anchor/${{ matrix.anchor }}.src/COPYING* /tmp/anchor/${{ matrix.anchor }}.src/license*)
+          lic=(/tmp/anchor/${{ matrix.anchor }}.src/LICENSE* /tmp/anchor/${{ matrix.anchor }}.src/COPYING* /tmp/anchor/${{ matrix.anchor }}.src/Copying* /tmp/anchor/${{ matrix.anchor }}.src/license*)
           [ ${#lic[@]} -gt 0 ] || { echo "::error::no LICENSE file in anchor source"; exit 6; }
           shopt -u nullglob
           # Stable path for the built binary (used by the artifact upload).
