@@ -96,25 +96,27 @@ case "$KEY" in
     LICENSE="GPL-3.0" ;;
   stockfish-5)
     REPO="official-stockfish/Stockfish"; TAG="sf_5"; NAME="Stockfish"; VERSION="5"
-    EXPECTED_ID="Stockfish 5 64 by Tord Romstad, Marco Costalba and Joona Kiiski"; BIN="src/stockfish"
+    EXPECTED_ID="Stockfish 5 64"; BIN="src/stockfish"
     # ANCHOR-2 (CCRL 3238±10, g=1936). GPL-3.0 at tag (COPYING.txt verified 2026-11-15;
-    # local smoke: build rc=0, bench 8.7M nodes @ 2.44M nps).
+    # local smoke: build rc=0, bench 8.7M nodes @ 2.44M nps). The UCI id line is
+    # "Stockfish 5 64"; the author names are the SEPARATE banner + id-author lines.
     BUILD='cd src && make build ARCH=x86-64'
     LICENSE="GPL-3.0" ;;
   stockfish-8)
     REPO="official-stockfish/Stockfish"; TAG="sf_8"; NAME="Stockfish"; VERSION="8"
-    EXPECTED_ID="Stockfish 8 64 by T. Romstad, M. Costalba, J. Kiiski, G. Linscott"; BIN="src/stockfish"
+    EXPECTED_ID="Stockfish 8 64"; BIN="src/stockfish"
     # ANCHOR-2 (CCRL 3358±7, g=3886). GPL-3.0 at tag (COPYING.txt verified 2026-11-15;
-    # local smoke: build rc=0, bench 5.9M nodes @ 2.42M nps).
+    # local smoke: build rc=0, bench 5.9M nodes @ 2.42M nps). Same id-line shape as sf_5.
     BUILD='cd src && make build ARCH=x86-64'
     LICENSE="GPL-3.0" ;;
   leorik-2.5)
     REPO="lithander/Leorik"; TAG="2.5"; NAME="Leorik"; VERSION="2.5"
     EXPECTED_ID="Leorik 2.5"; BIN="publish/Leorik"
-    # ANCHOR-2 (CCRL 2922±18, g=684). C#/.NET: self-contained linux-x64 publish
-    # produces a directly-executable apphost (runner image ships the .NET SDK).
-    # Source identity = tag 2.5; MIT at tag.
-    BUILD='dotnet publish -c Release -r linux-x64 --self-contained true -o publish'
+    # ANCHOR-2 (CCRL 2922±18, g=684). C#/.NET solution with the engine project in
+    # Leorik.Engine/ (repo root holds only Leorik.sln) — publish THAT project;
+    # self-contained linux-x64 produces a directly-executable apphost (runner image
+    # ships the .NET SDK). Source identity = tag 2.5; MIT at tag.
+    BUILD='dotnet publish Leorik.Engine -c Release -r linux-x64 --self-contained true -o publish'
     LICENSE="MIT" ;;
   *)
     echo "unknown anchor key: $KEY" >&2; exit 2 ;;
