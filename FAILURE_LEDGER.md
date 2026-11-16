@@ -315,3 +315,24 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   actual binary (SHAPE-1: 2 games/job, timeout 350; batches 1020 × 2 in 4 runs of 255;
   CTRL-2-R 120 × 2); a timeout kills jobs silently — check run conclusions, not just
   artifact presence; recovery = re-run failed jobs, never mix partial evidence.
+- **2026-11-16 — SCREEN-2R run 2 (43714620645, vs topple-0.2.1), job 132843722744 (shard 17): FAILED, cause = runner/infrastructure failure.**
+  Evidence: match step ("Run tournament shard (match.py)") frozen with conclusion=null;
+  job window 17:20:05Z→19:33:10Z (~2h13m — longer than every successful sibling shard);
+  NO error lines, NO artifact (upload step never ran), NO check-run annotation; the job
+  log blob is gone (404 BlobNotFound) and the job is absent from the run logs archive
+  (120 files = 59 shards x 2). This is a runner-level interruption mid-match, NOT an
+  engine/harness failure (identical binaries completed 58/59 sibling shards + all 60 of
+  run 1; aggregate job correctly skipped by needs.shard.result gate).
+  Remediation: single-shard retry with identical frozen identity (marker rev 12, only
+  shard_indices=[17]; seed 20261124, tc 40/15, pinned engine hash, suite hash, shard_count
+  60 → shard 17 covers global indices 34,35). Workflow gained a marker-level run_evidence
+  flag (this dispatch sets run_evidence=false) so the retry does NOT commit partial
+  evidence at the canonical path; canonical aggregation happens offline via
+  recover_screen2.py with merged artifacts (59 + 1) and explicit evidence commit.
+  Tooling defects found & fixed during recovery prep (scripts/test_recover_download.py +
+  scripts/verify_run1_both_paths.py): (a) REST artifact fallback passed b"" to ZipFile
+  (text-mode stdout) — fallback could never succeed; now downloads zips to files (binary).
+  (b) artifacts listing / gh download are paginated (default 30) — gh path silently
+  truncated 60 shards to 29; now paginate (per_page=100) + post-download shard-count
+  check with REST top-up. Both paths independently verified on run 43714600687:
+  byte-identical aggregation matching committed evidence f4fc95c7c32f587b (120 games).

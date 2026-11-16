@@ -438,7 +438,11 @@ jobs:
   evidence:
     name: aggregate-and-commit-evidence
     needs: [resolve, shard]
-    if: needs.resolve.outputs.run == 'true' && needs.shard.result == 'success'
+    # run_evidence=false marks a single-shard RETRY dispatch (infra-failure
+    # recovery): the rerun's own evidence job must NOT commit partial evidence
+    # (len(shard_indices)==1 would aggregate 2 games at the canonical path).
+    # Canonical aggregation happens offline across the merged artifacts.
+    if: needs.resolve.outputs.run == 'true' && needs.shard.result == 'success' && fromJson(needs.resolve.outputs.config).run_evidence != false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

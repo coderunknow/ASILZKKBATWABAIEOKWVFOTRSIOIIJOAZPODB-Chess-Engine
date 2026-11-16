@@ -14,6 +14,10 @@ failed/incomplete evidence push can be recovered and independently checked:
 Usage:
   python3 scripts/recover_screen2.py <run_id_vs_topple-0.1.1> <run_id_vs_topple-0.2.1>
 
+A single anchor slot also accepts '+'-joined run IDs whose artifacts are MERGED
+into one shards-root before aggregation (single-shard retry recovery):
+  python3 scripts/recover_screen2.py 43714600687 43714620645+<retry_run_id>
+
 Environment: requires `gh` on PATH (or GITHUB_TOKEN for the REST fallback).
 Anchor identities/hashes below are the FROZEN pool entries (benches/anchor-pool.json);
 they are hard-coded here to keep this recovery script independent of dispatch inputs.
@@ -59,33 +63,74 @@ def api(path, *extra):
     r = _curl_api(path)
     return json.loads(r.stdout)
 
-def download_run(run, dest):
-    """Pull all artifacts of a workflow run into dest/ (gh preferred, curl fallback)."""
+def _shard_meta_count(root):
+    import glob
+    return len(glob.glob(os.path.join(root, "**", "meta.json"), recursive=True))
+
+def download_run(run, dest, expect=None):
+    """Pull all artifacts of a workflow run into dest/ (gh preferred, curl fallback).
+
+    expect = number of shard meta.json files the run must yield; when the gh CLI
+    path under-delivers (its artifact listing is paginated and silently truncates
+    for runs with >30 artifacts), fall through to the paginated REST fallback."""
     os.makedirs(dest, exist_ok=True)
     if subprocess.run(["which", "gh"], capture_output=True).returncode == 0 and \
        subprocess.run(["gh", "run", "download", run, "-D", dest, "-R", ENGINE_REPO],
-                      capture_output=True, text=True).returncode == 0:
+                      capture_output=True, text=True).returncode == 0 and \
+       (expect is None or _shard_meta_count(dest) >= expect):
         return True
-    arts = api(f"repos/{ENGINE_REPO}/actions/runs/{run}/artifacts")["artifacts"]
-    import io
+    arts, page = [], 1
+    while True:
+        resp = api(f"repos/{ENGINE_REPO}/actions/runs/{run}/artifacts?per_page=100&page={page}")
+        arts.extend(resp["artifacts"])
+        if len(resp["artifacts"]) < 100:
+            break
+        page += 1
     for a in arts:
-        r = _curl_api(f"repos/{ENGINE_REPO}/actions/artifacts/{a['id']}/zip")
-        zipfile.ZipFile(io.BytesIO(r.stdout if isinstance(r.stdout, bytes) else b"")) \
-            .extractall(os.path.join(dest, a["name"]))
+        # Artifact zips are BINARY: download to a file (curl -o keeps the stream
+        # in binary mode). Reading r.stdout in text mode would corrupt the zip
+        # (and the pre-fix code passed b"" to ZipFile whenever stdout was a str,
+        # so this fallback could never succeed).
+        zpath = os.path.join(dest, f"{a['id']}.zip")
+        _curl_api(f"repos/{ENGINE_REPO}/actions/artifacts/{a['id']}/zip", out_path=zpath)
+        with zipfile.ZipFile(zpath) as z:
+            z.extractall(os.path.join(dest, a["name"]))
+        os.remove(zpath)
+    if expect is not None and _shard_meta_count(dest) < expect:
+        sys.exit(f"download_run: only {_shard_meta_count(dest)} of {expect} shard metas after both paths")
     return True
 
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
     engine_hashes, overall = set(), True
-    for idx, run in enumerate(sys.argv[1:]):
+    for idx, spec in enumerate(sys.argv[1:]):
         anchor, anchor_sha = ANCHORS[idx]
-        info = api(f"repos/{ENGINE_REPO}/actions/runs/{run}")
+        runs = spec.split("+")
+        primary, retries = runs[0], runs[1:]
+        info = api(f"repos/{ENGINE_REPO}/actions/runs/{primary}")
         ok = info.get("status") == "completed" and info.get("conclusion") == "success"
-        print(f"run {run} (vs {anchor}): {info.get('status')}/{info.get('conclusion')} ok={ok}")
+        print(f"run {primary} (vs {anchor}): {info.get('status')}/{info.get('conclusion')} ok={ok}")
         overall &= ok
-        rdir = os.path.join(tempfile.gettempdir(), f"scr2-{run}")
-        download_run(run, rdir)
+        # Merged-retry slot: primary run + '+'-joined retry runs (single-shard
+        # infra-failure recovery). Retry runs only contribute artifacts; the
+        # strict aggregation below is the actual gate, so their workflow
+        # conclusion (evidence job skipped) is reported but not gating —
+        # BUT they must be terminal before we aggregate.
+        rdir = os.path.join(tempfile.gettempdir(), f"scr2-{primary}")
+        if retries:
+            rdir = os.path.join(tempfile.gettempdir(), f"scr2-slot{idx}-merged")
+            os.makedirs(rdir, exist_ok=True)
+        download_run(primary, os.path.join(rdir, f"run-{primary}") if retries else rdir, expect=60)
+        for rr in retries:
+            rinfo = api(f"repos/{ENGINE_REPO}/actions/runs/{rr}")
+            rstate = f"{rinfo.get('status')}/{rinfo.get('conclusion')}"
+            print(f"retry run {rr} (vs {anchor}): {rstate}")
+            if rinfo.get("status") != "completed":
+                print(f"RETRY RUN {rr} NOT TERMINAL — refusing to aggregate partial artifacts")
+                overall = False
+                continue
+            download_run(rr, os.path.join(rdir, f"run-{rr}"), expect=1)
         out_dir = os.path.join(tempfile.gettempdir(), f"scr2-agg-{anchor}")
         os.makedirs(out_dir, exist_ok=True)
         # discover the runner engine hash from shard manifests, then strict-aggregate
