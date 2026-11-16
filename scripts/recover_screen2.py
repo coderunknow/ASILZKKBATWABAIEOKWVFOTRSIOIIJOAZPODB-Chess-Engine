@@ -111,7 +111,11 @@ def main():
         info = api(f"repos/{ENGINE_REPO}/actions/runs/{primary}")
         ok = info.get("status") == "completed" and info.get("conclusion") == "success"
         print(f"run {primary} (vs {anchor}): {info.get('status')}/{info.get('conclusion')} ok={ok}")
-        overall &= ok
+        # In a merged-retry slot the primary's workflow conclusion is EXPECTED to
+        # be failure (documented infra failure; that is why the retry exists) —
+        # artifact-level verification via the strict aggregation is the gate.
+        if not retries:
+            overall &= ok
         # Merged-retry slot: primary run + '+'-joined retry runs (single-shard
         # infra-failure recovery). Retry runs only contribute artifacts; the
         # strict aggregation below is the actual gate, so their workflow
@@ -121,7 +125,11 @@ def main():
         if retries:
             rdir = os.path.join(tempfile.gettempdir(), f"scr2-slot{idx}-merged")
             os.makedirs(rdir, exist_ok=True)
-        download_run(primary, os.path.join(rdir, f"run-{primary}") if retries else rdir, expect=60)
+        # Per-run shard expectation: a single-run slot needs all 60; in a merged
+        # slot the primary run legitimately holds only 60-len(retries) shards —
+        # the retries supply the rest (each retry run = 1 shard here).
+        download_run(primary, os.path.join(rdir, f"run-{primary}") if retries else rdir,
+                     expect=60 if not retries else 60 - len(retries))
         for rr in retries:
             rinfo = api(f"repos/{ENGINE_REPO}/actions/runs/{rr}")
             rstate = f"{rinfo.get('status')}/{rinfo.get('conclusion')}"
@@ -131,6 +139,8 @@ def main():
                 overall = False
                 continue
             download_run(rr, os.path.join(rdir, f"run-{rr}"), expect=1)
+        if _shard_meta_count(rdir) != 60:
+            sys.exit(f"merged shards-root holds {_shard_meta_count(rdir)} of 60 shard metas — fail closed")
         out_dir = os.path.join(tempfile.gettempdir(), f"scr2-agg-{anchor}")
         os.makedirs(out_dir, exist_ok=True)
         # discover the runner engine hash from shard manifests, then strict-aggregate

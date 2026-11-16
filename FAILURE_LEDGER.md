@@ -336,3 +336,13 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   truncated 60 shards to 29; now paginate (per_page=100) + post-download shard-count
   check with REST top-up. Both paths independently verified on run 43714600687:
   byte-identical aggregation matching committed evidence f4fc95c7c32f587b (120 games).
+- **2026-11-16 ~07:00Z — SCREEN-2R run-2 recovery SUCCESS.** Retry run 43806800011 (shard 17
+  only, run_evidence=false) completed/success; artifact downloaded via REST fallback path;
+  merged 59+1 artifacts strict-aggregated fail-closed (60 shards, 120 counted games, engine
+  hash = pin 9663697d…, 0 engine errors, 0 replays). Recovered evidence committed as 0cdeedf
+  (benches/evidence/screening-2/topple-0.2.1/) and re-verified byte-identical on a second
+  full recovery pass (bytes_match_committed=True for BOTH anchors; recover_screen2.py
+  OVERALL: PASS). Result: W30 L82 D8, 0 flag losses (≤10 PASS), score 0.2833 →
+  est = 2277.8 vs topple-0.2.1 (published 2439). Two tooling expectation bugs fixed during
+  recovery (merged-slot per-run shard expectations; driver commit gate now validates the
+  aggregation manifest rather than recover's overall exit code).

@@ -27,9 +27,19 @@ r1 = run(["python3", os.path.join(REPO, "scripts", "recover_screen2.py"),
 agg_games = "/tmp/scr2-agg-topple-0.2.1/games.jsonl"
 agg_man = "/tmp/scr2-agg-topple-0.2.1/manifest.json"
 dest = os.path.join(REPO, "benches", "evidence", "screening-2", "topple-0.2.1")
-if r1.returncode != 0:
-    print("RECOVERY FAILED — not committing anything (fail closed)")
-    sys.exit(r1.returncode)
+# Gate on the AGGREGATION ITSELF (not recover's overall exit code, which also
+# includes the expected pre-commit bytes_match=False): 60 shards, 120 games,
+# pinned engine hash, zero engine errors — only then may evidence be committed.
+import json, hashlib
+man = json.load(open(agg_man)) if os.path.exists(agg_man) else {}
+agg_ok = (man.get("n_shards") == 60 and man.get("n_counted") == 120
+          and man.get("n_engine_errors") == 0
+          and man.get("engine_sha256") == "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428"
+          and os.path.exists(agg_games)
+          and sum(1 for _ in open(agg_games)) == 120)
+if not agg_ok:
+    print("AGGREGATION INVALID — not committing anything (fail closed)")
+    sys.exit(1)
 if os.path.exists(os.path.join(dest, "games.jsonl")):
     print("topple-0.2.1 evidence already committed — skipping commit step")
 else:
