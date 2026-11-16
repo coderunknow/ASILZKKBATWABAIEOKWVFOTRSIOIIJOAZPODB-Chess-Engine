@@ -346,3 +346,15 @@
   SCREEN-3 43820645420: resolve done, 2/60 playing, 58 queued. No action needed; next
   milestone = CTRL-2R terminal -> evidence job -> self-match CI verdict; then SCREEN-3
   terminal -> 3-anchor est -> gate-plan commit WITH Batch A rev-15 dispatch.
+
+### Segment 24 (2026-11-16 ~13:40Z) — mission re-entry, checkpoint, no dispatch
+
+- Re-entry under the owner's mission prompt (V1 >2,000 and V2 >3,000). Fresh clone. Remote head verified
+  at `74c3294`: PR #1 open, draft, base `main` 98b1a00, mergeable_state `unstable`.
+- Workflow state verified via API at 13:38Z:
+  - CTRL-2-R, run 43820392119 (dispatch rev 13): 113 of 120 shard jobs succeeded, 7 in progress, 0 failed. Evidence job not yet run.
+  - SCREEN-3, run 43820645420 (dispatch rev 14): resolve succeeded 12:07:58Z after queuing from 06:59:56Z. 33 shards in progress, 27 queued, 0 failed.
+  - Run 43864633370 (74c3294): resolve queued. No-op, because the top commit does not touch `benches/dispatch.json`.
+  - rating-gate run 43864633449 (74c3294): failure, fail-closed. `benches/evidence/rating-gate-result.json` and the gate plan are absent. Expected until SCREEN-3 is terminal.
+- Created `MISSION_CHECKPOINT.md` (authoritative resume document). Changed no dispatch marker. Created no gate plan: SCREEN-3 is not terminal.
+- Not verified in this segment: STATUS.md and MERGE_READINESS.md reconciliation, CTRL-2-R pass criteria, SCREEN-3 aggregation, CodeRabbit status.

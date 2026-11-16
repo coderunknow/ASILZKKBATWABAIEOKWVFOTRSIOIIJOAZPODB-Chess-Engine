@@ -340,3 +340,16 @@ suite (new unit tests with hand-computed SEE values incl. x-rays), bench signatu
 untouched). Acceptance criteria will be fixed in the registration BEFORE implementation,
 using the SCREEN-2 + (candidate) batch baseline as the reference. This entry is a DESIGN
 DRAFT ONLY — no code changes under this entry.
+
+## 2026-11-16 — Mission re-entry: FlawLessChess V1 (>2,000) and V2 (>3,000)
+
+- INTENT (owner mission prompt, verbatim scope): complete V1 (strictly above 2,000 Elo: Batch A and Batch B
+  lower bounds plus combined lower bound each > 2,000, both null controls pass, ≥ 2,000 games per eligible
+  anchor per batch) and V2 (strictly above 3,000 Elo on `benches/anchor-pool-3000.json`, GATE-PLAN-V2).
+  Continuous checkpoints via `MISSION_CHECKPOINT.md`. Never merge, force-push, tag, release, or rename.
+  No Stockfish-derived code.
+- DONE (verified 2026-11-16 ~13:38Z): `MISSION_CHECKPOINT.md` created; AGENTS_LOG segment 24 appended. CTRL-2-R
+  and SCREEN-3 are in progress. No gate plan exists yet. No dispatch marker changed in this segment.
+- CONTRADICTION (recorded, not resolved): AGENTS.md names the repo `coderunknow/Flawless-Chess-Engine`; the mission
+  and GitHub API use `coderunknow/FlawLessChess`. Owner declined repository-name changes; references left as-is.
+- NOTE: the owner-supplied GitHub token is not stored in the repository, logs, or memory.
