@@ -166,7 +166,9 @@ jobs:
           if cfg.get("schema") != 1:
               fail("schema must be 1")
           purpose = cfg.get("purpose", "")
-          if purpose not in ("pilot", "control", "screening", "screening-2", "confirmatory"):
+          # 'screening-3' = conditional third screening (PREREGISTRATION.md#screen-3);
+          # evidence lands at benches/evidence/screening-3/<anchor>/ via the generic path.
+          if purpose not in ("pilot", "control", "screening", "screening-2", "screening-3", "confirmatory"):
               fail(f"bad purpose {purpose!r}")
           batch = cfg.get("batch", "")
           if batch not in ("A", "B", "CTRL"):

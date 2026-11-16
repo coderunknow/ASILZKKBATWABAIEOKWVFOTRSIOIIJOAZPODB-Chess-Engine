@@ -462,3 +462,15 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   cancelled SCREEN-2 run — the global 120-game schedule is seed-derived and
   shard-count-independent, as registered. Strict aggregation binds the schedule via
   schedule_index coverage + per-shard lo/hi ranges, not via this hash.
+
+### SCREEN-3 execution-shape note (recorded 2026-11-16, before dispatch)
+
+- The SCREEN-3 registration (above) predates the hosted-timeout discovery. Per the
+  SHAPE-1 amendment and FAILURE_LEDGER lessons (8-game shards cannot fit any hosted
+  timeout; shard size must come from MEASURED durations), SCREEN-3 executes with the
+  SHAPE-1 shape: **60 shards × 2 games** (same 120-game sampling: 60 openings × 1 paired
+  rep × AB/BA, batch-A suite, seed 20261126, TC 40/15, pinned ENGINE-1 hash, purpose
+  "screening-3", evidence dir benches/evidence/screening-3/<anchor>/). The registered
+  SAMPLING and seed are unchanged; only the job slicing changes. Anchor choice remains
+  mechanical (min |est − R_a| among unscreened non-saturating anchors; tie = higher
+  published_elo).
