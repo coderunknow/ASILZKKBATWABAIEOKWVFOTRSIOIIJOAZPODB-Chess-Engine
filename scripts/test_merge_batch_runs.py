@@ -13,11 +13,13 @@ def game(i, counted=True, replay_of=None):
             "white": "flawless", "black": "topple-0.1.1", "opening": "o1",
             "reason": " adjud. " if counted else "replay"}
 
-def manifest(tc=None):
-    return {"white_name": "flawless", "black_name": "topple-0.1.1",
-            "time_control": tc or {"mode": "clock", "period_moves": 40},
-            "openings_file_sha256": "suite", "schedule": {"schedule_sha256": "sched"},
-            "n_scheduled": 8, "merged_sha256": None}
+def manifest(engine_sha256=None):
+    # Key shape mirrors the real per-run manifests written by aggregate_shards.py
+    # (merge_batch_runs compares exactly these identity fields across runs).
+    return {"batch": "A", "anchor": "topple-0.1.1",
+            "engine_sha256": engine_sha256 or "e" * 64,
+            "anchor_sha256": "a" * 64,
+            "opening_suite_sha256": "suite", "merged_sha256": None}
 
 def write_run(name, games, man):
     d = os.path.join(ROOT, "runs", name)
@@ -58,8 +60,8 @@ print("case1 OK:", run_merge())
 write_run("run-2", [game(i) for i in range(3, 7)], manifest())
 print("case2 (dup) OK:", run_merge(expect_fail=True))
 
-# 3. identity mismatch (different tc) -> fail closed
-write_run("run-2", [game(i) for i in range(4, 8)], manifest(tc={"mode": "clock", "period_moves": 20}))
+# 3. identity mismatch (different engine binary hash across runs) -> fail closed
+write_run("run-2", [game(i) for i in range(4, 8)], manifest(engine_sha256="f" * 64))
 print("case3 (identity) OK:", run_merge(expect_fail=True))
 
 # 4. manifest bytes mismatch -> fail closed

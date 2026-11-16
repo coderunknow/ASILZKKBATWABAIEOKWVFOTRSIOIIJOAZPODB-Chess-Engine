@@ -361,3 +361,12 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   correction. Same lambda in scripts/dry_validate_run2_59.py fixed too.
   NOTE for the 2000-gate: all screening estimates are selection-only; the gate uses
   confirmatory evidence via rating_estimator.py (audited separately vs §9).
+- **2026-11-16 ~08:35Z — merge_batch_runs.py identity check was vacuous (found in pre-campaign
+  audit, FIXED + regression-tested).** The cross-run identity comparison used manifest keys
+  (white_name/black_name/time_control/openings_file_sha256/schedule/n_scheduled) that no
+  per-run manifest actually contains (aggregate_shards.py writes batch/anchor/engine_sha256/
+  anchor_sha256/opening_suite_sha256/...), so every identity compared equal on None and the
+  promised drift detection could never fire. id_keys now match the real manifest shape and
+  test_merge_batch_runs.py case 3 drifts engine_sha256 across runs (verified fail-closed).
+  Defense-in-depth unchanged: verify_evidence.py re-checks engine/anchor/suite hashes at the
+  canonical dir post-merge.

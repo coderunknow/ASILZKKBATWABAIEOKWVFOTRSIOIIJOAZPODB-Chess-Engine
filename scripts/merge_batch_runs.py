@@ -31,8 +31,13 @@ def main():
     runs = sorted(d for d in os.listdir(a.runs_root) if d.startswith("run-"))
     if not runs:
         die(f"no run-* dirs under {a.runs_root}")
-    id_keys = ("white_name", "black_name", "time_control", "openings_file_sha256",
-               "schedule", "n_scheduled")
+    # Identity keys are the ones aggregate_shards.py actually writes into each
+    # run manifest. (An earlier key list — white_name/black_name/time_control/
+    # schedule/n_scheduled — matched no manifest field, so the identity check
+    # compared all-None dicts and could never fire. Caught in the pre-campaign
+    # audit 2026-11-16; see FAILURE_LEDGER.)
+    id_keys = ("batch", "anchor", "engine_sha256", "anchor_sha256",
+               "opening_suite_sha256")
     all_games, provenance, ident0 = [], [], None
     total_planned = 0
     for r in runs:
