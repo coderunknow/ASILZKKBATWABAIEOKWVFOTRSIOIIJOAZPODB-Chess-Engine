@@ -330,3 +330,19 @@
   SCREEN-3 (rev 14, conditional) → gate-plan commit → Batch A (revs 15-18) → Batch B
   (revs 19-22) → merge → verify_evidence → 2000 gate. Full commands in
   download/FLAWLESS_checkpoint_2026-11-15.md §3.
+### Segment 23 (2026-11-16 ~12:15Z) — engine clock audit (Phase 5 item) + hygiene
+
+- **clock_limits (src/uci.rs:539) audit: VERIFIED PASS.** The ENGINE-1 reserve-bearing
+  budget (reserve = clamp(t/16, 300ms, 8s); soft = max(20, (t-reserve)/mtg + inc/2); hard =
+  min(4*soft, (t-reserve)/2, t-reserve/2) floored at soft) implements exactly the registered
+  invariants (planned period spend <= t - reserve; >= reserve/2 survives any hard-limited
+  move; hard >= soft). Regression tests clock_limits_respect_remaining_time and
+  clock_limits_engine1_no_flag_death_march present; SCREEN-2R flag losses 0/240 corroborate
+  at tournament level. Search-side check_time fires every 1024 nodes vs hard_ms; go
+  infinite/ponder correctly inert (uci.rs:132-146).
+- **Hygiene:** sandbox tooling chmod'ed three tracked files to 100755 (mode-only drift, zero
+  content change); restored to committed modes — evidence commits stay byte-clean.
+- **Run state at 12:12Z:** CTRL-2R 43820392119: 79/120 shards success, 21 playing, 0 failed.
+  SCREEN-3 43820645420: resolve done, 2/60 playing, 58 queued. No action needed; next
+  milestone = CTRL-2R terminal -> evidence job -> self-match CI verdict; then SCREEN-3
+  terminal -> 3-anchor est -> gate-plan commit WITH Batch A rev-15 dispatch.
