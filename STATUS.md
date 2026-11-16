@@ -222,3 +222,23 @@ Review policy: a reviewer FINISHED only when the service actually completes and 
 - Missing evidence: SCREEN-2 results (in flight); new-candidate controls (CTRL-2 re-run with
   the new binary registered as pre-gate requirement); Batch A/B games + CIs; fresh final-SHA
   CodeRabbit review; final full CI.
+## Execution state (2026-11-16, segment 22)
+
+- **SCREEN-2R COMPLETE (VERIFIED PASS):** both anchors' 120-game canonical evidence committed
+  (topple-0.1.1 via run 43714600687; topple-0.2.1 via merged runs 43714620645+43806800011,
+  evidence commit 0cdeedf). Byte-match verified via BOTH download paths; flag losses 0/120
+  and 0/120 (acceptance <=10 PASS); 0 engine errors; engine hash = pinned 9663697d... in
+  every shard manifest. Corrected screening estimates (after the draw-scoring reporting fix,
+  see FAILURE_LEDGER 2026-11-16 ~07:25Z): 2176.8 (topple-0.1.1) and 2236.4 (topple-0.2.1);
+  combined est 2206.6 — SELECTION-ONLY, not a rating claim.
+- **In flight (server-side):** CTRL-2-R rev 13 = run 43820392119 (self-match, flawless vs
+  flawless, 120 shards x 2, seed 20261125; evidence -> benches/evidence/control/flawless-self-r/);
+  SCREEN-3 rev 14 = run 43820645420 (akimbo-0.1.1, mechanical anchor choice |est-R|=234.4
+  minimum, 60 shards x 2, seed 20261126; evidence -> benches/evidence/screening-3/akimbo-0.1.1/).
+- **Gate tooling audited vs RATING_PROTOCOL §9 (VERIFIED PASS):** rating_estimator.py joint
+  cluster bootstrap / sigma_matched-as-SD / GLS / shared-calibration batch combination;
+  verify_evidence.py identity+count fail-closed; rating-gate.yml strictly->2000 decision on
+  all three unrounded CI lower bounds; GLS fallback fails the gate by design.
+- **NOT yet done (binary):** CTRL-2-R result; SCREEN-3 result; gate-plan.json commit; Batch A
+  revs 15-18; Batch B revs 19-22; merge+verify; 2000 gate; audit closeout; final CodeRabbit
+  review at final SHA; final CI matrix; Ready-for-review flip.
