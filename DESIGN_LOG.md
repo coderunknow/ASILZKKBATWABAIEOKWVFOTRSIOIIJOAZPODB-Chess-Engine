@@ -353,3 +353,10 @@ DRAFT ONLY — no code changes under this entry.
 - CONTRADICTION (recorded, not resolved): AGENTS.md names the repo `coderunknow/Flawless-Chess-Engine`; the mission
   and GitHub API use `coderunknow/FlawLessChess`. Owner declined repository-name changes; references left as-is.
 - NOTE: the owner-supplied GitHub token is not stored in the repository, logs, or memory.
+
+## 2026-11-16 — reconciliation (mission segment 24, cont.)
+
+- CONTRADICTION (documentation only, resolved): dispatch rev 14 (commit 9890407, 06:59Z) quotes SCREEN-2R estimates 2225.9 / 2277.8 and |Δ| ~163–215. These predate commit a495085 (07:07Z, draw-scoring fix). Corrected estimates are 2176.8 / 2236.4, est 2206.6. The mechanical choice (akimbo-0.1.1) is unchanged under both estimates, verified with make_gate_plan.py to /tmp. The committed dispatch description is not rewritten.
+- CONTRADICTION (protocol, resolved before any batch dispatch): BATCH-A/B pinned engine_sha256 fd75726d… (pre-ENGINE-1). ENGINE-1 requires the new frozen hash. Resolved by the append-only BATCH-HASH amendment binding Batch A/B to 9663697d…, registered before any batch dispatch. No batch existed under either hash.
+- DONE: STATUS.md and MERGE_READINESS.md corrected (stale SCREEN-2 in-flight text; CTRL-2 pass claimed for the ENGINE-1 candidate). MISSION_CHECKPOINT.md rewritten.
+- NOT YET VERIFIED: CTRL-2-R result, SCREEN-3 result, CodeRabbit status, python-chess-dependent test_match.py run.

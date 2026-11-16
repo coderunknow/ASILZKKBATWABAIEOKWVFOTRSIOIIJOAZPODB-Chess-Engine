@@ -358,3 +358,12 @@
   - rating-gate run 43864633449 (74c3294): failure, fail-closed. `benches/evidence/rating-gate-result.json` and the gate plan are absent. Expected until SCREEN-3 is terminal.
 - Created `MISSION_CHECKPOINT.md` (authoritative resume document). Changed no dispatch marker. Created no gate plan: SCREEN-3 is not terminal.
 - Not verified in this segment: STATUS.md and MERGE_READINESS.md reconciliation, CTRL-2-R pass criteria, SCREEN-3 aggregation, CodeRabbit status.
+
+### Segment 24 (cont.) — reconciliation and local verification (2026-11-16 ~13:50Z)
+
+- Re-checked runs at 13:43Z: CTRL-2-R 113/120 shard jobs succeeded, 7 in progress, 0 failed. SCREEN-3 resolve and 1 shard succeeded, 33 running, 26 queued, 0 failed.
+- Reproduced SCREEN-2R screening estimate from raw evidence with `scripts/make_gate_plan.py --out /tmp/...` (not committed): topple-0.1.1 2176.8, topple-0.2.1 2236.4, est 2206.6. The SCREEN-3 choice (akimbo-0.1.1, |est − R| = 234.4) holds under the corrected estimate and under the pre-fix estimate.
+- Local suites: test_rating_estimator 65/65 PASS; test_aggregate_60 PASS; test_merge_batch_runs self-test ALL PASS. test_match.py not run locally (python-chess 1.11.2 not available in this sandbox index; CI installs it).
+- Found PREREGISTRATION BATCH-A/B pinned to the pre-ENGINE-1 hash fd75726d… while ENGINE-1 requires the new frozen hash. Registered BATCH-HASH amendment (append-only) binding Batch A/B to 9663697d… BEFORE any batch dispatch. No batch was dispatched.
+- STATUS.md header and >2000 item, and MERGE_READINESS anchor-selection, null-control, CI and estimator-count items, updated to verified state. Previously STATUS/MERGE_READINESS listed SCREEN-2 as IN FLIGHT and listed CTRL-2 as passing for the ENGINE-1 candidate. Corrected: CTRL-2 PASS applies to the pre-fix candidate only; CTRL-2-R is pending.
+- MISSION_CHECKPOINT.md rewritten with the verified state, the projection (labelled not evidence) and the resume procedure.

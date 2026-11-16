@@ -22,7 +22,7 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       (tests/clock_smoke.rs), shard partition + e2e manifest (scripts/test_match.py),
       estimator degenerate-Σ_m + covariances (scripts/test_rating_estimator.py).
 - [ ] Full CI matrix green on the exact FINAL head SHA — must be re-verified at the final head
-      after all remaining work (last fully green: 43587593326 at `4d91741`; newer heads pending).
+      after all remaining work (CI at 74c3294 green: run 43864633461; CI at e47dbfd queued: run 43877962180; final head pending).
 - [x] No known unresolved correctness or security blockers — all 5 previously-open PR review
       threads verified against current code, replied with evidence and resolved 2026-11-14:
       covariance-between-anchors = valid/fixed (§9.6–8 + joint-cluster-bootstrap GLS estimator,
@@ -38,7 +38,7 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
 ## Rating methodology (docs/RATING_PROTOCOL.md §9)
 
 - [x] Rating methodology fully implemented and independently tested — scripts/rating_estimator.py
-      (46/46) + scripts/aggregate_shards.py + match.py harness v2 (104/104).
+      (65/65 re-run locally 2026-11-16) + scripts/aggregate_shards.py + match.py harness v2 (104/104).
 - [x] Official anchor provenance verified — CCRL 40/15 list 2026-11-13 captured with HTTP 200,
       3,912,738 bytes, SHA-256 ce365c55b2869502de6addeada4c261d3bd2f50a5a9aef484db9f571aabe15f0;
       uncertainty convention = 95% CI (list text); record in benches/anchor-research-20261114.md.
@@ -58,17 +58,8 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       original shard artifacts (byte-identical, merged_sha256 aeb4d5a0… / a811d9d1…).
       Throughput re-verified from committed per-game records: 29.43 / 29.53 min/game
       (8-game batch shard ≈ 236 min < 330-min cap). Exploratory only, never gate evidence.
-- [x] Both null controls pass (frozen candidate fd75726d…) — CTRL-1: measured −125.32 vs
-      published −115.00 → error −10.32 within ±75 (240/240 counted, 0 engine errors; evidence
-      control/topple-0.1.1-vs-topple-0.2.1/). CTRL-2: seat-perspective 0.5146, 95% CI
-      [0.4792, 0.5500] → 0.5 inside (after the registered metric fix, threshold UNCHANGED;
-      evidence control/flawless-self/). Caveat recorded: ENGINE-1 changes the candidate, so
-      CTRL-2-R (registered 2026-11-15, PREREGISTRATION.md) re-runs the self-match with the new
-      binary before any gate; CTRL-1 stands (candidate-independent).
-- [ ] Anchor selection applied to SCREEN-2 (ENGINE-1 candidate) with the frozen rule —
-      IN FLIGHT (runs 43685671431 + 43686056730). SCREENING-1/2 of the OLD candidate measured
-      est ≈ 1632 with a ~95% flag-fall defect; the selection rule was unsatisfiable there and
-      Batch A/B were DEFERRED rather than dispatched to a doomed campaign.
+- [ ] Both null controls pass for the gate candidate (ENGINE-1, engine_sha256 9663697d…). CTRL-1 PASS (candidate-independent: measured −125.32 vs published −115.00, error −10.32 within ±75; 240/240 counted; evidence control/topple-0.1.1-vs-topple-0.2.1/). CTRL-2 PASS applies only to the pre-fix candidate fd75726d… (seat-perspective 0.5146, CI [0.4792, 0.5500]; evidence control/flawless-self/). CTRL-2-R for the ENGINE-1 candidate IN FLIGHT: run 43820392119, 113/120 shard jobs succeeded and 0 failed at 13:43Z; not yet aggregated or evaluated.
+- [ ] Anchor selection applied to SCREEN-2 (ENGINE-1 candidate) with the frozen rule — the screening step is COMPLETE (SCREEN-2R: runs 43714600687 + 43714620645, shard-17 retry 43806800011; corrected estimates topple-0.1.1 2176.8, topple-0.2.1 2236.4, est 2206.6, reproduced from raw evidence with scripts/make_gate_plan.py to /tmp). The frozen rule requires >=3 non-saturating anchors, so SCREEN-3 is required and IN FLIGHT (run 43820645420, mechanical choice akimbo-0.1.1, |est - R| = 234.4). Gate plan NOT yet generated; this item stays unchecked until SCREEN-3 is terminal and the rule is applied.
 - [ ] Batch A independently passes the strict rating gate — NOT RUN (needs ≥2,000 completed
       games per eligible anchor; 60×17×2=2,040 games/anchor planned).
 - [ ] Batch B independently passes the strict rating gate — NOT RUN (fresh disjoint openings).

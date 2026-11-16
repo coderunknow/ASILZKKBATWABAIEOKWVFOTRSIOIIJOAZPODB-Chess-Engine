@@ -474,3 +474,11 @@ Confirmatory batches must not be tuned, re-anchored or re-opened after observing
   SAMPLING and seed are unchanged; only the job slicing changes. Anchor choice remains
   mechanical (min |est − R_a| among unscreened non-saturating anchors; tie = higher
   published_elo).
+
+## BATCH-HASH — engine-hash binding for BATCH-A / BATCH-B (registered 2026-11-16, BEFORE any batch dispatch)
+
+- **Scope (append-only amendment):** supersedes ONLY the `engine_sha256` field of BATCH-A / BATCH-B (registered 2026-11-14, "Engine: Flawless, engine_sha256 fd75726d…"). That value was pinned for the pre-ENGINE-1 candidate. ENGINE-1 (registered 2026-11-15) states that Batch A/B "proceed with the new frozen hash".
+- **Batch engine (registered now):** Flawless, engine_sha256 `9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428`, the ENGINE-1 candidate hash pinned in the SCREEN-2 partial-evidence / SHAPE-1 amendment and used by SCREEN-3 (dispatch rev 14) and CTRL-2-R (dispatch rev 13).
+- **Unchanged:** suite files and their SHA-256 values, bootstrap seeds (20261121 / 20261122), sample design (60 openings × 17 paired reps × AB/BA = 2,040 games per eligible anchor per batch), TC 40/15, anchor-set rule, thresholds, and SHAPE-1 sharding.
+- **Not retroactive:** no batch dispatch appears in the `benches/dispatch.json` history (verified 2026-11-16 with `git log`). No executed evidence is altered. CTRL-1, CTRL-2 and SCREEN-1/2 results under fd75726d… remain historical and are not gate evidence for the ENGINE-1 candidate.
+- **Consequence if not registered:** rating-run shards run in strict hash mode and fail on any mismatch, so this binding must be pushed BEFORE the gate-plan commit that dispatches Batch A.
