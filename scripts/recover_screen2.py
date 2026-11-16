@@ -175,8 +175,13 @@ def main():
               f"bytes_match_committed={match}")
         overall &= match
         games = [json.loads(l) for l in open(os.path.join(out_dir, "games.jsonl")) if l.strip()]
-        flw = lambda g: g["white"].casefold().startswith("flawless")
-        score = lambda g: 1.0 if (g["result"] == "1-0") == flw(g) else 0.0 if g["result"] != "1/2-1/2" else 0.5
+        # Flawless seat-perspective score: decisive by result+color, draws ALWAYS 0.5
+        # (the pre-fix lambda scored flawless-as-black draws 1.0, inflating the
+        # score/estimate printout — caught by cross-checking make_gate_plan.py;
+        # flag-loss counting and committed evidence were never affected).
+        def score(g):
+            w = 1.0 if g["result"] == "1-0" else (0.0 if g["result"] == "0-1" else 0.5)
+            return w if g["white"].casefold().startswith("flawless") else 1.0 - w
         losses = [g for g in games if score(g) == 0.0]
         flags = sum(1 for g in losses if g.get("reason") == "flag")
         s = sum(score(g) for g in games) / len(games)

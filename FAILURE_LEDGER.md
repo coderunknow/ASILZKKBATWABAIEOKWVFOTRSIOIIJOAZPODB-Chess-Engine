@@ -346,3 +346,18 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   est = 2277.8 vs topple-0.2.1 (published 2439). Two tooling expectation bugs fixed during
   recovery (merged-slot per-run shard expectations; driver commit gate now validates the
   aggregation manifest rather than recover's overall exit code).
+- **2026-11-16 ~07:25Z — draw-scoring bug in recover_screen2.py's REPORTING lambda (caught by cross-check, no evidence contamination).**
+  The inline score lambda `((result=="1-0") == flawless_is_white ? 1.0 : draw? 0.5 : 0.0)`
+  scored flawless-as-black DRAWS as 1.0 instead of 0.5, inflating the printed score/estimate:
+  reported 0.3625/0.2833 (est 2225.9/2277.8) instead of the CORRECT 0.3000/0.2375
+  (est 2176.8/2236.4; combined est 2206.6). make_gate_plan.py's focus_score (the registered
+  perspective) is correct and was used as the reference; recover_screen2.py now matches it
+  exactly (re-verified: identical scores on both anchors). UNAFFECTED: committed raw evidence
+  (aggregate_shards.py output), manifest fields, flag-loss counts (decisive losses only),
+  byte-match checks, and the SCREEN-3 anchor choice (ordering of |est−R_a| unchanged:
+  akimbo-0.1.1 = 234.4 < wyldchess-1.2 = 238.4 < wyldchess-1.1 = 267.4; wowl = 357.6).
+  The rev-14 marker description quotes the old numbers; its anchor/seed/sampling are correct
+  (resolver does not validate description text) — this ledger entry is the authoritative
+  correction. Same lambda in scripts/dry_validate_run2_59.py fixed too.
+  NOTE for the 2000-gate: all screening estimates are selection-only; the gate uses
+  confirmatory evidence via rating_estimator.py (audited separately vs §9).

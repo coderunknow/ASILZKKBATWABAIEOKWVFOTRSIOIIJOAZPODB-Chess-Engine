@@ -28,7 +28,9 @@ if r.returncode != 0:
 man = json.load(open(os.path.join(agg, "manifest.json")))
 games = [json.loads(l) for l in open(os.path.join(agg, "games.jsonl"))]
 flw = lambda g: g["white"].casefold().startswith("flawless")
-score = lambda g: 1.0 if (g["result"] == "1-0") == flw(g) else 0.0 if g["result"] != "1/2-1/2" else 0.5
+def score(g):
+    w = 1.0 if g["result"] == "1-0" else (0.0 if g["result"] == "0-1" else 0.5)
+    return w if g["white"].casefold().startswith("flawless") else 1.0 - w
 losses = [g for g in games if score(g) == 0.0]
 flags = sum(1 for g in losses if g.get("reason") == "flag")
 s = sum(score(g) for g in games) / len(games)

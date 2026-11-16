@@ -69,10 +69,15 @@ def main() -> int:
     engine_sha = None
 
     # 1. Per-anchor screening estimates (point estimates; selection-only).
+    # --anchors accepts either "<key>" (evidence under --evidence-root/<key>,
+    # the SCREEN-2/SCREEN-2R layout) or "<key>=<dir>" (explicit evidence dir,
+    # e.g. SCREEN-3's benches/evidence/screening-3/<key> — the registered rule
+    # is unchanged; only the evidence location is named explicitly).
     ests = []
     per_anchor = []
-    for key in args.anchors:
-        base = os.path.join(args.evidence_root, key)
+    for spec in args.anchors:
+        key, _, override = spec.partition("=")
+        base = override if override else os.path.join(args.evidence_root, key)
         games_path = os.path.join(base, "games.jsonl")
         man = json.load(open(os.path.join(base, "manifest.json")))
         if engine_sha is None:
