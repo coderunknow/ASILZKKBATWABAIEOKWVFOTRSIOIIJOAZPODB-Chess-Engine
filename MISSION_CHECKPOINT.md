@@ -119,3 +119,11 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - CI 44067364552: MSRV passed; Linux failed in the new test_power_analysis suite (3/4) because a test expected the later A/B hash mismatch message while the guard correctly rejected the unregistered engine hash at the earlier manifest allowlist. Existing match/estimator/reduced-sample/dispatch-recovery tests passed; recovery tests 7/7. Correct the expectation and rerun full CI.
 - Anchor verification 44067364568 passed 13/13, reproduced bench signature 141943aa23b3fc68 and binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. rating-run resolver succeeded and skipped shard/evidence jobs; rating-gate failed closed because no gate plan/evidence is available.
 - RATING-100 remains BLOCKED. No confirmatory games were launched, no candidate-specific ENGINE-2 screen/control has been run, and the PR stays Draft.
+
+## Latest checkpoint — 2026-11-17 10:47Z
+
+- Branch / PR head at checkpoint: c564c5ccc690ec61ea87898c196e0a1f614f1f64; PR open, Draft, unmerged.
+- CI 44067826990: Rust/MSRV passed; Linux passed; Windows failed only at the prospective-power smoke because Windows checked out two raw SCREEN-2 games.jsonl files with CRLF, whereas committed manifest hashes were computed on Linux LF bytes. This is a line-ending portability issue, not changed game content. A fix is prepared: canonicalize only JSONL line endings for hashing, add LF attributes to the exact evidence files, and regression-test CRLF compatibility plus record tampering.
+- Anchor verification 44067826881 succeeded 13/13; binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7; bench signature 141943aa23b3fc68.
+- rating-run resolver succeeded with shards/evidence skipped. rating-gate failed closed for absent gate plan/evidence. No games dispatched.
+- RATING-100 remains BLOCKED and ENGINE-2 lacks its own screening/controls.

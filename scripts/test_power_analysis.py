@@ -52,11 +52,21 @@ class ScreeningIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "preregistered only for SCREEN-2"):
                 read_screening_engine_sha(games_a, games_b)
 
-    def test_games_file_hash_must_match_manifest(self):
+    def test_windows_crlf_checkout_preserves_manifest_integrity(self):
         with tempfile.TemporaryDirectory() as td:
             games_a = write_anchor(td, "topple-0.1.1", ENGINE_SHA)
             games_b = write_anchor(td, "topple-0.2.1", ENGINE_SHA)
-            with open(games_a, "a", encoding="utf-8") as handle:
+            with open(games_a, "rb") as handle:
+                lf_bytes = handle.read()
+            with open(games_a, "wb") as handle:
+                handle.write(lf_bytes.replace(b"\n", b"\r\n"))
+            self.assertEqual(read_screening_engine_sha(games_a, games_b), ENGINE_SHA)
+
+    def test_games_file_content_change_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            games_a = write_anchor(td, "topple-0.1.1", ENGINE_SHA)
+            games_b = write_anchor(td, "topple-0.2.1", ENGINE_SHA)
+            with open(games_a, "a", encoding="utf-8", newline="\n") as handle:
                 handle.write("{}\n")
             with self.assertRaisesRegex(ValueError, "merged_sha256"):
                 read_screening_engine_sha(games_a, games_b)

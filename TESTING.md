@@ -124,3 +124,7 @@ A subsequent commit adds engine-SHA provenance checks to the power generator, di
 ## 2026-11-17 — power-provenance test correction
 
 CI run 44067364552 on 29b627e: test_make_batch_dispatch passed (7/7); test_power_analysis had 3/4 passing, with one error-message expectation mismatch. An unknown engine hash was correctly rejected at the SCREEN-2/ENGINE-1 manifest allowlist before the subsequent A/B engine-hash equality check. The test now expects the earlier fail-closed message. No CI pass is claimed for 29b627e; a new full run is required on the follow-up commit.
+
+## 2026-11-17 — Windows CRLF regression
+
+CI run 44067826990: Ubuntu success; Windows failed power smoke on a raw SCREEN-2 games.jsonl merged hash due CRLF checkout. A unit test now simulates CRLF while preserving the manifest hash, and another confirms modifying a record still fails the hash check. Exact LF attributes are added for both SCREEN-2 games files. Full CI rerun is required.

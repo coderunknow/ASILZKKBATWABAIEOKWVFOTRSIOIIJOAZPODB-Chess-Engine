@@ -406,3 +406,9 @@
 - Run 44067364552 on 29b627e failed only in the new scripts/test_power_analysis.py assertion that expected a later cross-manifest mismatch string. The implementation rejected an out-of-scope engine SHA earlier, at the explicit SCREEN-2 / ENGINE-1 hash allowlist. This is the intended fail-closed path.
 - Updated the assertion to match the earliest rejection. Other Linux suites before this point passed: match 111/111, estimator 65/65, reduced_sample 7/7 and dispatch recovery 7/7. Anchor verification 44067364568 completed 13/13; rating-run resolver skipped shards; rating-gate failed closed.
 - A full exact-head CI rerun is required after the test-only correction.
+
+## 2026-11-17 — Windows newline normalization defect
+
+- CI 44067826990: Ubuntu passed; Windows failed during power-report smoke because the raw SCREEN-2 games file was checked out as CRLF while its manifest merged_sha256 was generated from LF on Ubuntu.
+- The game records were unchanged; this was cross-platform Git newline conversion. Added a logical-JSONL SHA helper that canonicalizes line endings only, preserving every record, order and content. Added exact LF attributes for the two SCREEN-2 evidence files, plus regression tests simulating CRLF checkout and record tampering.
+- No evidence was changed and no rating games launched. Power report remains ENGINE-1-specific and BLOCKED. Rerun exact-head CI.

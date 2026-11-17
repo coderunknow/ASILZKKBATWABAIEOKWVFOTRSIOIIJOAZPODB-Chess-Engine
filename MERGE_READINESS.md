@@ -98,3 +98,7 @@ CI run 44066217195 passed on Ubuntu + Windows + Rust 1.80, including the correct
 ## 2026-11-17 — provenance test follow-up
 
 The first CI run after adding engine-SHA isolation (44067364552) failed the new power-manifest suite on one overly specific expected-error message; production code rejected the non-SCREEN-2 hash at the earlier allowlist. The test expectation is corrected in the next commit. Exact-head CI remains unchecked until the follow-up run is green. Anchor verification itself passed 13/13.
+
+## 2026-11-17 — Windows newline portability issue
+
+The c564c5c exact-head CI was not green: Ubuntu and MSRV passed, but Windows failed the power-report smoke because of CRLF checkout conversion of committed raw evidence. A targeted cross-platform JSONL hash normalization and tamper test are prepared. Keep full CI unchecked until the follow-up commit is green on Linux and Windows.

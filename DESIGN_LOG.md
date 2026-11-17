@@ -402,3 +402,9 @@ DRAFT ONLY — no code changes under this entry.
 - CI run 44067364552 on commit 29b627e: Rust / MSRV passed; existing Python suites passed through dispatch recovery 7/7. The new power provenance suite reported 3/4, with one expected-error-string mismatch.
 - The test passed a new/unknown engine SHA; production code correctly rejected it in read_screening_manifest at the candidate allowlist, before comparing A and B manifest hashes. Updated the test to expect that earlier, stricter rejection. No weakening or production-code workaround.
 - Commit 29b627e is not an accepted CI pass. The follow-up must rerun full CI at its exact HEAD.
+
+## 2026-11-17 — Windows CRLF checkout broke raw screening-manifest verification
+
+- CI run 44067826990 passed Ubuntu but failed Windows in the power-analysis smoke when checking the committed SCREEN-2 games.jsonl against merged_sha256. Git for Windows checked out LF JSONL as CRLF, while the evidence aggregator computed manifest hashes on Linux LF bytes.
+- The power analyzer now hashes logical UTF-8 JSONL content after canonicalizing only line endings to LF. Record content, ordering, whitespace and record boundaries remain covered by SHA-256. Exact LF attributes were added for the two source evidence files, plus tests for CRLF portability and actual record tampering.
+- No evidence was modified or rewritten; no confirmatory game ran. The power report remains ENGINE-1-specific and BLOCKED. Full exact-head CI is required.

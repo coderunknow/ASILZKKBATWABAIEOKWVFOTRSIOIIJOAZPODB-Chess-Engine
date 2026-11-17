@@ -31,6 +31,19 @@ def sha256_file(path: str) -> str:
 
 
 
+def sha256_jsonl_records(path: str) -> str:
+    """Hash UTF-8 JSONL with line endings normalized to LF for cross-OS stability.
+
+    Git may check out tracked JSONL as CRLF on Windows. The manifest digest is
+    created on Linux from LF bytes. Universal-newline decoding preserves all
+    record content and ordering while normalizing only record terminators.
+    """
+    digest = hashlib.sha256()
+    with open(path, "r", encoding="utf-8", newline=None) as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), ""):
+            digest.update(chunk.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8"))
+    return digest.hexdigest()
+
 def read_screening_manifest(games_path: str, expected_anchor: str) -> dict:
     manifest_path = os.path.join(os.path.dirname(games_path), "manifest.json")
     try:
@@ -56,7 +69,7 @@ def read_screening_manifest(games_path: str, expected_anchor: str) -> dict:
             f"{manifest_path}: this report is preregistered only for SCREEN-2 / ENGINE-1 "
             f"({SCREENING_ENGINE_SHA256}); observed {engine_sha}"
         )
-    if manifest.get("merged_sha256") != sha256_file(games_path):
+    if manifest.get("merged_sha256") != sha256_jsonl_records(games_path):
         raise ValueError(f"{manifest_path}: merged_sha256 does not match games.jsonl")
     attempts = counted = 0
     with open(games_path, encoding="utf-8") as games_file:

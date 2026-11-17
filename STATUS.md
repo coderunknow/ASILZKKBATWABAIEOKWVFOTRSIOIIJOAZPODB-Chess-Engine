@@ -266,3 +266,7 @@ The RATING-100 power file is sourced from ENGINE-1 SHA-256 9663697da62e33229d516
 ## 2026-11-17T10:43Z — provenance guard validation correction
 
 Commit 29b627e added ENGINE-1/ENGINE-2 binary isolation for RATING-100. The first CI rerun caught a regression-test expectation mismatch: an unknown engine hash is rejected by the explicit SCREEN-2 allowlist before the same-binary comparison. Production behavior is the intended stricter fail-closed result; the test expectation is being corrected. The commit is not yet CI-green. Anchor verification 44067364568 remains successful, and no tournament ran.
+
+## 2026-11-17T10:47Z — Windows hash portability correction
+
+CI on c564c5c passed Ubuntu but failed the Windows power-analysis smoke because Windows Git checkout changed raw SCREEN-2 JSONL line endings to CRLF while manifest merged_sha256 was created on Linux LF bytes. The next commit makes hash verification OS-independent by canonicalizing line endings only, retaining the exact JSONL records, and adds tamper/CRLF regression tests. The c564c5 CI run is not green; exact-head rerun pending.

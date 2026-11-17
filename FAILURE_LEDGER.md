@@ -405,3 +405,10 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **Observed:** CI run 44067364552 on commit 29b627e failed the new power-analysis test suite (3/4 tests); the failing case expected an error string mentioning the later same-engine comparison.
 - **Root cause:** the test supplied a non-SCREEN-2 engine hash. The production guard correctly rejected it earlier in read_screening_manifest because the power model is explicitly registered only for SCREEN-2 / ENGINE-1. The test asserted the wrong layer of the fail-closed path.
 - **Correction:** change the expected message to "preregistered only for SCREEN-2". No production logic was changed or relaxed. Full CI on the follow-up exact HEAD is required before declaring validation green.
+
+## 2026-11-17 — CRLF/LF mismatch in power evidence hash verification
+
+- Observed: CI 44067826990 passed Ubuntu but Windows failed with merged_sha256 mismatch on a committed SCREEN-2 games.jsonl file.
+- Root cause: tracked JSONL evidence was converted from LF to CRLF by Windows checkout; manifest hashes represent the original Linux LF bytes.
+- Fix: hash canonical UTF-8 JSONL text after converting CRLF/CR line terminators to LF only. Add repository attributes forcing LF for the two SCREEN-2 evidence JSONL files. Add a test for CRLF checkout compatibility and another proving actual record edits still fail the SHA check.
+- No data or benchmark result has been rewritten; no confirmatory dispatch occurred.
