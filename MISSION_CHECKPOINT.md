@@ -156,3 +156,12 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - Batch A/B confirmatory runs are OUT OF SCOPE this round: no gate plan is created, no dispatch.json
   change, no >2,000 gate claim. Budget for this round: experiments capped at 40-120 paired games per
   change (fixed movetime / fixed-depth harness), no open-ended matches, no confirmatory shards.
+
+## Segment 26 — manual-review fixes at `3ebf617` (session of 2026-11-17)
+
+- Toolchain reproduced from npm `@toolchain-bin/*` per docs/ENVIRONMENT.md: rustc/cargo 1.99.0, rustfmt 1.10.0, clippy 0.1.99. Engine has zero external dependencies (offline build).
+- Baseline at `3ebf617`: fmt clean, clippy `-D warnings` clean, `cargo test --release` 40/40 green, bench signature `141943aa23b3fc68`, 2,530,885 nodes (depth 10, 12 positions).
+- R-01 (LMR re-search sign): NOT REPRODUCED. The re-search line already negates (`s = -self.search(...)`) since commit 387a13ed. No code change; see REVIEW_MANUAL_3ebf617.md.
+- R-02 + R-12 (draw rules, mate precedence, TT probe before terminal): FIXED. Repetition is a draw only at ply > 0, so the root is always searched. Fifty-move is a claimable draw: the node is searched, its value is clamped to >= DRAW, TT score cutoffs and pruning are skipped there. Quiesce uses the same rule via a wrapper. Three regression tests added (`search::draw_rule_tests`); two fail on the pre-fix code.
+- Bench after the fix: signature unchanged (`141943aa23b3fc68`), because no bench position reaches these draw paths. Gates after the fix: fmt clean, clippy clean, 43/43 tests green.
+- Reproduction note: UCI tests must send `quit` only after `bestmove`; piping `quit` right after `go` stops the search. This invalidates the R-06 reproduction in the review.

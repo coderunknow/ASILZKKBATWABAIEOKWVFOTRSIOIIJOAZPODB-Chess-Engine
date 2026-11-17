@@ -444,32 +444,26 @@ impl<'a> Searcher<'a> {
         if ply >= MAX_PLY {
             return self.static_eval(pos);
         }
+        // Draw rules (FIDE 5.2.2 / 9.2 / 9.3), applied in the order the rules require:
+        //  * insufficient material: a certain draw at every node, checked or not;
+        //  * in-tree repetition (2-fold along the search path) is scored as a draw at every
+        //    ply EXCEPT the root, so the root always searches its moves (R-02a). A checked node
+        //    with no legal reply is still checkmate (mate precedence, R-02b);
+        //  * fifty-move is a CLAIMABLE draw, not a forced one: the side to move may claim it or
+        //    play on, and a mate it can deliver takes precedence (R-02b). Such a node is searched
+        //    normally, its value is clamped to >= DRAW, and TT score cutoffs and pruning are
+        //    skipped there (R-12).
         let in_chk = in_check(pos);
-        // Dead/claimable draws BEFORE the TT probe (FIDE 5.2.2/9.2/9.3): when the side to
-        // move is NOT in check, no checkmate is possible for the REPLYING side, so these
-        // can never collide with mate precedence — and scoring them here keeps stale TT
-        // scores out of drawn nodes. When in check we must count legal moves first
-        // (mate precedence); see the block right after the terminal check below.
-        if !in_chk && (pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material()) {
+        if pos.insufficient_material() {
             return DRAW_SCORE;
         }
-        if in_chk {
-            // A checked node that is a dead/claimable draw must be scored BEFORE any TT
-            // score cutoff. Checkmate takes precedence over claimable draws (FIDE 9.2/9.3),
-            // so for repetition/fifty-move confirm legal evasions exist first; mate is
-            // impossible with insufficient material (dead position, FIDE 5.2.2), which can
-            // be scored without movegen.
-            if pos.insufficient_material() {
-                return DRAW_SCORE;
+        if ply > 0 && pos.is_repetition() {
+            if in_chk && generate_legal(pos).len == 0 {
+                return -MATE_SCORE + ply;
             }
-            if pos.is_repetition() || pos.is_fifty_move() {
-                let legal = generate_legal(pos);
-                if legal.len == 0 {
-                    return -MATE_SCORE + ply;
-                }
-                return DRAW_SCORE;
-            }
+            return DRAW_SCORE;
         }
+        let fifty_claim = pos.is_fifty_move();
         let mut alpha = alpha;
         let alpha_entry = alpha;
         let is_pv = beta - alpha > 1;
@@ -485,7 +479,7 @@ impl<'a> Searcher<'a> {
         let probe = self.tt.probe(key, ply);
         let tt_move = probe.best_move;
         if let Some(score) = probe.score {
-            if probe.depth >= depth && !is_pv {
+            if probe.depth >= depth && !is_pv && !fifty_claim {
                 match probe.bound {
                     BOUND_EXACT => return score,
                     BOUND_LOWER if score >= beta => return score,
@@ -518,12 +512,6 @@ impl<'a> Searcher<'a> {
                 DRAW_SCORE
             };
         }
-        // In check (or not): with legal moves confirmed to exist, claimable/dead draws
-        // apply — check status does not exclude them (FIDE 9.2/9.3), only checkmate does,
-        // and mate has been handled above.
-        if pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material() {
-            return DRAW_SCORE;
-        }
         if depth <= 0 {
             return self.quiesce(pos, alpha, beta, ply);
         }
@@ -531,6 +519,7 @@ impl<'a> Searcher<'a> {
         // Null-move pruning (not in check, not PV, non-trivial material)
         if depth >= 3
             && !in_chk
+            && !fifty_claim
             && beta < MATE_BOUND
             && beta > -MATE_BOUND
             && pos.has_non_pawn_material(pos.side)
@@ -551,7 +540,7 @@ impl<'a> Searcher<'a> {
         }
 
         // Futility pruning at low depths
-        if depth <= 2 && !in_chk && !is_pv {
+        if depth <= 2 && !in_chk && !is_pv && !fifty_claim {
             let s = self.static_eval(pos);
             if s + 150 * depth <= alpha {
                 return self.quiesce(pos, alpha, beta, ply);
@@ -560,7 +549,7 @@ impl<'a> Searcher<'a> {
 
         // Reverse futility pruning (static null-move): far-above-beta quiet
         // positions fail high without searching. Non-PV, not in check, mate-bound safe.
-        if depth <= 3 && !in_chk && !is_pv && beta.abs() < MATE_BOUND {
+        if depth <= 3 && !in_chk && !is_pv && !fifty_claim && beta.abs() < MATE_BOUND {
             let s = self.static_eval(pos);
             if s - 150 * depth >= beta {
                 return beta;
@@ -646,6 +635,9 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        if fifty_claim && best_score < DRAW_SCORE {
+            best_score = DRAW_SCORE;
+        }
         if ply == 0 {
             self.root_best = best_move;
         }
@@ -675,6 +667,17 @@ impl<'a> Searcher<'a> {
     }
 
     fn quiesce(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
+        // Fifty-move is a claimable draw (see `search`): the value is at least DRAW.
+        let claim = pos.is_fifty_move();
+        let v = self.quiesce_core(pos, alpha, beta, ply);
+        if claim && v < DRAW_SCORE {
+            DRAW_SCORE
+        } else {
+            v
+        }
+    }
+
+    fn quiesce_core(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
         self.nodes += 1;
         if ply as usize >= self.seldepth as usize {
             self.seldepth = ply;
@@ -699,9 +702,9 @@ impl<'a> Searcher<'a> {
                 DRAW_SCORE
             };
         }
-        // Draw predicates in qsearch too (terminal check ran first, so mate cannot be
-        // masked here): dead position, repetition, fifty-move.
-        if pos.is_repetition() || pos.is_fifty_move() || pos.insufficient_material() {
+        // Certain draws and in-tree repetition (terminal check ran first, so mate cannot be
+        // masked here). Fifty-move is a claim handled by the `quiesce` wrapper.
+        if pos.insufficient_material() || (ply > 0 && pos.is_repetition()) {
             return DRAW_SCORE;
         }
 
@@ -968,6 +971,73 @@ mod see_tests {
         assert_eq!(
             static_exchange_eval(&pos, Move::with_promo(54, 63, PROMO_QUEEN)),
             1_300
+        );
+    }
+}
+
+#[cfg(test)]
+mod draw_rule_tests {
+    use super::*;
+    use crate::movegen::generate_legal;
+    use std::sync::atomic::AtomicBool;
+
+    fn play(pos: &mut Position, uci: &str) {
+        let legal = generate_legal(pos);
+        let m = legal
+            .iter()
+            .copied()
+            .find(|m| m.to_string() == uci)
+            .expect("legal test move");
+        pos.make_move(m);
+    }
+
+    fn run(pos: &mut Position, depth: i32) -> SearchResult {
+        let mut tt = TranspositionTable::new(4);
+        let stop = AtomicBool::new(false);
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: depth,
+            ..SearchLimits::default()
+        }));
+        let mut s = Searcher::new(&mut tt, &stop, limits);
+        s.search_root(pos, None, 1, &mut |_| {})
+    }
+
+    /// R-02a: a repeated ROOT must still be searched (not scored as an instant draw).
+    #[test]
+    fn root_repetition_is_searched() {
+        let mut pos = Position::startpos();
+        for m in [
+            "b1c3", "b8c6", "c3b1", "c6b8", "g1f3", "g8f6", "f3g1", "f6g8",
+        ] {
+            play(&mut pos, m);
+        }
+        assert!(pos.is_repetition());
+        let r = run(&mut pos, 4);
+        assert!(r.nodes > 100, "root was not searched: {} nodes", r.nodes);
+        assert!(!r.pv.is_empty());
+    }
+
+    /// R-02b: mate-in-1 takes precedence over the fifty-move claim.
+    #[test]
+    fn mate_beats_fifty_move_claim() {
+        let mut pos = Position::from_fen("k7/8/1K6/8/8/8/8/7R w - - 100 60").expect("fen");
+        let r = run(&mut pos, 3);
+        assert!(
+            r.score_cp > MATE_SCORE - 100,
+            "expected mate, got {}",
+            r.score_cp
+        );
+    }
+
+    /// R-02b/R-12: at a claimable fifty-move node the value is never below DRAW.
+    #[test]
+    fn fifty_move_claim_value_is_at_least_draw() {
+        let mut pos = Position::from_fen("7k/8/8/8/5K2/8/8/q7 b - - 100 74").expect("fen");
+        let r = run(&mut pos, 6);
+        assert!(
+            r.score_cp >= DRAW_SCORE,
+            "claim value below draw: {}",
+            r.score_cp
         );
     }
 }
