@@ -98,3 +98,14 @@ missing artifact.
 | `scripts/test_evidence_push.sh` (10 checks) | evidence-commit push from DETACHED HEAD (actions/checkout ref=sha): explicit refspec `HEAD:refs/heads/$BRANCH` publishes; concurrent remote advancement → rebase-retry publishes; wrong-branch safeguard refuses non-arena destinations; static guard that both `evidence-bridge.yml` and `rating-run.yml` keep the explicit refspec and never reintroduce `git push origin "$BRANCH"` | PASS 2026-11-15 (10/10) |
 
 | `clock_limits_engine1_no_flag_death_march` (src/uci.rs) | ENGINE-1 time-management regression: full 40-move period simulation with per-move overhead stays within the clock and preserves the reserve; hard limits can never flag; starved-period trigger (small clock, large movestogo) cannot overspend | PASS 2026-11-15 (cargo 35/35) |
+## RATING-100 and exact-slot recovery — added 2026-11-17 (CI pending)
+
+| Test / tool | Added coverage | Current result |
+|---|---|---|
+| `scripts/verify_opening_subsets.py` | Recomputes both deterministic 50-row selections, exact original row order, byte-level SHA-256 values, uniqueness and Batch A/B disjointness | PENDING hosted CI |
+| `scripts/power_analysis.py` | 36 delta-method sensitivity cells; inputs use the selected 50 Batch-A clusters; verifies the report stays BLOCKED without third-anchor and Batch-B distributions | PENDING hosted CI smoke |
+| `scripts/test_reduced_sample.py` | Exact 100 counted indices, 50 clusters, two records per cluster, AB/BA and expected suite order | PENDING hosted CI |
+| `scripts/test_make_batch_dispatch.py` | Partial AB/BA pair recovery, complete-pair suppression, duplicate-slot rejection, time-control identity and opening-name mismatch | PENDING hosted CI |
+| `scripts/test_match.py` | New end-to-end exact schedule-index recovery and out-of-shard rejection | PENDING hosted CI |
+
+SCREEN-3 and CTRL-2-R have terminal successful shard jobs but skipped their evidence aggregation jobs. Their shard artifacts are not canonical gate evidence and have not been scored in this checkpoint.

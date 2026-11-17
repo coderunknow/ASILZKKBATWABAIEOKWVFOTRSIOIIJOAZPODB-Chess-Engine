@@ -10,7 +10,7 @@
 #     control evidence directory: frozen binary hashes, opening-suite hash,
 #     merged_sha256 vs the committed bytes, game-record integrity, counted
 #     totals >= the plan minimum (fail closed on ANY mismatch)
-#   * >= 3 eligible anchors; >= 2,000 counted games per anchor per batch
+#   * >= 3 eligible anchors; exactly 100 counted games per anchor per batch, from 50 opening clusters
 #   * Batch A, Batch B and the combined estimate all have two-sided 95%
 #     calibrated CI lower bounds STRICTLY > 2,000 (unrounded)
 #   * both null controls pass their registered thresholds
@@ -39,6 +39,15 @@ on:
       - "scripts/rating_estimator.py"
       - "scripts/verify_evidence.py"
       - "scripts/aggregate_shards.py"
+      - "scripts/reduced_sample.py"
+      - "scripts/make_gate_plan.py"
+      - "scripts/merge_batch_runs.py"
+      - "scripts/try_merge_confirmatory.py"
+      - "scripts/make_batch_dispatch.py"
+      - "scripts/verify_opening_subsets.py"
+      - "benches/rating-openings-100-batchA.txt"
+      - "benches/rating-openings-100-batchB.txt"
+      - "benches/rating-100-power-assessment.json"
 
 permissions:
   contents: read
@@ -66,7 +75,7 @@ jobs:
 
       # Independent recomputation from raw evidence. Exits non-zero unless all
       # three lower CI bounds (A, B, combined) are strictly > 2000, every anchor
-      # is within the saturation limit with >= min_games counted per batch, and
+      # is within the saturation limit with exactly 100 counted games per anchor/batch and 50 opening clusters, and
       # both null controls pass.
       - name: rating estimator gate (independent recomputation, fail closed)
         run: |
@@ -86,6 +95,12 @@ jobs:
           print(f"--control-anchor-names {ctl['anchor_vs_anchor']['names'][0]} {ctl['anchor_vs_anchor']['names'][1]}")
           print(f"--control-self {ctl['self_match']['evidence']}")
           print(f"--min-games {plan['min_games']}")
+          if plan.get("exact_counted_games") is not None:
+              print(f"--exact-games {plan['exact_counted_games']}")
+              print(f"--required-openings {plan['required_openings']}")
+              print(f"--games-per-opening {plan['games_per_opening']}")
+              print(f"--suite-a {plan['batches']['A']['suite_path']}")
+              print(f"--suite-b {plan['batches']['B']['suite_path']}")
           print(f"--threshold {plan['threshold']}")
           print(f"--bootstrap {plan.get('bootstrap', 10000)}")
           print(f"--seed {plan.get('bootstrap_seed', 20261114)}")

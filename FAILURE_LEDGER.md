@@ -370,3 +370,11 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   test_merge_batch_runs.py case 3 drifts engine_sha256 across runs (verified fail-closed).
   Defense-in-depth unchanged: verify_evidence.py re-checks engine/anchor/suite hashes at the
   canonical dir post-merge.
+## 2026-11-17 — implementation defects caught before branch update
+
+- **Incorrect first-pass opening subsets:** the initial 50-row candidate files did not match the stated SHA-256 lowest-50 selector. Recomputed both subsets from the original committed 60-row suites, discarded the first drafts, created exact deterministic subsets retaining source order, and added an automated verifier for selector, byte hashes and Batch A/B disjointness. Do not use the discarded suite hashes.
+- **Workflow resolver validation order / source escaping:** an early draft checked shard count/repetition before parsing them and included a literal escaped newline in a Python source list. Reordered validation after parsing and corrected the malformed source line before commit.
+- **Cross-batch evidence path collision:** the first evidence path used only the anchor key, so Batch A and Batch B could share a per-run evidence root. Updated to `confirmatory/batchA/<anchor>/run-<id>` and `confirmatory/batchB/<anchor>/run-<id>`.
+- **One-leg recovery gap:** a two-game shard could count one color leg and abort before the reverse-color leg; rerunning the whole shard could duplicate the counted game. Added exact schedule-index selection to match.py, dispatcher-generated per-shard missing-index maps, and merge-level exact slot verification.
+- **Skipped evidence jobs in completed screening/control workflows:** SCREEN-3 run 43820645420 and CTRL-2-R run 43820392119 completed all resolver/shard jobs but each skipped `aggregate-and-commit-evidence`. Their artifacts are not canonical committed evidence. Resolver config now defaults evidence capture on; only explicit `run_evidence: false` opts out. Historical runs are not retroactively relabelled or claimed aggregated.
+- **SEE pruning reconsidered:** removed SEE-negative capture pruning from quiescence before implementation. SEE's pin-legality model is approximate; the candidate uses SEE for ordering only. No performance or Elo effect is asserted before testing.

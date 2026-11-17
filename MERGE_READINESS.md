@@ -21,9 +21,8 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
 - [x] Regression tests added for repaired defects — TT clock test (src/tt.rs), clock smoke
       (tests/clock_smoke.rs), shard partition + e2e manifest (scripts/test_match.py),
       estimator degenerate-Σ_m + covariances (scripts/test_rating_estimator.py).
-- [ ] Full CI matrix green on the exact FINAL head SHA — must be re-verified at the final head
-      after all remaining work (CI at 74c3294 green: run 43864633461; CI at e47dbfd queued: run 43877962180; final head pending).
-- [x] No known unresolved correctness or security blockers — all 5 previously-open PR review
+- [ ] Full CI matrix green on the exact FINAL head SHA — new sample, recovery and SEE tests have not yet run on the implementation commit; final-head CI remains pending.
+- [ ] No known unresolved correctness or security blockers — the earlier audit findings remain dispositioned, but the new SEE ordering candidate and RATING-100 workflow/recovery code still require hosted CI and exact-head review. Prior 5 review findings remain dispositioned; all 5 previously-open PR review
       threads verified against current code, replied with evidence and resolved 2026-11-14:
       covariance-between-anchors = valid/fixed (§9.6–8 + joint-cluster-bootstrap GLS estimator,
       46/46), match.py Windows pipe reader = valid/fixed (reader-thread + Event, no select on
@@ -58,16 +57,14 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       original shard artifacts (byte-identical, merged_sha256 aeb4d5a0… / a811d9d1…).
       Throughput re-verified from committed per-game records: 29.43 / 29.53 min/game
       (8-game batch shard ≈ 236 min < 330-min cap). Exploratory only, never gate evidence.
-- [ ] Both null controls pass for the gate candidate (ENGINE-1, engine_sha256 9663697d…). CTRL-1 PASS (candidate-independent: measured −125.32 vs published −115.00, error −10.32 within ±75; 240/240 counted; evidence control/topple-0.1.1-vs-topple-0.2.1/). CTRL-2 PASS applies only to the pre-fix candidate fd75726d… (seat-perspective 0.5146, CI [0.4792, 0.5500]; evidence control/flawless-self/). CTRL-2-R for the ENGINE-1 candidate IN FLIGHT: run 43820392119, 113/120 shard jobs succeeded and 0 failed at 13:43Z; not yet aggregated or evaluated.
-- [ ] Anchor selection applied to SCREEN-2 (ENGINE-1 candidate) with the frozen rule — the screening step is COMPLETE (SCREEN-2R: runs 43714600687 + 43714620645, shard-17 retry 43806800011; corrected estimates topple-0.1.1 2176.8, topple-0.2.1 2236.4, est 2206.6, reproduced from raw evidence with scripts/make_gate_plan.py to /tmp). The frozen rule requires >=3 non-saturating anchors, so SCREEN-3 is required and IN FLIGHT (run 43820645420, mechanical choice akimbo-0.1.1, |est - R| = 234.4). Gate plan NOT yet generated; this item stays unchecked until SCREEN-3 is terminal and the rule is applied.
-- [ ] Batch A independently passes the strict rating gate — NOT RUN (needs ≥2,000 completed
-      games per eligible anchor; 60×17×2=2,040 games/anchor planned).
-- [ ] Batch B independently passes the strict rating gate — NOT RUN (fresh disjoint openings).
+- [ ] Both null controls pass for the gate candidate (ENGINE-1, engine_sha256 9663697d…). CTRL-1 PASS (candidate-independent; −10.32 Elo calibration error within ±75; 240/240 counted). CTRL-2 PASS applies only to the pre-fix binary. CTRL-2-R run 43820392119 completed resolver + 120/120 successful shard jobs, but aggregate-and-commit-evidence was SKIPPED; no self-match estimate is available.
+- [ ] Anchor selection finalized on ENGINE-1 candidate — SCREEN-2R remains selection-only (2176.8 / 2236.4 / mean 2206.6). SCREEN-3 run 43820645420 completed resolver + 60/60 successful shard jobs, but aggregate-and-commit-evidence was SKIPPED; no canonical third-anchor estimate or gate plan exists.
+- [ ] RATING-100 prospective power gate — BLOCKED. The proposed design is 100 counted games/anchor/batch over 50 disjoint opening clusters; near 2,100 Elo sensitivity power for all three lower-bound decisions is insufficient under reasonable variance stress, and third-anchor / Batch-B covariance is unmeasured. No confirmatory dispatch is permitted until a reviewed, evidence-backed PASS exists.
+- [ ] Batch A and Batch B independently pass the strict rating gate — NOT RUN.
 - [ ] Combined calibrated 95% CI independently passes — NOT RUN.
 - [ ] Every lower bound is strictly greater than 2,000, without rounding — NOT MEASURED.
-- [ ] ≥2,000 completed games per eligible anchor per batch — NOT YET COLLECTED.
-- [ ] Raw tournament evidence committed and reproducible — pending batch execution
-      (aggregate_shards + estimator recompute from raw shards; never from STATUS.md).
+- [ ] Exactly 100 counted games over 50 registered openings per eligible anchor/batch, committed and reproducible — NOT COLLECTED.
+- [ ] Raw tournament evidence committed and reproducible — SCREEN-3 and CTRL-2-R shard artifacts have not been aggregated into canonical evidence; Batch A/B have not been run.
 
 ## Reviews & repository integrity
 
@@ -78,8 +75,7 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
       (AGENTS_LOG.md) and all 11 of its review threads now carry evidence-based replies and are
       resolved (6 earlier + 5 on 2026-11-14; per-thread dispositions in the checklist above).
       Findings of the pending final-head review will be dispositioned the same way before merge.
-- [ ] Documentation and PR description match the final implementation — STATUS.md updated at
-      d023ee8+; PR body refresh pending at final head.
+- [ ] Documentation and PR description match the final implementation — sample-size amendment, exact-slot recovery and blocked power analysis documented; final-head PR body refresh and review remain pending.
 - [ ] All mandatory GitHub branch-protection and review conditions satisfied — verify at merge
       time (repository rules; required checks where permitted, else documented privileged action).
 - [ ] PR is no longer a draft and is genuinely ready for review/merge — PR #1 is currently

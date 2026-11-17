@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import sys
+from reduced_sample import SampleDesignError, validate_counted_sample
 
 
 class EvidenceError(Exception):
@@ -50,7 +51,10 @@ def load_json(path: str) -> dict:
 
 def verify_merged_evidence(label: str, games_path: str, manifest_path: str,
                            plan_entry: dict, white_sha256: str, black_sha256: str,
-                           min_games: int) -> dict:
+                           min_games: int, exact_games: int | None = None,
+                           required_openings: int | None = None,
+                           games_per_opening: int | None = None,
+                           expected_openings: list[str] | None = None) -> dict:
     if not os.path.exists(games_path):
         raise EvidenceError(f"{label}: missing {games_path}")
     if not os.path.exists(manifest_path):
@@ -68,6 +72,10 @@ def verify_merged_evidence(label: str, games_path: str, manifest_path: str,
     if man.get("opening_suite_sha256") != plan_entry.get("suite_sha256"):
         raise EvidenceError(f"{label}: suite hash {man.get('opening_suite_sha256')} != plan "
                             f"{plan_entry.get('suite_sha256')}")
+    if plan_entry.get("time_control") is not None:
+        if man.get("time_control") != plan_entry["time_control"]:
+            raise EvidenceError(f"{label}: manifest time_control {man.get('time_control')} "
+                                f"!= registered {plan_entry['time_control']}")
     if man.get("merged_sha256") != sha256_file(games_path):
         raise EvidenceError(f"{label}: merged_sha256 mismatch — committed games.jsonl differs "
                             f"from the manifest's recorded merge")
@@ -76,6 +84,7 @@ def verify_merged_evidence(label: str, games_path: str, manifest_path: str,
     seen = set()
     n_counted = 0
     n_engine_errors = 0
+    records = []
     for ln, line in enumerate(open(games_path), 1):
         line = line.strip()
         if not line:
@@ -92,6 +101,7 @@ def verify_merged_evidence(label: str, games_path: str, manifest_path: str,
         if key in seen:
             raise EvidenceError(f"{label}:{ln}: duplicate game record {key}")
         seen.add(key)
+        records.append(g)
         if g.get("engine_error"):
             n_engine_errors += 1
         if g.get("counted"):
@@ -100,8 +110,20 @@ def verify_merged_evidence(label: str, games_path: str, manifest_path: str,
         raise EvidenceError(f"{label}: manifest n_counted {man.get('n_counted')} != recomputed {n_counted}")
     if min_games and n_counted < min_games:
         raise EvidenceError(f"{label}: counted games {n_counted} < required {min_games}")
+    sample = None
+    if exact_games is not None:
+        try:
+            sample = validate_counted_sample(
+                records, exact_games=exact_games,
+                required_openings=int(required_openings),
+                games_per_opening=int(games_per_opening),
+                expected_openings=expected_openings,
+            )
+        except (SampleDesignError, TypeError, ValueError) as e:
+            raise EvidenceError(f"{label}: reduced-sample validation failed: {e}") from e
     return {"label": label, "n_counted": n_counted,
-            "n_engine_errors": n_engine_errors, "n_records": len(seen)}
+            "n_engine_errors": n_engine_errors, "n_records": len(seen),
+            "sample_design": sample}
 
 
 def verify_all(plan_path: str, pool_path: str) -> dict:
@@ -112,11 +134,31 @@ def verify_all(plan_path: str, pool_path: str) -> dict:
     pool_by_key = {e.get("key"): e for e in pool.get("engines", [])}
     engine_sha = plan["engine_sha256"]
     min_games = int(plan.get("min_games", 2000))
+    expected_time_control = plan.get("time_control")
+    exact_games = plan.get("exact_counted_games")
+    required_openings = plan.get("required_openings")
+    games_per_opening = plan.get("games_per_opening")
     report = {"engine_sha256": engine_sha, "batches": {}, "controls": {}}
 
     for batch, bp in plan["batches"].items():
         label = f"batch-{batch}"
         plan_entry = {"suite_sha256": bp["suite_sha256"]}
+        if expected_time_control is not None:
+            plan_entry["time_control"] = expected_time_control
+        expected_openings = None
+        if bp.get("suite_path"):
+            if sha256_file(bp["suite_path"]) != bp["suite_sha256"]:
+                raise EvidenceError(f"{label}: committed opening suite bytes differ from the registered SHA-256")
+        if bp.get("suite_path"):
+            try:
+                with open(bp["suite_path"]) as suite_file:
+                    expected_openings = [
+                        line.partition("|")[0].strip()
+                        for line in suite_file
+                        if line.strip() and not line.lstrip().startswith("#")
+                    ]
+            except OSError as e:
+                raise EvidenceError(f"{label}: cannot read registered opening suite: {e}") from e
         per_anchor = []
         for anchor_key in bp["anchors"]:
             if anchor_key not in pool_by_key:
@@ -124,7 +166,11 @@ def verify_all(plan_path: str, pool_path: str) -> dict:
             base = f"benches/evidence/batch{batch}/{anchor_key}"
             per_anchor.append(verify_merged_evidence(
                 f"{label}/{anchor_key}", f"{base}/games.jsonl", f"{base}/manifest.json",
-                plan_entry, engine_sha, pool_by_key[anchor_key]["sha256"], min_games))
+                plan_entry, engine_sha, pool_by_key[anchor_key]["sha256"], min_games,
+                exact_games=int(exact_games) if exact_games is not None else None,
+                required_openings=int(required_openings) if required_openings is not None else None,
+                games_per_opening=int(games_per_opening) if games_per_opening is not None else None,
+                expected_openings=expected_openings))
         report["batches"][batch] = {"anchors": per_anchor}
 
     for name, cp in plan["controls"].items():

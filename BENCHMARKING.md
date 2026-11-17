@@ -110,3 +110,10 @@ to write into a directory holding non-empty batch artifacts, and new batches go 
   hostname, python version, full adjudication rules, color-pairing rule, and (with `--anchor-json`)
   the complete anchor-pool descriptor. `scripts/match.py` refuses to start unless the anchor pool
   passes the schema check.
+## 2026-11-17 — reduced sample design and runner telemetry
+
+RATING-100 reduces the proposed counted sample from 2,040 to 100 games per anchor per batch: 50 opening clusters × one paired repetition × AB/BA. For three anchors and two disjoint batches the arithmetic is 12,240 → 600 counted games (95.0980%). This is a design/sample-count reduction only; it is not evidence of faster chess search, higher games-per-hour, or a stronger engine.
+
+The new workflow records per-shard `/usr/bin/time -v` output and pre/post cgroup values including CPU quota (`cpu.max`), throttling counters (`cpu.stat`), effective cpuset and memory limit. Future throughput reports must compare elapsed wall time, user/system CPU, peak RSS, cpu throttling, runner model/image, actual shard count/concurrency and counted-game totals. Do not infer a concurrency win from vCPU labels alone.
+
+The 100-game design is currently **BLOCKED** for confirmatory use: selected-subset variance is available for only two screening anchors; the third-anchor covariance and disjoint Batch-B cluster distribution remain unmeasured. Near a 2,100 Elo true-rating alternative, the sensitivity analysis shows only ~63–77% power for all three lower-bound conditions without variance inflation, ~22–31% at 1.5× cluster SD and ~8.7–12.4% at 2×. The registered strict 95% lower-bound rule and both null controls are unchanged.

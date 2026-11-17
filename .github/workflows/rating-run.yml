@@ -162,6 +162,9 @@ jobs:
                   "tc": os.environ.get("IN_TC") or "",
               }
 
+          # Evidence capture is on by default. Only explicit false opts out.
+          cfg.setdefault("run_evidence", True)
+
           # --- strict schema ---
           if cfg.get("schema") != 1:
               fail("schema must be 1")
@@ -187,6 +190,8 @@ jobs:
           if purpose == "confirmatory":
               if cfg["white_engine"] != "flawless" or cfg["black_engine"] == "flawless":
                   fail("confirmatory runs must be flawless (white) vs a frozen-pool anchor (black)")
+              if cfg["black_engine"] != anchor:
+                  fail("confirmatory anchor_id must match the black_engine pool key")
           if purpose == "control" and batch != "CTRL":
               fail("control runs must use batch CTRL")
           count = cfg.get("shard_count")
@@ -203,6 +208,88 @@ jobs:
               fail("seed must be int")
           if not re.fullmatch(r"\d+/\d+(\.\d+)?(m|s)?", cfg.get("tc", "")):
               fail(f"bad tc {cfg.get('tc')!r}")
+          if purpose == "confirmatory":
+              if batch not in ("A", "B"):
+                  fail("confirmatory runs must use Batch A or Batch B")
+              if cfg.get("tc") != "40/15":
+                  fail("confirmatory evidence must use the registered 40/15 wall-clock time control")
+              if cfg.get("sample_design") != "rating-100-v1":
+                  fail("only the append-only rating-100-v1 sample design is eligible")
+              if count != 50 or reps != 1:
+                  fail("rating-100-v1 requires shard_count=50 and repetitions=1")
+              if len(set(indices)) != len(indices) or indices != sorted(indices):
+                  fail("rating-100-v1 shard indices must be unique and sorted")
+              if any(type(x) is not int or x < 0 or x >= 50 for x in indices):
+                  fail("rating-100-v1 shard indices must be integers within 0..49")
+              full_wave = indices == list(range(50))
+              recovery = cfg.get("recovery_dispatch")
+              if not isinstance(recovery, bool):
+                  fail("confirmatory dispatch must explicitly declare recovery_dispatch true/false")
+              if not recovery and not full_wave:
+                  fail("a new confirmatory dispatch must include all 50 opening shards")
+              if cfg.get("run_evidence") is not True:
+                  fail("every confirmatory dispatch must preserve immutable per-run evidence")
+              power_path = "benches/rating-100-power-assessment.json"
+              with open(power_path) as power_file:
+                  power = json.load(power_file)
+              if power.get("status") != "PASS" or power.get("eligible_for_confirmatory_dispatch") is not True:
+                  fail("prospective power assessment is not an evidence-backed PASS; confirmatory dispatch blocked")
+              approval = power.get("approval")
+              if not isinstance(approval, dict) or not all(
+                  isinstance(approval.get(field), str) and approval[field].strip()
+                  for field in ("reviewer", "reviewed_at", "evidence_ref", "decision_rule")
+              ):
+                  fail("power PASS requires explicit reviewer, timestamp, evidence and decision rule")
+              power_sha = hashlib.sha256(open(power_path, "rb").read()).hexdigest()
+              if cfg.get("power_assessment_sha256") != power_sha:
+                  fail("dispatch power-assessment SHA-256 does not match the committed report")
+              suites = power.get("opening_suites", {})
+              expected_path = suites.get("amended_a" if batch == "A" else "amended_b")
+              expected_sha = suites.get("batch_a_sha256" if batch == "A" else "batch_b_sha256")
+              if cfg.get("opening_suite") != expected_path or cfg.get("opening_suite_sha256") != expected_sha:
+                  fail("confirmatory opening suite path/hash differs from the reviewed power assessment")
+              schedule_map = cfg.get("schedule_indices_by_shard")
+              expected_map_keys = {str(i) for i in indices}
+              if not isinstance(schedule_map, dict) or set(schedule_map) != expected_map_keys:
+                  fail("rating-100-v1 requires schedule_indices_by_shard for every dispatched shard")
+              for shard_key, slots in schedule_map.items():
+                  shard_index = int(shard_key)
+                  allowed_slots = {2 * shard_index, 2 * shard_index + 1}
+                  if not isinstance(slots, list) or not slots or len(set(slots)) != len(slots):
+                      fail(f"invalid schedule-index recovery list for shard {shard_key}")
+                  if slots != sorted(slots) or any(type(slot) is not int or slot not in allowed_slots for slot in slots):
+                      fail(f"schedule-index recovery list escapes shard {shard_key}")
+                  if not recovery and set(slots) != allowed_slots:
+                      fail(f"initial dispatch must include both AB/BA indices for shard {shard_key}")
+              # Recompute recovery slots from committed, hash-verified per-run manifests.
+              import sys as _sys
+              _sys.path.insert(0, "scripts")
+              from make_batch_dispatch import read_committed_runs
+              runs_root = f"benches/evidence/confirmatory/batch{batch}/{anchor}"
+              canonical_root = f"benches/evidence/batch{batch}/{anchor}"
+              if os.path.exists(canonical_root):
+                  fail(f"canonical evidence already exists at {canonical_root}; refusing another dispatch")
+              prior_runs = [name for name in os.listdir(runs_root) if name.startswith("run-")] if os.path.isdir(runs_root) else []
+              if recovery and not prior_runs:
+                  fail("recovery dispatch has no prior committed run evidence")
+              if not recovery and prior_runs:
+                  fail("new full dispatch cannot reuse an existing per-run evidence root")
+              if recovery:
+                  anchor_entry = next((e for e in pool["engines"] if e.get("key") == cfg["black_engine"]), None)
+                  if anchor_entry is None:
+                      fail("recovery anchor is missing from the frozen pool")
+                  opening_names = [line.partition("|")[0].strip() for line in open(cfg["opening_suite"])
+                                   if line.strip() and not line.lstrip().startswith("#")]
+                  missing_by_shard = read_committed_runs(
+                      runs_root, batch=batch, anchor=anchor, engine_sha=cfg["engine_sha256"],
+                      anchor_sha=anchor_entry["sha256"], suite_sha=cfg["opening_suite_sha256"],
+                      opening_names=opening_names)
+                  expected_schedule_map = {str(k): missing_by_shard[k] for k in indices}
+              else:
+                  expected_schedule_map = {str(k): [2 * k, 2 * k + 1] for k in indices}
+              if schedule_map != expected_schedule_map:
+                  fail("dispatch schedule-index map differs from recomputed missing schedule slots")
+
 
           # --- engine hash policy ---
           eng = cfg.get("engine_sha256", "")
@@ -237,7 +324,9 @@ jobs:
               rc = subprocess.run(
                   ["git", "diff", "--quiet", tc_target, head, "--",
                    "src", "Cargo.toml", "Cargo.lock", "scripts", "benches/anchor-pool.json",
-                   "benches/rating-openings-batchA.txt", "benches/rating-openings-batchB.txt"]).returncode
+                   "benches/rating-openings-batchA.txt", "benches/rating-openings-batchB.txt",
+                   "benches/rating-openings-100-batchA.txt", "benches/rating-openings-100-batchB.txt",
+                   "benches/rating-100-power-assessment.json"]).returncode
               if rc != 0:
                   fail("engine/harness/suite/pool drift between target_commit and head")
               target = tc_target
@@ -283,7 +372,16 @@ jobs:
           {
             echo "=== utc: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
             uname -a; cat /etc/os-release; lscpu | head -20; head -5 /proc/meminfo
+            echo "=== effective cpu allocation ==="
+            nproc
+            for p in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpuset.cpus.effective; do
+              [ ! -r "$p" ] || { echo "--- $p"; cat "$p"; }
+            done
+            echo "=== process cgroup ==="; cat /proc/self/cgroup
             echo "ImageOS=${ImageOS:-unknown} ImageVersion=${ImageVersion:-unknown}"
+             for p in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpuset.cpus.effective /sys/fs/cgroup/memory.max; do
+               [ ! -r "$p" ] || { echo "--- $p"; cat "$p"; }
+             done
           } | tee runner-hardware.txt
 
       - name: Install Rust (pinned)
@@ -363,6 +461,15 @@ jobs:
             echo "anchor $ANCHOR_ID verified sha256=$GOT (mode=$MODE)"
           done
 
+      - name: Record pre-shard cgroup usage
+        run: |
+          {
+            echo "=== utc: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+            for p in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpuset.cpus.effective /sys/fs/cgroup/memory.max; do
+              [ ! -r "$p" ] || { echo "--- $p"; cat "$p"; }
+            done
+          } | tee runner-hardware-pre-shard.txt
+
       - name: Run tournament shard (match.py)
         env:
           CFG: ${{ needs.resolve.outputs.config }}
@@ -388,6 +495,7 @@ jobs:
           w_cmd, w_name = cmd_for(c["white_engine"])
           b_cmd, b_name = cmd_for(c["black_engine"])
           cmd = [
+              "/usr/bin/time", "-v", "-o", "/tmp/match-resource-usage.txt", "--",
               sys.executable, "scripts/match.py",
               # NOTE: *-cmd values are ONE argv each containing the full command line;
               # match.py splits them internally (args.white_cmd.split()).
@@ -405,9 +513,16 @@ jobs:
               "--anchor-json", "benches/anchor-pool.json",
               "--out", out,
           ]
+          selected_slots = c.get("schedule_indices_by_shard", {}).get(str(i))
+          if selected_slots is not None:
+              cmd.extend(["--schedule-indices", *[str(slot) for slot in selected_slots]])
           print("invoking:", " ".join(cmd), flush=True)
           with open("/tmp/match-stderr.txt", "w") as errf:
               rc = subprocess.call(cmd, stderr=errf)
+          os.makedirs(out, exist_ok=True)
+          if os.path.exists("/tmp/match-resource-usage.txt"):
+              import shutil
+              shutil.copy2("/tmp/match-resource-usage.txt", os.path.join(out, "resource-usage.txt"))
           if rc != 0:
               try:
                   tail = open("/tmp/match-stderr.txt").read()[-3000:]
@@ -419,6 +534,16 @@ jobs:
           sys.exit(rc)
           PY
 
+      - name: Record post-shard cgroup usage
+        if: always()
+        run: |
+          {
+            echo "=== utc: $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+            for p in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/cpuset.cpus.effective /sys/fs/cgroup/memory.max; do
+              [ ! -r "$p" ] || { echo "--- $p"; cat "$p"; }
+            done
+          } | tee runner-hardware-end.txt
+
       - name: Upload shard evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -427,6 +552,8 @@ jobs:
           path: |
             benches/rating-${{ fromJson(needs.resolve.outputs.config).batch }}/${{ fromJson(needs.resolve.outputs.config).anchor_id }}/shard-${{ matrix.shard_index }}/
             runner-hardware.txt
+            runner-hardware-end.txt
+            runner-hardware-pre-shard.txt
           if-no-files-found: warn
           retention-days: 90
 
@@ -440,11 +567,11 @@ jobs:
   evidence:
     name: aggregate-and-commit-evidence
     needs: [resolve, shard]
-    # run_evidence=false marks a single-shard RETRY dispatch (infra-failure
-    # recovery): the rerun's own evidence job must NOT commit partial evidence
-    # (len(shard_indices)==1 would aggregate 2 games at the canonical path).
-    # Canonical aggregation happens offline across the merged artifacts.
-    if: needs.resolve.outputs.run == 'true' && needs.shard.result == 'success' && fromJson(needs.resolve.outputs.config).run_evidence != false
+    # Evidence capture defaults on; only explicit run_evidence=false opts out.
+    # Screening/control evidence is canonical only for a complete declared matrix.
+    # Confirmatory evidence is stored per run and merged only after schedule 0..99
+    # is covered exactly once.
+    if: always() && needs.resolve.outputs.run == 'true' && needs.shard.result != 'cancelled' && fromJson(needs.resolve.outputs.config).run_evidence != false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -465,16 +592,29 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/shards
           gh run download "${{ github.run_id }}" -D /tmp/shards
-          find /tmp/shards -name meta.json | wc -l
+          mkdir -p /tmp/shards-complete
+          N=$(python3 scripts/collect_completed_shards.py --source /tmp/shards --out /tmp/shards-complete)
+          echo "fully completed shard artifacts: $N"
+          echo "COMPLETED_SHARDS=$N" >> "$GITHUB_ENV"
 
       - name: Strict aggregate
         env:
           CFG: ${{ needs.resolve.outputs.config }}
         run: |
           set -euo pipefail
+          if [ "${COMPLETED_SHARDS}" -eq 0 ]; then
+            echo "no fully completed shards in this run; checking prior committed runs only"
+            exit 0
+          fi
           python3 - <<'PY'
           import json, os, subprocess, sys
           c = json.loads(os.environ["CFG"])
+          if c["purpose"] != "confirmatory" and c["shard_indices"] != list(range(c["shard_count"])):
+              print("partial screening/control dispatch; preserving only hosted shard artifacts")
+              sys.exit(0)
+          if c["purpose"] != "confirmatory" and int(os.environ["COMPLETED_SHARDS"]) != len(c["shard_indices"]):
+              print("incomplete screening/control dispatch; refusing to commit a partial canonical evidence set")
+              sys.exit(0)
           pool = json.load(open("benches/anchor-pool.json"))
           def sha_of(slot):
               if slot == "flawless":
@@ -485,17 +625,19 @@ jobs:
               sys.exit(f"unknown engine slot {slot}")
           white_sha = sha_of(c["white_engine"])
           black_sha = sha_of(c["black_engine"])
-          out = f"benches/evidence/{c['purpose']}/{c['anchor_id']}"
-          # SHAPE-1: confirmatory batches are split across 4 runs of 255 shards;
-          # each run commits its own per-run evidence dir, and the canonical
-          # batch dir (benches/evidence/batch{A,B}/<anchor>/) is produced ONCE
-          # by scripts/merge_batch_runs.py with strict cross-run validation.
-          if c['purpose'] == 'confirmatory':
-              out += f"/run-{os.environ['GITHUB_RUN_ID']}"
+          if c["purpose"] == "confirmatory":
+              # Batch A and B have disjoint suites and independent merge roots.
+              out = f"benches/evidence/confirmatory/batch{c['batch']}/{c['anchor_id']}/run-{os.environ['GITHUB_RUN_ID']}"
+          else:
+              out = f"benches/evidence/{c['purpose']}/{c['anchor_id']}"
+          if os.path.isdir(out) and os.listdir(out):
+              sys.exit(f"refusing to overwrite existing evidence directory: {out}")
+          if os.path.exists(out) and not os.path.isdir(out):
+              sys.exit(f"evidence destination exists and is not a directory: {out}")
           os.makedirs(out, exist_ok=True)
           cmd = [
               sys.executable, "scripts/aggregate_shards.py",
-              "--shards-root", "/tmp/shards",
+              "--shards-root", "/tmp/shards-complete",
               "--batch", c["batch"],
               "--anchor", c["anchor_id"],
               "--engine-sha256", white_sha,
@@ -503,7 +645,7 @@ jobs:
               "--opening-suite-sha256", c["opening_suite_sha256"],
               "--tc-moves", c["tc"].split("/")[0],
               "--tc-seconds", str(float(c["tc"].split("/")[1]) * 60.0),
-              "--expected-shards", str(len(c["shard_indices"])),
+              "--expected-shards", os.environ["COMPLETED_SHARDS"],
               "--out", f"{out}/games.jsonl",
               "--manifest", f"{out}/manifest.json",
           ]
@@ -513,6 +655,21 @@ jobs:
               print("::error::aggregate_shards failed (fail closed)")
           sys.exit(rc)
           PY
+
+      - name: Attempt strict canonical merge for the 100-game design
+        if: fromJson(needs.resolve.outputs.config).purpose == 'confirmatory' && fromJson(needs.resolve.outputs.config).sample_design == 'rating-100-v1'
+        env:
+          CFG: ${{ needs.resolve.outputs.config }}
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, sys
+          c = json.loads(__import__("os").environ["CFG"])
+          runs = f"benches/evidence/confirmatory/batch{c['batch']}/{c['anchor_id']}"
+          canonical = f"benches/evidence/batch{c['batch']}/{c['anchor_id']}"
+          cmd = [sys.executable, "scripts/try_merge_confirmatory.py",
+                 "--runs-root", runs, "--out", canonical, "--expected-games", "100",
+                 "--suite", c["opening_suite"]]
+          sys.exit(subprocess.call(cmd))
 
       - name: Commit raw evidence to the branch
         env:
@@ -566,7 +723,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: evidence-${{ fromJson(needs.resolve.outputs.config).purpose }}-${{ fromJson(needs.resolve.outputs.config).anchor_id }}-${{ github.run_id }}
+          name: evidence-${{ fromJson(needs.resolve.outputs.config).purpose }}-${{ fromJson(needs.resolve.outputs.config).batch }}-${{ fromJson(needs.resolve.outputs.config).anchor_id }}-${{ github.run_id }}
           path: benches/evidence/
           if-no-files-found: warn
           retention-days: 90

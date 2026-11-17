@@ -1,0 +1,235 @@
+{
+  "design": "rating-100-v1",
+  "date": "2026-11-17",
+  "status": "BLOCKED",
+  "eligible_for_confirmatory_dispatch": false,
+  "proposed_sample": {
+    "counted_games_per_anchor_per_batch": 100,
+    "distinct_opening_clusters_per_batch": 50,
+    "counted_games_per_opening": 2,
+    "color_pairs": [
+      "AB",
+      "BA"
+    ],
+    "paired_repetitions_per_opening": 1,
+    "batches": 2,
+    "disjoint_opening_suites": true,
+    "same_anchor_set_in_both_batches": true,
+    "expected_total_if_three_anchors": 600,
+    "time_control": "40/15 repeating wall-clock",
+    "threshold": "all unrounded two-sided 95% calibrated CI lower bounds strictly > 2000 Elo",
+    "controls": "both registered null controls and thresholds unchanged"
+  },
+  "historical_vs_amended_arithmetic": {
+    "historical_games_per_anchor_per_batch": 2040,
+    "amended_games_per_anchor_per_batch": 100,
+    "historical_total_for_three_anchors": 12240,
+    "amended_total_for_three_anchors": 600,
+    "games_removed": 11640,
+    "percentage_reduction": 95.09803921568627,
+    "sharding": "50 shards × 2 games per anchor/batch; one matrix wave under 256"
+  },
+  "opening_suites": {
+    "original_a": "benches/rating-openings-batchA.txt",
+    "original_b": "benches/rating-openings-batchB.txt",
+    "amended_a": "benches/rating-openings-100-batchA.txt",
+    "amended_b": "benches/rating-openings-100-batchB.txt",
+    "selector": "Normalize each original line with strip(); SHA-256 of FlawLessChess|rating-100|amendment-2026-11-16|sha256-v1|<batch>|<line>; choose 50 lowest digests; retain original suite order.",
+    "batch_a_sha256": "abf1627495d3ad9c42240f076921e2453e5e30cac42782856ea5f0673ca60239",
+    "batch_b_sha256": "f7414154ce2fe38faeac15dadc9f9c250245a54e908422e37451d089ff352219",
+    "batch_a_openings": 50,
+    "batch_b_openings": 50,
+    "intersection_count": 0,
+    "automated_verifier": "scripts/verify_opening_subsets.py"
+  },
+  "screening_inputs": {
+    "source": "benches/evidence/screening-2 raw per-game records",
+    "original_games_per_anchor": 120,
+    "selected_batch_a_subset_games_per_anchor": 100,
+    "selected_batch_a_clusters": 50,
+    "anchor_keys": [
+      "topple-0.1.1",
+      "topple-0.2.1"
+    ],
+    "cluster_score_means": [
+      0.295,
+      0.255
+    ],
+    "cluster_score_standard_deviations": [
+      0.2657776422162723,
+      0.2966221398978016
+    ],
+    "shared_opening_difficulty_correlation": 0.15888153136048594,
+    "note": "These are selection-only screening inputs, not confirmation evidence or a rating estimate."
+  },
+  "published_calibration": {
+    "source": "frozen benches/anchor-pool.json; published error convention is ci95",
+    "anchors": [
+      {
+        "key": "topple-0.1.1",
+        "published_elo": 2324,
+        "ci95_half_width": 17,
+        "calibration_sd": 8.673469387755102
+      },
+      {
+        "key": "topple-0.2.1",
+        "published_elo": 2439,
+        "ci95_half_width": 14,
+        "calibration_sd": 7.142857142857143
+      },
+      {
+        "key": "akimbo-0.1.1",
+        "published_elo": 2441,
+        "ci95_half_width": 19,
+        "calibration_sd": 9.693877551020408
+      }
+    ],
+    "conversion": "published 95% CI half-width divided by 1.96 to place calibration errors on the SD scale",
+    "cross_batch_treatment": "same calibration draw is shared across Batch A and Batch B; only match-noise is independently drawn between disjoint batches"
+  },
+  "prospective_sensitivity": {
+    "method": "delta-method multivariate-normal sensitivity simulation; 250000 Monte Carlo replicates per scenario",
+    "final_evidence_method": "actual gate remains the registered opening-cluster bootstrap with joint cluster resampling, GLS, calibration uncertainty propagation and shared cross-batch calibration",
+    "cluster_count": 50,
+    "covariance_model": {
+      "anchors_1_and_2": "empirical SD and paired-opening correlation from the deterministic Batch A 50-opening subset",
+      "anchor_3": "marginal opening-cluster SD assumed equal to the larger of the two measured SDs",
+      "correlation_of_anchor_3_with_each": "varied at 0, 0.25 and 0.5; not measured"
+    },
+    "batch_b_assumption": "match-noise distribution assumed exchangeable with Batch A, with independent match-noise because opening suites are disjoint; this cannot be empirically checked from current evidence",
+    "tested_true_rating_alternatives": [
+      2050,
+      2100,
+      2150,
+      2200
+    ],
+    "tested_cluster_sd_inflations": [
+      1,
+      1.5,
+      2
+    ],
+    "scenarios": [
+      {
+        "true_rating": 2050,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1,
+        "batch_ci_half_width": 83.12,
+        "combined_ci_half_width": 59.46,
+        "power_all_three": 0.04946
+      },
+      {
+        "true_rating": 2050,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1.5,
+        "batch_ci_half_width": 123.87,
+        "combined_ci_half_width": 88.05,
+        "power_all_three": 0.01483
+      },
+      {
+        "true_rating": 2050,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 2,
+        "batch_ci_half_width": 164.77,
+        "combined_ci_half_width": 116.86,
+        "power_all_three": 0.00728
+      },
+      {
+        "true_rating": 2100,
+        "third_anchor_correlation": 0,
+        "sd_inflation": 1,
+        "batch_ci_half_width": 62.66,
+        "combined_ci_half_width": 45.04,
+        "power_all_three": 0.77291
+      },
+      {
+        "true_rating": 2100,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1,
+        "batch_ci_half_width": 69.03,
+        "combined_ci_half_width": 49.58,
+        "power_all_three": 0.66019
+      },
+      {
+        "true_rating": 2100,
+        "third_anchor_correlation": 0.5,
+        "sd_inflation": 1,
+        "batch_ci_half_width": 70.56,
+        "combined_ci_half_width": 50.93,
+        "power_all_three": 0.63399
+      },
+      {
+        "true_rating": 2100,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1.5,
+        "batch_ci_half_width": 102.62,
+        "combined_ci_half_width": 73.09,
+        "power_all_three": 0.23297
+      },
+      {
+        "true_rating": 2100,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 2,
+        "batch_ci_half_width": 136.39,
+        "combined_ci_half_width": 96.84,
+        "power_all_three": 0.09195
+      },
+      {
+        "true_rating": 2150,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1,
+        "batch_ci_half_width": 58.7,
+        "combined_ci_half_width": 42.34,
+        "power_all_three": 0.99765
+      },
+      {
+        "true_rating": 2150,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1.5,
+        "batch_ci_half_width": 87.05,
+        "combined_ci_half_width": 62.13,
+        "power_all_three": 0.84925
+      },
+      {
+        "true_rating": 2150,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 2,
+        "batch_ci_half_width": 115.58,
+        "combined_ci_half_width": 82.17,
+        "power_all_three": 0.52042
+      },
+      {
+        "true_rating": 2200,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1,
+        "batch_ci_half_width": 51.25,
+        "combined_ci_half_width": 37.11,
+        "power_all_three": 1
+      },
+      {
+        "true_rating": 2200,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 1.5,
+        "batch_ci_half_width": 75.82,
+        "combined_ci_half_width": 54.21,
+        "power_all_three": 0.9987
+      },
+      {
+        "true_rating": 2200,
+        "third_anchor_correlation": 0.25,
+        "sd_inflation": 2,
+        "batch_ci_half_width": 100.59,
+        "combined_ci_half_width": 71.59,
+        "power_all_three": 0.9481
+      }
+    ],
+    "interpretation": "At a true rating only 100 Elo above the threshold, estimated probability of clearing all three independent lower-bound requirements ranges about 63–77% with no variance inflation and falls to about 9–23% under 1.5–2× cluster SD stress. The design is much better powered at larger margins, but the actual margin and key covariance inputs are unknown.",
+    "computed_at": "2026-11-17"
+  },
+  "blocking_reasons": [
+    "No complete cluster-level distribution for the third mechanically selected anchor is yet available.",
+    "The disjoint Batch B 50-opening suite has no screening distribution; its exchangeability with Batch A is assumed rather than measured.",
+    "The power result depends strongly on the unknown true margin above 2000 and the unmeasured third-anchor correlations; near-threshold alternatives fail the desired power levels.",
+    "The prospective simulation is a delta-method normal approximation, not the actual registered bootstrap on future data."
+  ],
+  "decision": "Keep 100-game design non-dispatchable. Do not claim PASS, do not run confirmatory games, and do not weaken sample size, the 40/15 time control, CI threshold, anchor rule or null controls. The 100-game design may only be run as explicitly exploratory if separately authorized; continue independent engineering work."
+}

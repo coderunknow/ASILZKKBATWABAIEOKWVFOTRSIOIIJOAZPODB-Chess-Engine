@@ -1,81 +1,294 @@
 #!/usr/bin/env python3
-"""Generate a confirmatory batch dispatch.json (marker-file dispatch for rating-run.yml).
+"""Create a fail-closed RATING-100 confirmatory dispatch marker.
 
-SHAPE-1: a batch is 2040 games = 1020 shards x 2 games, dispatched as FOUR runs of
-255 shard-indices each (GitHub matrix cap 256). One marker commit per run:
-  run 1: --from-index 0 --to-index 255
-  run 2: --from-index 255 --to-index 510
-  run 3: --from-index 510 --to-index 765
-  run 4: --from-index 765 --to-index 1020
-Evidence: each run commits benches/evidence/confirmatory/<anchor>/run-<run_id>/;
-scripts/merge_batch_runs.py produces the canonical benches/evidence/batch{A,B}/<anchor>/
-after run 4 (strict cross-run validation; SHAPE-1 addendum).
-
-Usage: python3 make_batch_dispatch.py --hash <64hex> --batch A --seed 20261121
-       [--anchor topple-0.1.1] [--revision 13] [--shards 1020]
-       [--from-index 0 --to-index 255] [--reps 17]
-Batch B: --batch B --seed 20261122 (suite batchB).
+A full dispatch schedules all 50 two-game opening shards. A recovery dispatch
+re-reads every committed per-run evidence directory and schedules only missing
+schedule indices, including a single missing AB or BA leg. Identity drift,
+duplicate counted slots, or a pre-existing canonical result are fatal.
 """
-import argparse, json, sys
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
 
 SUITES = {
-    "A": ("benches/rating-openings-batchA.txt",
-          "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96"),
-    "B": ("benches/rating-openings-batchB.txt",
-          "744a3981cc312a676ba259962309858b7d2fc645094bf2dccf5391e77f2f9dd4"),
+    "A": (
+        "benches/rating-openings-100-batchA.txt",
+        "abf1627495d3ad9c42240f076921e2453e5e30cac42782856ea5f0673ca60239",
+    ),
+    "B": (
+        "benches/rating-openings-100-batchB.txt",
+        "f7414154ce2fe38faeac15dadc9f9c250245a54e908422e37451d089ff352219",
+    ),
 }
+TIME_CONTROL = {"mode": "clock", "period_moves": 40, "period_seconds": 900.0}
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--hash", required=True)
-    ap.add_argument("--batch", required=True, choices=["A", "B"])
-    ap.add_argument("--seed", required=True, type=int)
-    ap.add_argument("--anchor", required=True)
-    ap.add_argument("--revision", required=True, type=int)
-    ap.add_argument("--shards", type=int, default=1020,
-                    help="TOTAL shards for the batch (1020 x 2 games = 2040, SHAPE-1)")
-    ap.add_argument("--from-index", type=int, default=0)
-    ap.add_argument("--to-index", type=int, default=None,
-                    help="exclusive upper bound of THIS run's shard_indices "
-                         "(default: --shards, i.e. a single-run dispatch)")
-    ap.add_argument("--reps", type=int, default=17)
-    args = ap.parse_args()
-    assert len(args.hash) == 64 and all(c in "0123456789abcdef" for c in args.hash), "bad hash"
-    hi = args.to_index if args.to_index is not None else args.shards
-    assert 0 <= args.from_index < hi <= args.shards, "bad index slice"
-    assert 60 * args.reps * 2 == args.shards * 2, \
-        "shards x 2 must equal 60 x reps x 2 (2040 at reps=17)"
-    indices = list(range(args.from_index, hi))
+
+def die(message: str) -> None:
+    print(f"make_batch_dispatch: BLOCKED — {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_suite(path: str, wanted_sha: str) -> list[str]:
+    if sha256_file(path) != wanted_sha:
+        die(f"{path}: SHA-256 does not match the append-only preregistration")
+    with open(path, encoding="utf-8") as handle:
+        rows = [
+            line.partition("|")[0].strip()
+            for line in handle
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    if len(rows) != 50 or len(set(rows)) != 50:
+        die(f"{path}: expected exactly 50 unique opening-cluster names")
+    return rows
+
+
+def load_anchor_sha(pool_path: str, anchor: str) -> str:
+    try:
+        with open(pool_path, encoding="utf-8") as handle:
+            pool = json.load(handle)
+    except (OSError, ValueError) as exc:
+        die(f"cannot read frozen anchor pool: {exc}")
+    matches = [entry for entry in pool.get("engines", []) if entry.get("key") == anchor]
+    if len(matches) != 1:
+        die(f"anchor {anchor!r} is not present exactly once in the frozen pool")
+    value = matches[0].get("sha256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", value):
+        die(f"anchor {anchor!r} has no valid frozen binary SHA-256")
+    return value
+
+
+def validate_power(path: str, suite_a_sha: str, suite_b_sha: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as handle:
+            power = json.load(handle)
+    except (OSError, ValueError) as exc:
+        die(f"cannot read prospective power assessment: {exc}")
+    if power.get("design") != "rating-100-v1":
+        die("power assessment is for a different sample design")
+    if power.get("status") != "PASS" or power.get("eligible_for_confirmatory_dispatch") is not True:
+        die("prospective power assessment is not an evidence-backed PASS")
+    suites = power.get("opening_suites", {})
+    if suites.get("batch_a_sha256") != suite_a_sha or suites.get("batch_b_sha256") != suite_b_sha:
+        die("power assessment opening-suite hashes differ from the dispatch suites")
+    approval = power.get("approval")
+    if not isinstance(approval, dict) or not all(
+        isinstance(approval.get(field), str) and approval[field].strip()
+        for field in ("reviewer", "reviewed_at", "evidence_ref", "decision_rule")
+    ):
+        die("PASS assessment requires reviewer, timestamp, evidence reference and decision rule")
+    return power
+
+
+def read_committed_runs(
+    runs_root: str,
+    *,
+    batch: str,
+    anchor: str,
+    engine_sha: str,
+    anchor_sha: str,
+    suite_sha: str,
+    opening_names: list[str],
+) -> dict[int, list[int]]:
+    """Return missing frozen schedule indices per opening shard.
+
+    Partial AB/BA pairs are valid recovery state; duplicate counted indices,
+    identity drift and malformed records are rejected.
+    """
+    if not os.path.isdir(runs_root):
+        return {}
+    run_names = sorted(name for name in os.listdir(runs_root) if name.startswith("run-"))
+    if not run_names:
+        return {}
+
+    seen: dict[int, dict] = {}
+    for run_name in run_names:
+        root = os.path.join(runs_root, run_name)
+        games_path = os.path.join(root, "games.jsonl")
+        manifest_path = os.path.join(root, "manifest.json")
+        if not (os.path.isfile(games_path) and os.path.isfile(manifest_path)):
+            die(f"{run_name}: missing committed games.jsonl or manifest.json")
+        try:
+            with open(manifest_path, encoding="utf-8") as handle:
+                manifest = json.load(handle)
+        except (OSError, ValueError) as exc:
+            die(f"{run_name}: cannot read manifest: {exc}")
+        wanted_identity = {
+            "batch": batch,
+            "anchor": anchor,
+            "engine_sha256": engine_sha,
+            "anchor_sha256": anchor_sha,
+            "opening_suite_sha256": suite_sha,
+            "time_control": TIME_CONTROL,
+        }
+        actual_identity = {key: manifest.get(key) for key in wanted_identity}
+        if actual_identity != wanted_identity:
+            die(f"{run_name}: manifest identity/time-control mismatch: {actual_identity}")
+        if manifest.get("merged_sha256") != sha256_file(games_path):
+            die(f"{run_name}: manifest merged_sha256 does not match committed games.jsonl")
+
+        records = []
+        counted = []
+        with open(games_path, encoding="utf-8") as handle:
+            for line_no, raw in enumerate(handle, 1):
+                if not raw.strip():
+                    continue
+                try:
+                    game = json.loads(raw)
+                except ValueError as exc:
+                    die(f"{run_name}:{line_no}: invalid JSON: {exc}")
+                records.append(game)
+                if game.get("counted") is True:
+                    counted.append(game)
+        if manifest.get("n_counted") != len(counted):
+            die(f"{run_name}: n_counted disagrees with games.jsonl")
+        if manifest.get("n_attempts") != len(records):
+            die(f"{run_name}: n_attempts disagrees with games.jsonl")
+
+        for game in counted:
+            index = game.get("schedule_index")
+            if type(index) is not int or not 0 <= index < 100:
+                die(f"{run_name}: counted record has invalid schedule_index {index!r}")
+            if index in seen:
+                die(f"duplicate counted schedule_index {index} across committed runs")
+            if game.get("engine_error") or game.get("adjudicated") is False:
+                die(f"{run_name}: invalid counted record at schedule_index {index}")
+            if str(game.get("white", "")).casefold() != "flawless" or str(game.get("black", "")).casefold() != anchor.casefold():
+                die(f"{run_name}: counted slot {index} has wrong seated engine identities")
+            if game.get("result") not in ("1-0", "0-1", "1/2-1/2"):
+                die(f"{run_name}: invalid counted result at schedule_index {index}")
+            shard_index = index // 2
+            expected_opening = opening_names[shard_index]
+            expected_pair = "AB" if index % 2 == 0 else "BA"
+            if game.get("opening") != expected_opening or game.get("color_pair") != expected_pair:
+                die(f"{run_name}: schedule_index {index} does not match "
+                    f"{expected_opening}/{expected_pair}")
+            seen[index] = game
+
+    missing_by_shard = {}
+    for shard_index in range(50):
+        expected_indices = {shard_index * 2, shard_index * 2 + 1}
+        missing = sorted(expected_indices - set(seen))
+        if missing:
+            missing_by_shard[shard_index] = missing
+    return missing_by_shard
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--hash", required=True, help="frozen engine binary SHA-256")
+    parser.add_argument("--target-commit", required=True, help="full 40-character source commit")
+    parser.add_argument("--batch", required=True, choices=("A", "B"))
+    parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--anchor", required=True)
+    parser.add_argument("--revision", required=True, type=int)
+    parser.add_argument("--recovery", action="store_true",
+                        help="schedule only shards missing from committed per-run evidence")
+    parser.add_argument("--power-assessment", default="benches/rating-100-power-assessment.json")
+    parser.add_argument("--pool", default="benches/anchor-pool.json")
+    parser.add_argument("--out", default="benches/dispatch.json")
+    args = parser.parse_args()
+
+    if not re.fullmatch(r"[0-9a-f]{64}", args.hash):
+        die("--hash must be 64 lowercase hexadecimal characters")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.target_commit):
+        die("--target-commit must be a full 40-character SHA")
+    if not re.fullmatch(r"[a-z0-9._-]+", args.anchor):
+        die("--anchor contains unsupported characters")
+    if args.revision < 1:
+        die("--revision must be positive")
+
     suite_path, suite_sha = SUITES[args.batch]
+    opening_names = read_suite(suite_path, suite_sha)
+    power = validate_power(args.power_assessment, SUITES["A"][1], SUITES["B"][1])
+    anchor_sha = load_anchor_sha(args.pool, args.anchor)
+
+    if os.path.exists(args.out):
+        try:
+            with open(args.out, encoding="utf-8") as handle:
+                previous = json.load(handle)
+        except (OSError, ValueError) as exc:
+            die(f"cannot read current dispatch marker: {exc}")
+        old_revision = previous.get("revision")
+        if type(old_revision) is not int or args.revision <= old_revision:
+            die(f"revision {args.revision} must be greater than current revision {old_revision!r}")
+
+    runs_root = f"benches/evidence/confirmatory/batch{args.batch}/{args.anchor}"
+    canonical = f"benches/evidence/batch{args.batch}/{args.anchor}"
+    if os.path.exists(canonical):
+        die(f"canonical evidence already exists at {canonical}; refusing another dispatch")
+
+    missing_by_shard = read_committed_runs(
+        runs_root, batch=args.batch, anchor=args.anchor, engine_sha=args.hash,
+        anchor_sha=anchor_sha, suite_sha=suite_sha, opening_names=opening_names,
+    )
+    if args.recovery:
+        if not os.path.isdir(runs_root) or not any(
+            name.startswith("run-") for name in os.listdir(runs_root)
+        ):
+            die("no prior per-run evidence exists; use a full dispatch instead of --recovery")
+        if not missing_by_shard:
+            die("all 100 counted schedule indices are already present in committed evidence")
+        indices = sorted(missing_by_shard)
+    else:
+        if os.path.isdir(runs_root) and any(
+            name.startswith("run-") for name in os.listdir(runs_root)
+        ):
+            die("prior per-run evidence already exists; use --recovery to fill missing schedule indices")
+        indices = list(range(50))
+        missing_by_shard = {index: [index * 2, index * 2 + 1] for index in indices}
+
     dispatch = {
         "schema": 1,
         "revision": args.revision,
         "purpose": "confirmatory",
-        "description": (f"Confirmatory Batch {args.batch} vs {args.anchor}: 60 openings x "
-                        f"{args.reps} paired reps x AB/BA = {60*args.reps*2} games "
-                        f"(SHAPE-1: {args.shards} shards x 2; this run = indices "
-                        f"[{args.from_index},{hi}) = {len(indices)} shards), preregistered "
-                        f"(PREREGISTRATION.md BATCH-A/B + SHAPE-1 addendum + gate-plan.json), "
-                        f"engine hash pinned from SCREEN-2."),
-        "preregistration": "PREREGISTRATION.md#batch-a--batch-b-registered-2026-11-14",
-        "target_commit": "auto",
+        "sample_design": "rating-100-v1",
+        "description": (
+            f"100 counted games = 50 disjoint opening clusters × 1 paired repetition × AB/BA; "
+            f"{len(indices)} of 50 two-game shards for batch {args.batch}, anchor {args.anchor}; "
+            f"40/15 wall-clock; engine SHA-256 {args.hash}; source commit {args.target_commit}."
+        ),
+        "preregistration": "PREREGISTRATION.md#rating-100-amendment-2026-11-16",
+        "target_commit": args.target_commit,
         "engine_sha256": args.hash,
         "batch": args.batch,
         "anchor_id": args.anchor,
         "white_engine": "flawless",
         "black_engine": args.anchor,
-        "shard_count": args.shards,
+        "shard_count": 50,
         "shard_indices": indices,
+        "schedule_indices_by_shard": {
+            str(index): missing_by_shard[index] for index in indices
+        },
         "opening_suite": suite_path,
         "opening_suite_sha256": suite_sha,
-        "repetitions": args.reps,
+        "repetitions": 1,
         "seed": args.seed,
         "tc": "40/15",
+        "recovery_dispatch": bool(args.recovery),
+        "run_evidence": True,
+        "power_assessment_sha256": sha256_file(args.power_assessment),
     }
-    with open("benches/dispatch.json", "w") as f:
-        json.dump(dispatch, f, indent=2)
-    print(f"wrote benches/dispatch.json rev {args.revision}: batch {args.batch} vs {args.anchor}, "
-          f"indices [{args.from_index},{hi}) of {args.shards}, seed {args.seed}, hash {args.hash[:12]}…")
+    with open(args.out, "w", encoding="utf-8") as handle:
+        json.dump(dispatch, handle, indent=2)
+        handle.write("\n")
+    print(f"wrote RATING-100 dispatch rev {args.revision}: batch={args.batch}, "
+          f"anchor={args.anchor}, shards={indices}, recovery={args.recovery}; "
+          f"power report sha256={dispatch['power_assessment_sha256']}")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

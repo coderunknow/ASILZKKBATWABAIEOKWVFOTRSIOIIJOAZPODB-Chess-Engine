@@ -54,15 +54,36 @@ def main() -> int:
                     help="screened anchor keys (evidence must exist for each)")
     ap.add_argument("--evidence-root", default="benches/evidence/screening-2")
     ap.add_argument("--pool", default="benches/anchor-pool.json")
-    ap.add_argument("--suite-sha256", default="2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96")
-    ap.add_argument("--suite-b", default="744a3981cc312a676ba259962309858b7d2fc645094bf2dccf5391e77f2f9dd4")
+    ap.add_argument("--suite-a", default="benches/rating-openings-100-batchA.txt")
+    ap.add_argument("--suite-b", default="benches/rating-openings-100-batchB.txt")
+    ap.add_argument("--control-suite-sha256",
+                    default="2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96")
     ap.add_argument("--threshold", type=float, default=2000.0)
-    ap.add_argument("--min-games", type=int, default=2000)
+    ap.add_argument("--min-games", type=int, default=100)
+    ap.add_argument("--exact-counted-games", type=int, default=100)
+    ap.add_argument("--required-openings", type=int, default=50)
+    ap.add_argument("--games-per-opening", type=int, default=2)
     ap.add_argument("--bootstrap-seed", type=int, default=20261121)
     ap.add_argument("--control-av", default="benches/evidence/control/topple-0.1.1-vs-topple-0.2.1/games.jsonl")
     ap.add_argument("--control-self", default="benches/evidence/control/flawless-self-r/games.jsonl")
     ap.add_argument("--out", default="benches/gate-plan.json")
     args = ap.parse_args()
+
+    if args.exact_counted_games != args.required_openings * args.games_per_opening:
+        ap.error("--exact-counted-games must equal --required-openings × --games-per-opening")
+    if args.min_games != args.exact_counted_games:
+        ap.error("--min-games must equal the exact counted-game requirement")
+    suites = {}
+    for batch, path in (("A", args.suite_a), ("B", args.suite_b)):
+        with open(path) as f:
+            names = [line.partition("|")[0].strip() for line in f
+                     if line.strip() and not line.lstrip().startswith("#")]
+        if len(names) != args.required_openings or len(set(names)) != args.required_openings:
+            ap.error(f"Batch {batch} suite must contain exactly {args.required_openings} unique openings")
+        suites[batch] = {"path": path, "names": names, "sha256": sha256_file(path)}
+    overlap = set(suites["A"]["names"]) & set(suites["B"]["names"])
+    if overlap:
+        ap.error(f"Batch A/B opening suites overlap: {sorted(overlap)[:5]}")
 
     pool = json.load(open(args.pool))
     entries = {e["key"]: e for e in pool["engines"]}
@@ -131,12 +152,18 @@ def main() -> int:
         "focus": ENGINE_FOCUS,
         "engine_sha256": engine_sha,
         "threshold": args.threshold,
+        "time_control": {"mode": "clock", "period_moves": 40, "period_seconds": 900.0},
         "min_games": args.min_games,
+        "exact_counted_games": args.exact_counted_games,
+        "required_openings": args.required_openings,
+        "games_per_opening": args.games_per_opening,
         "bootstrap": 10000,
         "bootstrap_seed": args.bootstrap_seed,
         "batches": {
-            "A": {"suite_sha256": args.suite_sha256, "anchors": anchors},
-            "B": {"suite_sha256": args.suite_b, "anchors": anchors},
+            "A": {"suite_path": suites["A"]["path"], "suite_sha256": suites["A"]["sha256"],
+                 "anchors": anchors},
+            "B": {"suite_path": suites["B"]["path"], "suite_sha256": suites["B"]["sha256"],
+                 "anchors": anchors},
         },
         "controls": {
             "anchor_vs_anchor": {
@@ -144,13 +171,13 @@ def main() -> int:
                 "names": list(av_names),
                 "white_sha256": entries[av_names[0]]["sha256"],
                 "black_sha256": entries[av_names[1]]["sha256"],
-                "suite_sha256": args.suite_sha256,
+                "suite_sha256": args.control_suite_sha256,
             },
             "self_match": {
                 "evidence": ctrl_self_path,
                 "white_sha256": engine_sha,
                 "black_sha256": engine_sha,
-                "suite_sha256": args.suite_sha256,
+                "suite_sha256": args.control_suite_sha256,
             },
         },
         "selection": {

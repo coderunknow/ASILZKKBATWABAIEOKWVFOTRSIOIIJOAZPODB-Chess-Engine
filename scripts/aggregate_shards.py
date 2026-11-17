@@ -158,6 +158,11 @@ def main() -> int:
         "engine_sha256": args.engine_sha256,
         "anchor_sha256": args.anchor_sha256,
         "opening_suite_sha256": args.opening_suite_sha256,
+        "time_control": {
+            "mode": "clock",
+            "period_moves": args.tc_moves,
+            "period_seconds": args.tc_seconds,
+        },
         "shard_ids": sorted(seen_shard_ids),
         "n_shards": len(seen_shard_ids),
         "n_attempts": len(merged_games),

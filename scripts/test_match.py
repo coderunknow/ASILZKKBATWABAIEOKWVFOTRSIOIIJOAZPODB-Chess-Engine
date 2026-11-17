@@ -371,6 +371,47 @@ def test_e2e_shard_manifest():
         check([g["schedule_index"] for g in games] == [4, 5, 6, 7], "contiguous slice identity")
 
 
+
+def test_e2e_exact_schedule_index_recovery():
+    with tempfile.TemporaryDirectory() as td:
+        proc, meta, games = run_match(
+            td,
+            ["--movetime", "20", "--shard-index", "0", "--shard-count", "2",
+             "--schedule-indices", "1"],
+            OPENINGS_MATE,
+            "batch-recovery-slot",
+            white_mode="first",
+            black_mode="last",
+        )
+        check(proc.returncode == 0, "exact schedule-index recovery exit 0")
+        check(meta["n_games_planned"] == 1, "recovery schedules only the one missing game")
+        check(meta["schedule"]["shard"]["selected_schedule_indices"] == [1],
+              "manifest records exact recovered schedule index")
+        check(len(games) == 1 and games[0]["schedule_index"] == 1,
+              "recovery writes only schedule index 1")
+        check(games[0]["color_pair"] == "BA", "recovery preserves requested reverse-color leg")
+
+    with tempfile.TemporaryDirectory() as td:
+        proc, meta, _games = run_match(
+            td,
+            ["--movetime", "20", "--shard-index", "0", "--shard-count", "2",
+             "--schedule-indices", "2"],
+            OPENINGS_MATE,
+            "batch-invalid-recovery-slot",
+        )
+        check(proc.returncode != 0 and meta is None,
+              "recovery rejects schedule index outside the assigned shard")
+    with tempfile.TemporaryDirectory() as td:
+        proc, meta, _games = run_match(
+            td,
+            ["--movetime", "20", "--shard-index", "0", "--shard-count", "2",
+             "--schedule-indices", "1", "--games", "1"],
+            OPENINGS_MATE,
+            "batch-conflicting-recovery-options",
+        )
+        check(proc.returncode != 0 and meta is None,
+              "recovery rejects combination with --games cap")
+
 def main():
     test_parse_tc()
     test_game_clock()
@@ -381,6 +422,7 @@ def main():
     test_e2e_replay_recovery()
     test_e2e_move_cap()
     test_e2e_shard_manifest()
+    test_e2e_exact_schedule_index_recovery()
     print(f"\n{PASS} checks passed, {FAIL} failed")
     return 1 if FAIL else 0
 

@@ -3,7 +3,7 @@
 ## Identity
 
 - Engine / UCI identity: **Flawless**. Do not append `-Chess-Engine`.
-- GitHub repository: `coderunknow/Flawless-Chess-Engine` (do not rename).
+- GitHub repository: `coderunknow/FlawLessChess` (do not rename).
 - License: Apache-2.0. Preserve it. New files must be compatible with Apache-2.0.
 
 ## Non-negotiable rules

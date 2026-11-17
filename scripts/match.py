@@ -764,6 +764,8 @@ def main() -> int:
                          "plays a contiguous slice of the frozen schedule (opening range x "
                          "repetition range)")
     ap.add_argument("--shard-count", type=int, default=None, help="total number of shards")
+    ap.add_argument("--schedule-indices", nargs="+", type=int, default=None,
+                    help="run only these frozen schedule indices within this shard (recovery only)")
     ap.add_argument("--anchor-json", default=None,
                     help="path to JSON anchor-pool descriptor (rating source, published Elo±error + "
                          "convention, list publication/retrieval dates, TC, verified binaries); "
@@ -805,6 +807,22 @@ def main() -> int:
             "schedule_hi": hi,
         }
         schedule = schedule[lo:hi]
+    if args.schedule_indices is not None:
+        if args.shard_count is None:
+            ap.error("--schedule-indices requires --shard-index and --shard-count")
+        requested = args.schedule_indices
+        if not requested or len(set(requested)) != len(requested) or requested != sorted(requested):
+            ap.error("--schedule-indices must be a non-empty, unique, ascending list")
+        available = {entry["schedule_index"] for entry in schedule}
+        if not set(requested).issubset(available):
+            ap.error("--schedule-indices contains an index outside this shard's frozen slice")
+        requested_set = set(requested)
+        schedule = [entry for entry in schedule if entry["schedule_index"] in requested_set]
+        if len(schedule) != len(requested):
+            ap.error("--schedule-indices could not be resolved exactly")
+        shard_meta["selected_schedule_indices"] = requested
+    if args.schedule_indices is not None and args.games is not None:
+        ap.error("--games cannot be combined with exact --schedule-indices recovery")
     if args.games is not None:
         schedule = schedule[: args.games]
 

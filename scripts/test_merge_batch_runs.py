@@ -19,7 +19,9 @@ def manifest(engine_sha256=None):
     return {"batch": "A", "anchor": "topple-0.1.1",
             "engine_sha256": engine_sha256 or "e" * 64,
             "anchor_sha256": "a" * 64,
-            "opening_suite_sha256": "suite", "merged_sha256": None}
+            "opening_suite_sha256": "suite",
+            "time_control": {"mode": "clock", "period_moves": 40, "period_seconds": 900.0},
+            "merged_sha256": None}
 
 def write_run(name, games, man):
     d = os.path.join(ROOT, "runs", name)
@@ -29,6 +31,8 @@ def write_run(name, games, man):
         for g in games:
             f.write(json.dumps(g, sort_keys=True) + "\n")
     man = dict(man)
+    man["n_attempts"] = len(games)
+    man["n_counted"] = sum(1 for g in games if g.get("counted") is True)
     man["merged_sha256"] = hashlib.sha256(open(gp, "rb").read()).hexdigest()
     with open(os.path.join(d, "manifest.json"), "w") as f:
         json.dump(man, f)

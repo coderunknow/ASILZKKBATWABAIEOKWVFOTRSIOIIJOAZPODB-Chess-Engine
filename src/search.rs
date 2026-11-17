@@ -9,6 +9,7 @@
 //! checked BEFORE any pruning heuristic so a terminal node can never be pruned or mis-scored.
 //! Mate takes precedence over claimable draw rules when the side to move is in check.
 
+use crate::attack;
 use crate::eval::{
     ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_SCORE, PIECE_VALUE_MG,
 };
@@ -158,17 +159,22 @@ impl<'a> Searcher<'a> {
         }
         let us = pos.side;
         let is_cap = is_capture(pos, m);
-        if is_cap || m.promo != PROMO_NONE {
-            let mut score = 100_000;
-            if is_cap {
-                let victim = captured_piece(pos, m).unwrap_or(PAWN);
-                let attacker = pos.piece_on(m.from).map(|(_, p)| p).unwrap_or(PAWN);
-                score += 10 * PIECE_VALUE_MG[victim] - PIECE_VALUE_MG[attacker] / 16;
-            }
+        if is_cap {
+            let see = static_exchange_eval(pos, m);
+            // Sound captures outrank killers; losing captures are deliberately
+            // demoted below ordinary quiet moves. Promotions retain a bonus.
+            let mut score = if see >= 0 {
+                110_000 + see.min(10_000)
+            } else {
+                40_000 + see.max(-10_000)
+            };
             if m.promo != PROMO_NONE {
-                score += 50_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
+                score += 20_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
             }
             return score;
+        }
+        if m.promo != PROMO_NONE {
+            return 100_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
         }
         if let Some(killer) = self.killers[ply][0] {
             if m == killer {
@@ -727,10 +733,7 @@ impl<'a> Searcher<'a> {
 
         for i in 0..moves.len {
             let m = moves.moves[i];
-            // Per-capture delta pruning: skip this capture when even its full material
-            // swing (victim value, plus promotion bonus for promotions, plus a small
-            // margin for eval noise) cannot raise alpha. Sound against CodeRabbit's
-            // counterexample (stand_pat −600, alpha −300, capture of a queen).
+            // SEE is ordering-only; its approximate exchange model never prunes tactical captures.
             if let Some(sp) = stand_pat {
                 let capture_gain = captured_piece(pos, m)
                     .map(|p| PIECE_VALUE_MG[p])
@@ -774,6 +777,147 @@ fn captured_piece(pos: &Position, m: Move) -> Option<usize> {
     None
 }
 
+/// Static exchange evaluation for a capture, in centipawns.
+///
+/// This is a material-only, least-valuable-attacker swap sequence. It accounts for
+/// en-passant removal, x-rays, promotions, and defended king recaptures. As with
+/// conventional SEE, pinned-piece legality is approximated; it is used only as a
+/// move-ordering/pruning heuristic, never as a legality test.
+fn static_exchange_eval(pos: &Position, m: Move) -> i32 {
+    let Some((us, mover)) = pos.piece_on(m.from) else {
+        return 0;
+    };
+    let Some(victim) = captured_piece(pos, m) else {
+        return 0;
+    };
+    let them = 1 - us;
+    let captured_sq = if pos.piece_on(m.to).is_some() {
+        m.to
+    } else if mover == PAWN && file_of(m.from) != file_of(m.to) && pos.ep >= 0 {
+        if us == WHITE { m.to.saturating_sub(8) } else { m.to.saturating_add(8) }
+    } else {
+        return 0;
+    };
+    let captured_bit = 1u64 << captured_sq;
+    if pos.pieces[them * 6 + victim] & captured_bit == 0 {
+        return 0;
+    }
+
+    let mut pieces = pos.pieces;
+    let from_bit = 1u64 << m.from;
+    let target_bit = 1u64 << m.to;
+    let mut occupied = pos.occ_all & !from_bit & !captured_bit;
+    pieces[us * 6 + mover] &= !from_bit;
+    pieces[them * 6 + victim] &= !captured_bit;
+
+    let first_piece = if m.promo != PROMO_NONE {
+        promo_piece_type(m.promo)
+    } else {
+        mover
+    };
+    let first_promo_gain = if m.promo != PROMO_NONE {
+        PIECE_VALUE_MG[first_piece] - PIECE_VALUE_MG[PAWN]
+    } else {
+        0
+    };
+    pieces[us * 6 + first_piece] |= target_bit;
+    occupied |= target_bit;
+
+    let mut gain = [0i32; 32];
+    gain[0] = PIECE_VALUE_MG[victim] + first_promo_gain;
+    let mut depth = 0usize;
+    let mut side = them;
+    let mut occupant = first_piece;
+
+    while depth + 1 < gain.len() {
+        let Some((attacker, from)) = see_least_attacker(&pieces, occupied, side, m.to) else {
+            break;
+        };
+        let from_mask = 1u64 << from;
+        let promotion = attacker == PAWN
+            && ((side == WHITE && rank_of(m.to) == 7)
+                || (side == BLACK && rank_of(m.to) == 0));
+        let next_occupant = if promotion { QUEEN } else { attacker };
+        let promotion_gain = if promotion {
+            PIECE_VALUE_MG[QUEEN] - PIECE_VALUE_MG[PAWN]
+        } else {
+            0
+        };
+
+        // A king may not recapture onto a defended square. Test after removing
+        // its source square and the current target occupant so x-rays are visible.
+        if attacker == KING {
+            let mut king_pieces = pieces;
+            king_pieces[(1 - side) * 6 + occupant] &= !target_bit;
+            king_pieces[side * 6 + KING] &= !from_mask;
+            king_pieces[side * 6 + KING] |= target_bit;
+            let king_occupancy = occupied & !from_mask;
+            if see_square_attacked(&king_pieces, king_occupancy, 1 - side, m.to) {
+                break;
+            }
+        }
+
+        depth += 1;
+        gain[depth] = PIECE_VALUE_MG[occupant] + promotion_gain - gain[depth - 1];
+
+        pieces[(1 - side) * 6 + occupant] &= !target_bit;
+        pieces[side * 6 + attacker] &= !from_mask;
+        pieces[side * 6 + next_occupant] |= target_bit;
+        occupied &= !from_mask;
+        occupant = next_occupant;
+        side = 1 - side;
+    }
+
+    while depth > 0 {
+        gain[depth - 1] = -(-gain[depth - 1]).max(gain[depth]);
+        depth -= 1;
+    }
+    gain[0]
+}
+
+fn see_least_attacker(
+    pieces: &[u64; 12],
+    occupied: u64,
+    side: usize,
+    target: Square,
+) -> Option<(usize, Square)> {
+    let reverse_pawns = attack::pawn_attacks_lookup(1 - side, target)
+        & pieces[side * 6 + PAWN];
+    let attackers = reverse_pawns
+        | (attack::KNIGHT_ATTACKS[target as usize] & pieces[side * 6 + KNIGHT])
+        | (attack::bishop_attacks(target, occupied)
+            & (pieces[side * 6 + BISHOP] | pieces[side * 6 + QUEEN]))
+        | (attack::rook_attacks(target, occupied)
+            & (pieces[side * 6 + ROOK] | pieces[side * 6 + QUEEN]))
+        | (attack::KING_ATTACKS[target as usize] & pieces[side * 6 + KING]);
+    for piece in [PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING] {
+        let candidates = attackers & pieces[side * 6 + piece];
+        if candidates != 0 {
+            return Some((piece, candidates.trailing_zeros() as Square));
+        }
+    }
+    None
+}
+
+fn see_square_attacked(
+    pieces: &[u64; 12],
+    occupied: u64,
+    by_side: usize,
+    square: Square,
+) -> bool {
+    let pawns = attack::pawn_attacks_lookup(1 - by_side, square)
+        & pieces[by_side * 6 + PAWN];
+    let knights = attack::KNIGHT_ATTACKS[square as usize]
+        & pieces[by_side * 6 + KNIGHT];
+    let bishops = attack::bishop_attacks(square, occupied)
+        & (pieces[by_side * 6 + BISHOP] | pieces[by_side * 6 + QUEEN]);
+    let rooks = attack::rook_attacks(square, occupied)
+        & (pieces[by_side * 6 + ROOK] | pieces[by_side * 6 + QUEEN]);
+    let kings = attack::KING_ATTACKS[square as usize]
+        & pieces[by_side * 6 + KING];
+    (pawns | knights | bishops | rooks | kings) != 0
+}
+
 #[inline]
 pub fn is_capture(pos: &Position, m: Move) -> bool {
     captured_piece(pos, m).is_some()
@@ -790,4 +934,46 @@ fn build_lmr_table() -> [[i32; 256]; MAX_PLY as usize + 1] {
         }
     }
     t
+}
+
+#[cfg(test)]
+mod see_tests {
+    use super::*;
+
+    fn position(fen: &str) -> Position {
+        Position::from_fen(fen).expect("test FEN")
+    }
+
+    #[test]
+    fn see_free_queen_capture() {
+        let pos = position("4k3/8/8/4q3/4R3/8/8/4K3 w - - 0 1");
+        assert_eq!(static_exchange_eval(&pos, Move::new(28, 36)), 900);
+    }
+
+    #[test]
+    fn see_losing_capture_accounts_for_recapture() {
+        let pos = position("4k3/3p4/4p3/8/2B5/8/8/4K3 w - - 0 1");
+        assert_eq!(static_exchange_eval(&pos, Move::new(26, 44)), -230);
+    }
+
+    #[test]
+    fn see_xray_recapture_is_discovered() {
+        let pos = position("4k3/3p4/4p3/8/2B5/8/8/4R1K1 w - - 0 1");
+        assert_eq!(static_exchange_eval(&pos, Move::new(26, 44)), -130);
+    }
+
+    #[test]
+    fn see_en_passant_removes_the_bypassed_pawn() {
+        let pos = position("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
+        assert_eq!(static_exchange_eval(&pos, Move::new(36, 43)), 100);
+    }
+
+    #[test]
+    fn see_capture_promotion_adds_promotion_material() {
+        let pos = position("7r/6P1/5k2/8/8/8/8/4K3 w - - 0 1");
+        assert_eq!(
+            static_exchange_eval(&pos, Move::with_promo(54, 63, PROMO_QUEEN)),
+            1_300
+        );
+    }
 }

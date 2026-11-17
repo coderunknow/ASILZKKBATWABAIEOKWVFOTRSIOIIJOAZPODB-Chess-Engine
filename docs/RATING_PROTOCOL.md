@@ -224,3 +224,20 @@ Everything else in §§1–8 stands unamended. In particular §5 null controls
 (opponent-vs-opponent within ±75 Elo of the published difference; engine self-match with
 reversed colors consistent with 0.5; any failed null control invalidates the affected batch)
 and the exclusions of §6 remain absolute.
+
+
+## Append-only sample-size amendment — 2026-11-16 (RATING-100)
+
+This amendment supersedes only the larger per-anchor sample-size floor for future BATCH-A/B confirmatory runs. It does not rewrite earlier protocol clauses or historical registrations.
+
+- A new batch/anchor evidence set must contain exactly 100 counted games on 50 distinct opening clusters. Each cluster has exactly two counted games: one AB and one BA color reversal. Attempts caused by engine errors remain uncounted and retain the existing replay rules. Unadjudicated records remain uncounted.
+- Batch A and Batch B use precommitted disjoint 50-opening subsets derived from the original Batch A and Batch B suites. The same mechanically selected anchor set is required in both batches. Actual suite bytes and SHA-256 hashes are frozen before dispatch.
+- For three eligible anchors, the expected total becomes 3 × 2 batches × 100 = 600 counted games, versus the historical 12,240-game design (95.0980% reduction).
+- All non-sample-size requirements remain unchanged: 40/15 repeating wall-clock time control; exact binary identity and SHA-256 verification; FIDE adjudication/replay treatment; joint opening-cluster bootstrap; GLS; calibration uncertainty conversion and propagation; shared calibration uncertainty across batches; both null controls and their thresholds; and the strict, unrounded two-sided 95% calibrated CI lower-bound requirement for Batch A, Batch B and combined estimate, each strictly greater than 2,000 Elo.
+- The actual evidence verifier must validate 100 counted schedule indices exactly once, all 50 opening labels, and one AB plus one BA counted game per opening. Scheduled-attempt totals alone are insufficient.
+- Prospective power status is currently BLOCKED in benches/rating-100-power-assessment.json: only two anchors have complete screening distributions on the selected 50-opening subset, while the third-anchor covariance and the disjoint Batch-B cluster distribution remain unobserved. The sensitivity model is not a substitute for the actual bootstrap and cannot authorize dispatch. The dispatch tooling rejects confirmatory execution until a committed, evidence-backed power assessment explicitly marks eligibility true.
+
+The 2026-11-14 BATCH-A/B entries remain immutable historical records. This amendment does not permit reuse of screening games as confirmation evidence, does not weaken the confidence-bound rule, and does not authorize a confirmatory run while the power assessment is BLOCKED.
+
+- **Partial-slot recovery (RATING-100 implementation note, 2026-11-17):** a shard may have one counted AB/BA leg and a missing other leg after an interrupted/aborted attempt. Recovery must schedule only the missing frozen `schedule_index`, not rerun the complete two-game shard. The match runner accepts an explicit sorted set of schedule indices constrained to its deterministic shard slice; the dispatcher derives missing indices from committed run manifests. Canonical aggregation still requires every counted schedule index 0–99 exactly once, exactly the registered 50 opening clusters and one counted AB plus one counted BA record per cluster. Duplicate counted indices, identity drift and wrong time controls fail closed.
+- **Evidence capture default:** rating-run configs that omit `run_evidence` now default to evidence capture on; only explicit false disables the evidence job. This does not retroactively repair runs whose evidence jobs were skipped.

@@ -45,6 +45,8 @@ import random
 import sys
 from collections import defaultdict
 
+from reduced_sample import SampleDesignError, validate_counted_sample
+
 ERROR_CONVENTION_TO_SD = {"sd": 1.0, "se": 1.0, "ci95": 1.96, "ci90": 1.645, "ci99": 2.576}
 Z95 = 1.959963984540054  # two-sided 95% normal quantile (unrounded)
 
@@ -498,6 +500,20 @@ def control_self_match(games: list[dict], focus: str, n_boot: int, seed: int) ->
 # ---------------------------------------------------------------------------
 
 
+def _registered_opening_names(path: str | None) -> list[str] | None:
+    if path is None:
+        return None
+    names = []
+    with open(path) as suite:
+        for raw in suite:
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                if "|" not in line:
+                    raise EvidenceError(f"invalid opening-suite row in {path}: {line!r}")
+                names.append(line.split("|", 1)[0].strip())
+    return names
+
+
 def run_gate(args) -> int:
     pool = json.load(open(args.anchor_json))
     entries = pool["engines"]
@@ -510,6 +526,35 @@ def run_gate(args) -> int:
     games_b = load_batch(args.batch_b, focus)
     if set(games_a) != set(games_b):
         raise EvidenceError(f"batch A/B anchor sets differ: {sorted(games_a)} vs {sorted(games_b)}")
+
+    dimensions = (args.exact_games, args.required_openings, args.games_per_opening)
+    if any(value is not None for value in dimensions):
+        if any(value is None for value in dimensions):
+            raise EvidenceError("exact sample validation requires --exact-games, "
+                                "--required-openings and --games-per-opening together")
+        if args.exact_games != args.required_openings * args.games_per_opening:
+            raise EvidenceError("exact games must equal required openings × games per opening")
+        suites = {
+            "batch_a": _registered_opening_names(args.suite_a),
+            "batch_b": _registered_opening_names(args.suite_b),
+        }
+        for label, batch_games in (("batch_a", games_a), ("batch_b", games_b)):
+            expected = suites[label]
+            if expected is None:
+                raise EvidenceError(f"{label}: exact sample design requires its registered opening suite")
+            for anchor_key, counted_games in batch_games.items():
+                try:
+                    report = validate_counted_sample(
+                        counted_games,
+                        exact_games=args.exact_games,
+                        required_openings=args.required_openings,
+                        games_per_opening=args.games_per_opening,
+                        expected_openings=expected,
+                    )
+                except SampleDesignError as e:
+                    raise EvidenceError(f"{label}/{anchor_key}: {e}") from e
+                print(f"sample design {label}/{anchor_key}: {report}")
+
     used = [e for e in entries if anchor_label(e) in games_a]
     if len(used) < 3:
         raise EvidenceError(
@@ -634,6 +679,14 @@ def main() -> int:
                     metavar=("ANCHOR1", "ANCHOR2"))
     pg.add_argument("--control-self", required=True, help="self-match games.jsonl")
     pg.add_argument("--min-games", type=int, default=2000)
+    pg.add_argument("--exact-games", type=int, default=None,
+                    help="require this exact number of counted games per anchor and batch")
+    pg.add_argument("--required-openings", type=int, default=None,
+                    help="require this exact number of distinct opening clusters")
+    pg.add_argument("--games-per-opening", type=int, default=None,
+                    help="require this many counted games in each opening cluster")
+    pg.add_argument("--suite-a", default=None, help="registered Batch A opening-suite file")
+    pg.add_argument("--suite-b", default=None, help="registered Batch B opening-suite file")
     pg.add_argument("--threshold", type=float, default=2000.0)
     pg.add_argument("--bootstrap", type=int, default=10000)
     pg.add_argument("--seed", type=int, default=20261114)
