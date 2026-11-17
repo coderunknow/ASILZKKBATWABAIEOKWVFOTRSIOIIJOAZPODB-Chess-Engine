@@ -270,3 +270,11 @@ Commit 29b627e added ENGINE-1/ENGINE-2 binary isolation for RATING-100. The firs
 ## 2026-11-17T10:47Z — Windows hash portability correction
 
 CI on c564c5c passed Ubuntu but failed the Windows power-analysis smoke because Windows Git checkout changed raw SCREEN-2 JSONL line endings to CRLF while manifest merged_sha256 was created on Linux LF bytes. The next commit makes hash verification OS-independent by canonicalizing line endings only, retaining the exact JSONL records, and adds tamper/CRLF regression tests. The c564c5 CI run is not green; exact-head rerun pending.
+
+## Session update 2026-11-17 (manual review fixes)
+
+- PR head (code): `071f875`. Commits this session: `5980d53` (R-02, R-12), `81ad551` (R-03, R-10), `1ec9eeb` (R-07), `b39df4e` (R-08), `071f875` (R-05 tests).
+- Manual review disposition: `REVIEW_MANUAL_071f875.md`. Of 15 findings: 7 fixed, 4 not reproduced, 4 accepted (unchanged).
+- Gates at head: fmt clean, clippy `-D warnings` clean, 45/45 tests (+2 R-05 tests), DIFTEST default 2,321 positions 0 mismatches, perft subset exact, bench signature `141943aa23b3fc68` unchanged.
+- Preliminary Elo (internal, not gate evidence): NOT MEASURED this session. No match runs were executed.
+- Open: MSRV 1.80 unverified; ENGINE-1 hash no longer matches the code (decision needed); rating-gate fail-closed cause not investigated; R-08 residual overrun.

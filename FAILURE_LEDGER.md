@@ -412,3 +412,12 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Root cause: tracked JSONL evidence was converted from LF to CRLF by Windows checkout; manifest hashes represent the original Linux LF bytes.
 - Fix: hash canonical UTF-8 JSONL text after converting CRLF/CR line terminators to LF only. Add repository attributes forcing LF for the two SCREEN-2 evidence JSONL files. Add a test for CRLF checkout compatibility and another proving actual record edits still fail the SHA check.
 - No data or benchmark result has been rewritten; no confirmatory dispatch occurred.
+
+## 2026-11-17 — manual review disposition (session 2)
+
+- Findings R-01, R-04, R-05, R-06 from REVIEW_MANUAL_03d2066.md did NOT reproduce at head 3ebf617 (reasons in REVIEW_MANUAL_071f875.md). The original file is unchanged; the dispositions live in the companion file.
+- Fixed with evidence: R-02, R-03, R-07, R-08, R-10, R-12, R-13 (engine side).
+- R-08 residual: one iteration whose time grows more than 3x can still overrun soft; bounded by the hard limit. Not eliminated.
+- MSRV 1.80 build NOT VERIFIED: no 1.80 toolchain available (npm mirror has none; rustup blocked). Open blocker.
+- Binary-identity blocker: R-02/R-03/R-07/R-08/R-10 change the engine binary. The ENGINE-1 hash frozen in PREREGISTRATION.md no longer identifies this code. Any gate or confirmatory evidence for the new behaviour needs a new candidate hash registered before dispatch. Not done; requires a decision.
+- rating-gate (failed at 3ebf617 and at 071f875): cause not yet investigated; left as fail-closed.
