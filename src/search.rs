@@ -23,6 +23,10 @@ use std::time::Instant;
 
 pub const MAX_PLY: i32 = 128;
 const MATE_BOUND: i32 = MATE_SCORE - 100;
+/// Predicted duration of the next iteration = last iteration time * this factor (R-08).
+/// Measured overspend without prediction was ~1.7x the soft budget; iteration times grow
+/// roughly 2-4x per ply, so 3 is the conservative middle. Tunable.
+const SOFT_GROWTH_FACTOR: u64 = 3;
 
 #[derive(Clone)]
 pub struct SearchLimits {
@@ -274,6 +278,7 @@ impl<'a> Searcher<'a> {
             if depth > max_depth {
                 break;
             }
+            let iter_begin = self.start.elapsed().as_millis() as u64;
             // aspiration window after depth 5
             let (mut alpha, mut beta) = if depth >= 6 {
                 (prev_score - 25, prev_score + 25)
@@ -342,8 +347,15 @@ impl<'a> Searcher<'a> {
             if !completed {
                 break;
             }
+            // Soft budget (R-08): stop before an iteration that is predicted to overrun it.
+            // Completed iterations are always kept; the hard limit still applies inside the tree.
             let l = self.lim();
-            if !l.infinite && self.soft_ms_reached() {
+            let now = self.start.elapsed().as_millis() as u64;
+            let iter_ms = now.saturating_sub(iter_begin);
+            if !l.infinite
+                && (self.soft_ms_reached()
+                    || now.saturating_add(iter_ms.saturating_mul(SOFT_GROWTH_FACTOR)) > l.soft_ms)
+            {
                 break;
             }
             depth += 1;

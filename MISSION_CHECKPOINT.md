@@ -173,3 +173,6 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 
 - R-07 (illegal move in `position` silently truncated the position, then searched it): FIXED. `position` is all-or-nothing; a rejected command keeps the old position out of the search and sets a flag, and the next `go` answers `bestmove 0000` until a valid `position` arrives. Test `uci_smoke::rejected_position_yields_null_bestmove_until_fixed`.
 - Gates: fmt clean, clippy clean, 45/45 tests green. Bench signature unchanged (`141943aa23b3fc68`).
+
+- R-08 (soft budget checked only after a completed iteration; measured elapsed up to ~1.7x soft): FIXED with a predictive check. Before starting an iteration the engine estimates its duration as 3x the previous iteration and stops if that would pass the soft budget; completed iterations are always kept. Measured elapsed/soft over a clock matrix (30 s and 60 s clocks, movestogo 40, three positions): before 1.7x (1,209/703 ms, 2,494/1,406 ms, 2,432/1,406 ms); after 0.5x-1.5x (376, 911, 534, 969, 1,042, 1,075 ms; worst case is one iteration whose time grew more than 3x, bounded by the hard limit). Not covered by a unit test because wall-clock tests are flaky; verification is the measurement above.
+- Gates: fmt clean, clippy clean, 45/45 tests green. Bench signature unchanged (`141943aa23b3fc68`).
