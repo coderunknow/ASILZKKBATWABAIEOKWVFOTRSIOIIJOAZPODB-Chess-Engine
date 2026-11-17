@@ -1,0 +1,82 @@
+name: Temporary Windows executable
+
+on:
+  push:
+    branches:
+      - temp/windows-exe-artifact-20261117
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Flawless for Windows x86-64
+    runs-on: windows-2022
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout frozen engine source
+        uses: actions/checkout@v4
+        with:
+          ref: 5e36b06a7b0d7417d57205e52010ea98529b2a4f
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+
+      - name: Record source and toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expected = "5e36b06a7b0d7417d57205e52010ea98529b2a4f"
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $expected) {
+            throw "Source SHA mismatch: expected $expected, got $actual"
+          }
+          rustc --version
+          cargo --version
+          "Source commit: $actual" | Tee-Object -FilePath "$env:GITHUB_STEP_SUMMARY" -Append
+          "Runner: $env:RUNNER_OS / $env:RUNNER_ARCH" | Tee-Object -FilePath "$env:GITHUB_STEP_SUMMARY" -Append
+
+      - name: Build release executable
+        run: cargo build --release --locked
+
+      - name: Verify Windows executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = "target/release/flawless.exe"
+          if (-not (Test-Path $binary -PathType Leaf)) {
+            throw "Build did not produce $binary"
+          }
+
+          $versionText = (& $binary --version 2>&1 | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "flawless.exe --version failed: $versionText"
+          }
+          Write-Host $versionText
+
+          $perftText = (& $binary perft 3 2>&1 | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $perftText -notmatch 'perft\(3\)\s*=\s*8902') {
+            throw "Perft smoke test failed: $perftText"
+          }
+          Write-Host $perftText
+
+          $sha = (Get-FileHash -Path $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $binary).Length
+          @(
+            "Binary: $binary"
+            "SHA-256: $sha"
+            "Size bytes: $size"
+            "Perft d3: PASS (8902)"
+          ) | Tee-Object -FilePath "$env:GITHUB_STEP_SUMMARY" -Append
+
+      - name: Upload only the Windows engine executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-windows-x86_64-5e36b06
+          path: target/release/flawless.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
