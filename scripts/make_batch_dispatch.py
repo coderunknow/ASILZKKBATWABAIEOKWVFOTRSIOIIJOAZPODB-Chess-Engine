@@ -70,7 +70,7 @@ def load_anchor_sha(pool_path: str, anchor: str) -> str:
     return value
 
 
-def validate_power(path: str, suite_a_sha: str, suite_b_sha: str) -> dict:
+def validate_power(path: str, suite_a_sha: str, suite_b_sha: str, engine_sha: str) -> dict:
     try:
         with open(path, encoding="utf-8") as handle:
             power = json.load(handle)
@@ -83,6 +83,8 @@ def validate_power(path: str, suite_a_sha: str, suite_b_sha: str) -> dict:
     suites = power.get("opening_suites", {})
     if suites.get("batch_a_sha256") != suite_a_sha or suites.get("batch_b_sha256") != suite_b_sha:
         die("power assessment opening-suite hashes differ from the dispatch suites")
+    if power.get("engine_sha256") != engine_sha:
+        die("power assessment was computed from a different engine binary SHA-256")
     approval = power.get("approval")
     if not isinstance(approval, dict) or not all(
         isinstance(approval.get(field), str) and approval[field].strip()
@@ -212,7 +214,7 @@ def main() -> int:
 
     suite_path, suite_sha = SUITES[args.batch]
     opening_names = read_suite(suite_path, suite_sha)
-    power = validate_power(args.power_assessment, SUITES["A"][1], SUITES["B"][1])
+    power = validate_power(args.power_assessment, SUITES["A"][1], SUITES["B"][1], args.hash)
     anchor_sha = load_anchor_sha(args.pool, args.anchor)
 
     if os.path.exists(args.out):

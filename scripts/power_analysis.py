@@ -12,8 +12,14 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import random
+import re
 from collections import defaultdict
+
+SCREENING_SUITE_SHA256 = "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96"
+SCREENING_ENGINE_SHA256 = "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428"
+SCREENING_ANCHORS = ("topple-0.1.1", "topple-0.2.1")
 
 
 def sha256_file(path: str) -> str:
@@ -22,6 +28,62 @@ def sha256_file(path: str) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+
+def read_screening_manifest(games_path: str, expected_anchor: str) -> dict:
+    manifest_path = os.path.join(os.path.dirname(games_path), "manifest.json")
+    try:
+        with open(manifest_path, encoding="utf-8") as handle:
+            manifest = json.load(handle)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"cannot read screening manifest {manifest_path}: {exc}") from exc
+
+    if manifest.get("batch") != "A" or manifest.get("anchor") != expected_anchor:
+        raise ValueError(
+            f"{manifest_path}: expected Batch A anchor {expected_anchor!r}, "
+            f"got {manifest.get('batch')!r}/{manifest.get('anchor')!r}"
+        )
+    if manifest.get("opening_suite_sha256") != SCREENING_SUITE_SHA256:
+        raise ValueError(f"{manifest_path}: suite hash differs from registered SCREEN-2")
+    if manifest.get("n_counted") != 120 or manifest.get("n_attempts") != 120:
+        raise ValueError(f"{manifest_path}: expected 120 counted games and 120 attempts")
+    engine_sha = manifest.get("engine_sha256", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", engine_sha):
+        raise ValueError(f"{manifest_path}: missing or malformed engine SHA-256")
+    if engine_sha != SCREENING_ENGINE_SHA256:
+        raise ValueError(
+            f"{manifest_path}: this report is preregistered only for SCREEN-2 / ENGINE-1 "
+            f"({SCREENING_ENGINE_SHA256}); observed {engine_sha}"
+        )
+    if manifest.get("merged_sha256") != sha256_file(games_path):
+        raise ValueError(f"{manifest_path}: merged_sha256 does not match games.jsonl")
+    attempts = counted = 0
+    with open(games_path, encoding="utf-8") as games_file:
+        for line_no, raw in enumerate(games_file, 1):
+            if not raw.strip():
+                continue
+            try:
+                game = json.loads(raw)
+            except ValueError as exc:
+                raise ValueError(f"{games_path}:{line_no}: invalid JSON game record") from exc
+            attempts += 1
+            if game.get("counted") is True and not game.get("engine_error") and game.get("adjudicated") is not False:
+                counted += 1
+    if attempts != 120 or counted != 120:
+        raise ValueError(
+            f"{games_path}: expected 120 raw attempts and 120 valid counted games; "
+            f"got {attempts} attempts / {counted} counted"
+        )
+    return manifest
+
+
+def read_screening_engine_sha(games_a: str, games_b: str) -> str:
+    manifest_a = read_screening_manifest(games_a, SCREENING_ANCHORS[0])
+    manifest_b = read_screening_manifest(games_b, SCREENING_ANCHORS[1])
+    if manifest_a["engine_sha256"] != manifest_b["engine_sha256"]:
+        raise ValueError("SCREEN-2 anchor manifests do not use the same frozen engine binary")
+    return manifest_a["engine_sha256"]
 
 
 def load_cluster_scores(path: str, focus: str = "flawless") -> dict[str, float]:
@@ -217,6 +279,7 @@ def analyze(
     suite_b: str,
     replicates: int = 250_000,
 ) -> dict:
+    screening_engine_sha256 = read_screening_engine_sha(games_a, games_b)
     clusters_a = load_cluster_scores(games_a)
     clusters_b = load_cluster_scores(games_b)
     names_a = read_suite_names(suite_a)
@@ -258,6 +321,11 @@ def analyze(
     return {
         "design": "rating-100-v1",
         "date": "2026-11-17",
+        "engine_sha256": screening_engine_sha256,
+        "screening_engine_scope": (
+            "Derived from SCREEN-2 / ENGINE-1 only; this power assessment does not apply "
+            "to ENGINE-2 (SEE ordering) or any other binary SHA-256."
+        ),
         "status": "BLOCKED",
         "eligible_for_confirmatory_dispatch": False,
         "opening_suites": {
@@ -268,6 +336,8 @@ def analyze(
         },
         "screening_inputs": {
             "source": [games_a, games_b],
+            "screening_engine_sha256": screening_engine_sha256,
+            "screening_engine_label": "ENGINE-1 (time-management remediation)",
             "raw_screening_games_per_anchor": [sum(1 for _ in open(games_a, encoding="utf-8") if _.strip()),
                                                sum(1 for _ in open(games_b, encoding="utf-8") if _.strip())],
             "selected_batch_a_subset_games_per_anchor": 100,

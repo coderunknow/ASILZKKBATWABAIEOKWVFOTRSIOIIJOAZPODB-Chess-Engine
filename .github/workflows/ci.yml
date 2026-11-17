@@ -58,7 +58,7 @@ jobs:
             exit $status
           fi
           "$PY" -c "import chess; print('::notice::chess', chess.__version__)"
-          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_merge_batch_runs.py; do
+          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py; do
             if ! "$PY" "$suite" > suite-out.txt 2>&1; then
               echo "::error::$suite FAILED"
               # Surface the REAL diagnostic through annotations (logs are unreadable
@@ -75,7 +75,7 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" scripts/verify_opening_subsets.py
           "$PY" scripts/power_analysis.py --replicates 1000 --out power-smoke.json
-          "$PY" -c "import json; r=json.load(open('power-smoke.json')); assert r['status']=='BLOCKED' and r['eligible_for_confirmatory_dispatch'] is False; assert r['screening_inputs']['selected_batch_a_opening_clusters']==50; assert len(r['scenarios'])==36; assert r['opening_suites']['batch_a_sha256']=='5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df'; assert r['opening_suites']['batch_b_sha256']=='ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253'"
+          "$PY" -c "import json; r=json.load(open('power-smoke.json')); assert r['status']=='BLOCKED' and r['eligible_for_confirmatory_dispatch'] is False; assert r['engine_sha256']=='9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428'; assert r['screening_inputs']['selected_batch_a_opening_clusters']==50; assert len(r['scenarios'])==36; assert r['opening_suites']['batch_a_sha256']=='5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df'; assert r['opening_suites']['batch_b_sha256']=='ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253'"
           rm -f power-smoke.json
 
       - name: Release build

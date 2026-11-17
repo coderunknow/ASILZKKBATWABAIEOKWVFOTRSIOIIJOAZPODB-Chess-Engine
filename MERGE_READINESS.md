@@ -89,3 +89,8 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
 ## 2026-11-17 validation checkpoint
 
 The first CI run for the SEE + RATING-100 implementation passed Rust formatting, Clippy and unit tests on Linux and Windows and passed all five Python test suites; both jobs were rejected by the newly added opening-subset verifier. This was a real selector-generation defect, caught before any confirmatory dispatch. Corrected suites, hashes, CI assertions and append-only preregistration/protocol notes are prepared for the next commit. The exact-head CI checklist remains UNCHECKED until both OS jobs pass after that correction.
+
+
+## 2026-11-17 — exact-head validation (commit 5b63e27)
+
+CI run 44066217195 passed on Ubuntu + Windows + Rust 1.80, including the corrected suite selector, all Python/Rust tests, power smoke, release, UCI and perft checks. Anchor verification run 44066217113 passed 13/13 and recorded the exact source-tree binary SHA-256. This check describes commit 5b63e27; a follow-up commit adds the engine-provenance guard and must receive its own exact-head CI before any readiness item is checked. Fresh CodeRabbit review at the eventual final HEAD remains pending. PR stays Draft.

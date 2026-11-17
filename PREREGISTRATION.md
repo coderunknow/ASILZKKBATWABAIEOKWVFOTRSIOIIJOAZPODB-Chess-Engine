@@ -524,3 +524,18 @@ The corrected selector is now recomputed with standard-library `hashlib.sha256` 
 - Corrected Batch B SHA-256: `ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253`.
 - Both suites contain exactly 50 unique opening labels; their intersection is empty. The CI verifier is mandatory before any dispatch-marker tooling can be used.
 - The pre-registered 100-game design remains BLOCKED for confirmatory dispatch. Fixing selector integrity does not change the power assessment, sample-size rule, time control, anchors, confidence-bound threshold or null controls.
+
+
+### ENGINE-2 binary identity capture — 2026-11-17 (append-only)
+
+The previously recorded ENGINE-2 entry's "NOT YET FROZEN" statement was accurate when written. The exact candidate tree is now identified and its hosted binary hash has been measured:
+
+- Source branch commit: 5b63e273d77cfb097f0ad73bc28dda05cc19adad.
+- Source tree: 75bc5633e1466d5abf1f4c7d5999bc4a3915e193.
+- Anchor verification run: 44066217113, all 13 jobs successful. Its verify-flawless job built merge commit 7434e948357eda05f9435e430c37da082f202741 (parents: base main 98b1a002… and the exact source branch commit above). GitHub compare reports no changed files between that merge commit and the source branch commit; both have the same tree SHA.
+- Binary SHA-256: 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7.
+- Fixed-depth-10 bench signature: 141943aa23b3fc68.
+
+This freezes the binary identity for the ENGINE-2 source tree only. It is not an Elo estimate, playing-strength gain, NPS improvement, or authorization to run games. No ENGINE-2 screening or candidate-specific control has been run. ENGINE-1's CTRL-2-R / SCREEN-3 evidence does not transfer to ENGINE-2.
+
+The RATING-100 power assessment remains ENGINE-1-specific. Its screening inputs are SCREEN-2 manifests with engine SHA-256 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. New guards in power_analysis.py, make_batch_dispatch.py, and rating-run.yml require that exact power-report engine SHA to equal the proposed dispatch binary. A report computed from ENGINE-1 cannot authorize ENGINE-2. A fresh ENGINE-2 assessment must use its own preregistered screening evidence and still satisfy the prospective power requirement before any confirmatory dispatch.

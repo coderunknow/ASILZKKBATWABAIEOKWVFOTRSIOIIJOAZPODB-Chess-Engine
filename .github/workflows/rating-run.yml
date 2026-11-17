@@ -234,6 +234,8 @@ jobs:
                   power = json.load(power_file)
               if power.get("status") != "PASS" or power.get("eligible_for_confirmatory_dispatch") is not True:
                   fail("prospective power assessment is not an evidence-backed PASS; confirmatory dispatch blocked")
+              if power.get("engine_sha256") != cfg.get("engine_sha256"):
+                  fail("prospective power assessment was computed for a different engine binary")
               approval = power.get("approval")
               if not isinstance(approval, dict) or not all(
                   isinstance(approval.get(field), str) and approval[field].strip()

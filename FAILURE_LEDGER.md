@@ -391,3 +391,11 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Root cause: the one-off JavaScript helper used to select the 50 lowest SHA-256 digests omitted SHA-256 round constants. Therefore the selected opening sets were not the sets defined by the registered standard SHA-256 selector, despite the first helper's self-consistent output hashes. The repository's hashlib implementation correctly detected the mismatch.
 - Containment: no confirmatory dispatch occurred; the power report remained BLOCKED; no games or rating results were created from these bad suites. The faulty files and hash pins are superseded, not reused.
 - Correction: regenerated both suites with the standard SHA-256 constants and byte-tested hashes; Batch A 5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df, Batch B ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253. Updated verifier pins, dispatch-tool pins, machine-readable report, CI assertions, append-only preregistration/protocol correction, and explicit LF checkout rules. The corrected suite bytes remain PENDING until hosted CI passes the verifier on the new commit.
+
+
+## 2026-11-17 — resolution of selector CI failure and new engine provenance guard
+
+- Corrected suites passed the deterministic selector check on both Ubuntu and Windows in CI 44066217195; each suite has 50 unique openings, zero overlap, and the exact registered byte SHA-256.
+- Exact-head CI 44066217195 passed: Linux, Windows and MSRV 1.80; all Rust, Python harness, estimator, reduced-sample, dispatch-recovery, power-manifest, merge, suite selector and power smoke checks. The previous run 44062359630 remains a historical failure and is not overwritten.
+- Added a fail-closed provenance guard so SCREEN-2 power data cannot be used for a different engine binary: both source manifests must prove the same ENGINE-1 hash, exact original screening-suite hash, 120 counted games/120 attempts and correct merged raw-game hashes; the dispatcher and workflow compare the report's engine SHA with the actual dispatch SHA.
+- ENGINE-2 binary hash is now measured and pinned to source tree 75bc5633e1466d5abf1f4c7d5999bc4a3915e193 (branch source commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad): 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. No candidate-specific games or controls have been run.

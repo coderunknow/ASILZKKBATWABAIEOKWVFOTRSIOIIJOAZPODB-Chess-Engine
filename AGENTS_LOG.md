@@ -391,3 +391,12 @@
 - Corrected Batch A SHA-256 5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df; Batch B ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253. 50 unique opening names each; no overlap. The corrected bytes still require the hosted Python verifier to pass before use.
 - Anchor verification 44062359732 succeeded on PR merge commit 4cdf57c5e0d898e9accc6ec9d51ef00d82290575: bench signature 141943aa23b3fc68, binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. Treat this as the merge-tree build identity pending branch-tree equivalence verification and a new exact-head run.
 - No confirmatory workflow ran. 44062359728 failed closed for missing gate plan; 44062359655 resolver succeeded but skipped matrix/evidence because the dispatch marker was unchanged. SCREEN-3 and CTRL-2-R runs still lack canonical evidence because their evidence jobs were skipped. RATING-100 remains BLOCKED and the PR remains Draft.
+
+
+## 2026-11-17 — green exact-head validation and engine-identity isolation
+
+- PR head at this checkpoint: 5b63e273d77cfb097f0ad73bc28dda05cc19adad (open, draft, unmerged).
+- CI run 44066217195 succeeded on Ubuntu + Windows + Rust 1.80. Both OS jobs passed rustfmt, clippy, all Rust tests, match 111/111, estimator 65/65, reduced_sample 7/7, dispatch recovery 5/5, merge self-test all cases, deterministic opening-suite verifier, and power-analysis smoke (36 scenarios, expected hashes, status BLOCKED). Release, UCI and perft sanity also passed.
+- Anchor-verification run 44066217113 succeeded 13/13. The verify-flawless artifact records signature 141943aa23b3fc68 and binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. Merge commit 7434e948357eda05f9435e430c37da082f202741 is a two-parent synthetic merge with source branch commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad as a parent and identical tree SHA 75bc5633e1466d5abf1f4c7d5999bc4a3915e193.
+- The RATING-100 report is explicitly pinned to ENGINE-1 hash 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. Its generator verifies source manifests, merged raw-file hashes, attempt/count totals, frozen SCREEN-2 suite identity, anchor identities and identical engine hashes. Dispatcher and workflow resolver reject report/binary SHA mismatch.
+- ENGINE-2 identity is now verified, but its own screening and candidate-specific controls have NOT been run. The ENGINE-1 power model cannot authorize ENGINE-2. RATING-100 remains blocked, no games dispatched.

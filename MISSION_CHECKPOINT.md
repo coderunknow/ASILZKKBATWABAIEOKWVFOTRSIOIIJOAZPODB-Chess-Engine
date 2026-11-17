@@ -102,3 +102,12 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - 44062359728 rating-gate failed closed because no gate plan/canonical evidence exists. 44062359655 rating-run resolver succeeded, but its shard and evidence jobs were skipped because dispatch.json was unchanged. No confirmatory games ran.
 - SCREEN-3 (43820645420) and CTRL-2-R (43820392119) remain terminal with all shard jobs successful but the evidence jobs skipped. Their artifacts are not canonical committed evidence and have not been promoted to rating/control results.
 - RATING-100 power remains BLOCKED. No confirmatory dispatch, merge, tag or release is authorized; PR remains Draft.
+
+
+## Latest verified checkpoint — 2026-11-17 10:37Z
+
+- PR #1 / arena branch HEAD at the start of the engine-identity guard change: 5b63e273d77cfb097f0ad73bc28dda05cc19adad (open, draft, unmerged). All commits were pushed through fast-forward expected-HEAD updates.
+- CI run 44066217195 on that exact commit: overall SUCCESS. Ubuntu, Windows and Rust 1.80 all succeeded. Python regression suites: match 111/111, estimator 65/65, reduced-sample 7/7, dispatch recovery 5/5; merge self-test all cases; selector verifier reports 50/50 unique openings, no overlap, expected SHA values; power smoke produced 36 scenarios with BLOCKED status.
+- Anchor verification 44066217113: 13/13 jobs succeeded. Verify-flawless built merge commit 7434e948357eda05f9435e430c37da082f202741; that commit's second parent is 5b63e273d77cfb097f0ad73bc28dda05cc19adad and its tree exactly matches the source branch tree 75bc5633e1466d5abf1f4c7d5999bc4a3915e193. Verified binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7; bench signature 141943aa23b3fc68.
+- The power report is engine-pinned to SCREEN-2 / ENGINE-1 binary SHA 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. A new guard is being added so the power generator verifies the original screening manifests/raw hashes and the dispatch tool/workflow reject any power report whose engine SHA differs from the requested binary.
+- ENGINE-2 is identified by binary SHA 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7, but its own screening and candidate-specific controls are not yet run. The RATING-100 campaign remains BLOCKED pending third-anchor and Batch-B variance evidence, plus a reviewed power PASS. No confirmatory games, merge, tag or release.

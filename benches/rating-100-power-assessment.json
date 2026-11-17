@@ -61,7 +61,9 @@
       0.2966221398978016
     ],
     "shared_opening_difficulty_correlation": 0.15888153136048594,
-    "note": "These are selection-only screening inputs, not confirmation evidence or a rating estimate."
+    "note": "These are selection-only screening inputs, not confirmation evidence or a rating estimate.",
+    "screening_engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
+    "screening_engine_label": "ENGINE-1 (time-management remediation)"
   },
   "published_calibration": {
     "source": "frozen benches/anchor-pool.json; published error convention is ci95",
@@ -232,5 +234,7 @@
     "The power result depends strongly on the unknown true margin above 2000 and the unmeasured third-anchor correlations; near-threshold alternatives fail the desired power levels.",
     "The prospective simulation is a delta-method normal approximation, not the actual registered bootstrap on future data."
   ],
-  "decision": "Keep 100-game design non-dispatchable. Do not claim PASS, do not run confirmatory games, and do not weaken sample size, the 40/15 time control, CI threshold, anchor rule or null controls. The 100-game design may only be run as explicitly exploratory if separately authorized; continue independent engineering work."
+  "decision": "Keep 100-game design non-dispatchable. Do not claim PASS, do not run confirmatory games, and do not weaken sample size, the 40/15 time control, CI threshold, anchor rule or null controls. The 100-game design may only be run as explicitly exploratory if separately authorized; continue independent engineering work.",
+  "engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
+  "screening_engine_scope": "Derived exclusively from SCREEN-2 / ENGINE-1 (time-management remediation) evidence. This power assessment does not apply to ENGINE-2 (SEE ordering) or any other engine binary SHA-256."
 }

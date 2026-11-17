@@ -128,3 +128,11 @@ The 100-game design is currently **BLOCKED** for confirmatory use: selected-subs
 ## 2026-11-17 — reduced-suite byte-integrity correction
 
 The initial reduced-suite bytes were rejected by the Python standard-library selector verifier in CI; no confirmatory work ran. Corrected selector uses hashlib.sha256 over the documented domain-separated normalized original line, selecting the 50 lowest digests and retaining source order. Corrected suite byte hashes: Batch A 5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df; Batch B ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253. The power assessment remains BLOCKED; no dispatch is authorized.
+
+
+## 2026-11-17 — ENGINE-2 identity and power-report scope
+
+- Exact branch tree: source commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad, tree 75bc5633e1466d5abf1f4c7d5999bc4a3915e193.
+- Anchor verification run 44066217113 built the matching PR merge tree: bench signature 141943aa23b3fc68; binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. This is a source/binary identity, not a strength or throughput comparison.
+- Current RATING-100 power inputs belong to ENGINE-1 SHA-256 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. The report is now engine-pinned; the generator checks both SCREEN-2 manifests and raw data hashes, and dispatch tooling refuses any binary SHA mismatch. It cannot authorize ENGINE-2.
+- ENGINE-2-specific screening and controls are still absent. No game-count or games/hour performance result has been measured for this candidate.

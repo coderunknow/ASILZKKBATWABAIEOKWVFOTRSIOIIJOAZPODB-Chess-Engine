@@ -113,3 +113,10 @@ SCREEN-3 and CTRL-2-R have terminal successful shard jobs but skipped their evid
 ## RATING-100 hosted validation record — 2026-11-17
 
 CI run 44062359630 (before the SHA-256 subset correction): Linux and Windows each passed Rust fmt, clippy and Rust test groups (12, 3, 21 and 4 tests), match.py 111/111, rating_estimator 65/65, reduced_sample 7/7, dispatch recovery 5/5 and merge-batch self-test. Both operating systems then failed verify_opening_subsets.py because the initially generated reduced suites did not match the standard SHA-256 selector. The files/hash pins are superseded. Rerun result on the corrected commit is PENDING; do not mark the verifier PASS based on this failed run.
+
+
+## RATING-100 selector correction — successful hosted validation
+
+CI run 44066217195 on commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad passed on Ubuntu, Windows and Rust 1.80. Both OS jobs reported match.py 111/111, rating_estimator 65/65, reduced_sample 7/7, dispatch-recovery 5/5, merge-batch self-test ALL CASES PASS, and the deterministic suite verifier confirmed 50 Batch A openings, 50 Batch B openings, zero overlap and the registered hashes. The 36-scenario power smoke completed and asserted status BLOCKED. Rust test groups passed (12, 3, 21 and 4); release build, UCI smoke and perft d3 passed. Anchor verification run 44066217113 passed all 13 jobs; candidate tree binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7, bench signature 141943aa23b3fc68.
+
+A subsequent commit adds engine-SHA provenance checks to the power generator, dispatch CLI and rating-run workflow; its tests and exact-head CI are still pending.

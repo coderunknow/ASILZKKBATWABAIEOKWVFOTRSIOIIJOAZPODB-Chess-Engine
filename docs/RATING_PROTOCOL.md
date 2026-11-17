@@ -246,3 +246,10 @@ The 2026-11-14 BATCH-A/B entries remain immutable historical records. This amend
 ### RATING-100 suite-byte correction — 2026-11-17 (append-only)
 
 CI run 44062359630 rejected the initially generated reduced suite files because their selection generator used an incorrect SHA-256 helper. Those bytes are superseded. The canonical selection is the output of Python `hashlib.sha256` using the domain-separated selector and original-order retention described in PREREGISTRATION.md. The currently registered bytes are Batch A `5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df` and Batch B `ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253`. `scripts/verify_opening_subsets.py` recomputes the selection and fails closed on any changed line, ordering, hash or cross-batch overlap. This correction does not authorize any confirmatory dispatch; prospective power remains BLOCKED.
+
+
+### Engine-binary provenance guard for the prospective power report — 2026-11-17
+
+The committed RATING-100 sensitivity report is derived from SCREEN-2 / ENGINE-1, whose frozen binary SHA-256 is 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. The power-analysis script verifies both screening manifests, their merged raw-game hashes, the registered suite hash, the 120/120 attempt/count totals, the same binary hash and the two registered anchor identities before producing the report. The report records that engine SHA.
+
+Both make_batch_dispatch.py and the confirmatory resolver in rating-run.yml require the report's engine SHA-256 to equal the binary SHA requested for dispatch. Reusing this report for ENGINE-2 or any different binary fails closed. ENGINE-2's binary identity is now measured, but its candidate-specific screening, controls and prospective power assessment have not been run; no games are authorized by this note.

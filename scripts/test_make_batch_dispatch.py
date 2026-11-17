@@ -8,7 +8,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from make_batch_dispatch import TIME_CONTROL, read_committed_runs
+from make_batch_dispatch import TIME_CONTROL, read_committed_runs, validate_power
 
 
 IDENTITY = {
@@ -107,7 +107,34 @@ def main():
         write_run(td, "run-1", [bad])
         expect_system_exit(lambda: read(td), "registered opening mismatch")
 
-    print("make_batch_dispatch recovery tests: 5/5 PASS")
+    with tempfile.TemporaryDirectory() as td:
+        power_path = os.path.join(td, "power.json")
+        power = {
+            "design": "rating-100-v1",
+            "status": "PASS",
+            "eligible_for_confirmatory_dispatch": True,
+            "engine_sha256": IDENTITY["engine_sha256"],
+            "opening_suites": {"batch_a_sha256": "a" * 64, "batch_b_sha256": "b" * 64},
+            "approval": {
+                "reviewer": "test",
+                "reviewed_at": "2026-11-17",
+                "evidence_ref": "synthetic-test",
+                "decision_rule": "all three lower bounds strictly > 2000",
+            },
+        }
+        with open(power_path, "w", encoding="utf-8") as handle:
+            json.dump(power, handle)
+        accepted = validate_power(
+            power_path, "a" * 64, "b" * 64, IDENTITY["engine_sha256"]
+        )
+        assert accepted["engine_sha256"] == IDENTITY["engine_sha256"]
+        print("PASS matching engine SHA is accepted by the power guard")
+        expect_system_exit(
+            lambda: validate_power(power_path, "a" * 64, "b" * 64, "d" * 64),
+            "power assessment engine-SHA mismatch",
+        )
+
+    print("make_batch_dispatch recovery tests: 7/7 PASS")
 
 
 if __name__ == "__main__":
