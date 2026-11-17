@@ -190,6 +190,8 @@ struct MagicTables {
     bishop_magic: [u64; 64],
     rook_attacks: Box<[u64]>,
     bishop_attacks: Box<[u64]>,
+    /// Cached once at build time (R-10): avoids a 64-entry scan on every slider lookup.
+    ready: bool,
 }
 
 impl MagicTables {
@@ -201,6 +203,7 @@ impl MagicTables {
             bishop_magic: [0; 64],
             rook_attacks: vec![0; ROOK_TABLE_SIZE].into_boxed_slice(),
             bishop_attacks: vec![0; BISHOP_TABLE_SIZE].into_boxed_slice(),
+            ready: false,
         }
     }
 
@@ -314,6 +317,7 @@ impl MagicTables {
                 return Self::new_fallback();
             }
         }
+        let ready = rook_magic.iter().any(|&m| m != 0);
         MagicTables {
             rook_mask,
             bishop_mask,
@@ -321,11 +325,12 @@ impl MagicTables {
             bishop_magic,
             rook_attacks,
             bishop_attacks,
+            ready,
         }
     }
 
     fn magic_ready(&self) -> bool {
-        self.rook_magic.iter().any(|&m| m != 0)
+        self.ready
     }
 }
 

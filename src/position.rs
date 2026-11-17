@@ -691,9 +691,15 @@ impl Position {
         let ep = self.ep as Square;
         let ep_file = file_of(ep) as i32;
         let us = self.side;
+        let them = 1 - us;
         // white to move captures onto rank 6 from rank 5; black to move onto rank 3 from rank 4
         let pawn_rank = if us == WHITE { 4 } else { 3 };
         let our_pawns = self.pieces[us * 6 + PAWN];
+        let king = self.pieces[us * 6 + KING];
+        if king == 0 {
+            return false;
+        }
+        let ksq = king.trailing_zeros() as Square;
         for d in [-1i32, 1] {
             let f = ep_file + d;
             if !(0..=7).contains(&f) {
@@ -703,13 +709,25 @@ impl Position {
             if our_pawns & (1u64 << from) == 0 {
                 continue;
             }
-            // Legality including rank-pins on the captured pawn row: probe on a clone.
-            let mut probe = self.clone();
-            let legal = crate::movegen::generate_legal(&mut probe);
-            for m in legal.iter() {
-                if m.from == from as Square && m.to == ep && m.promo == crate::types::PROMO_NONE {
-                    return true;
-                }
+            // Exact legality of this one capture (FIDE "same position" rule): after the pawn
+            // moves from `from` to `ep` and the en-passant victim leaves `cap`, our king must
+            // not be attacked. Equivalent to the full legal-move probe, without cloning the
+            // position or its history (R-03).
+            let cap = make_square(ep_file as u8, pawn_rank);
+            let occ = (self.occ_all & !(1u64 << from) & !(1u64 << cap)) | (1u64 << ep);
+            let enemy = |t: usize| self.pieces[them * 6 + t] & !(1u64 << cap);
+            let attacked = (if them == BLACK {
+                attack::PAWN_ATTACKS_WHITE[ksq as usize]
+            } else {
+                attack::PAWN_ATTACKS_BLACK[ksq as usize]
+            } & enemy(PAWN)
+                != 0)
+                || (attack::KNIGHT_ATTACKS[ksq as usize] & enemy(KNIGHT) != 0)
+                || (attack::KING_ATTACKS[ksq as usize] & enemy(KING) != 0)
+                || (attack::bishop_attacks(ksq, occ) & (enemy(BISHOP) | enemy(QUEEN)) != 0)
+                || (attack::rook_attacks(ksq, occ) & (enemy(ROOK) | enemy(QUEEN)) != 0);
+            if !attacked {
+                return true;
             }
         }
         false
@@ -848,5 +866,84 @@ impl Position {
         let orth = attack::rook_attacks(sq, occ);
         att |= (self.pieces[base + ROOK] | self.pieces[base + QUEEN]) & orth;
         att
+    }
+}
+
+#[cfg(test)]
+mod ep_legality_tests {
+    use super::*;
+
+    /// Reference implementation: full legal-move probe on a clone (the pre-R-03 code).
+    fn reference(pos: &Position) -> bool {
+        if pos.ep < 0 {
+            return false;
+        }
+        let ep = pos.ep as Square;
+        let ep_file = file_of(ep) as i32;
+        let us = pos.side;
+        let pawn_rank = if us == WHITE { 4 } else { 3 };
+        let our_pawns = pos.pieces[us * 6 + PAWN];
+        for d in [-1i32, 1] {
+            let f = ep_file + d;
+            if !(0..=7).contains(&f) {
+                continue;
+            }
+            let from = make_square(f as u8, pawn_rank);
+            if our_pawns & (1u64 << from) == 0 {
+                continue;
+            }
+            let mut probe = pos.clone();
+            let legal = crate::movegen::generate_legal(&mut probe);
+            if legal
+                .iter()
+                .any(|m| m.from == from as Square && m.to == ep && m.promo == PROMO_NONE)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn walk(pos: &mut Position, depth: u32, checked: &mut u64) {
+        if pos.ep >= 0 {
+            assert_eq!(
+                pos.ep_capture_available(),
+                reference(pos),
+                "ep legality mismatch at {}",
+                pos.to_fen()
+            );
+            *checked += 1;
+        }
+        if depth == 0 {
+            return;
+        }
+        let moves: Vec<Move> = crate::movegen::generate_legal(pos)
+            .iter()
+            .copied()
+            .collect();
+        for m in moves {
+            let undo = pos.make_move(m);
+            walk(pos, depth - 1, checked);
+            pos.unmake_move(m, &undo);
+        }
+    }
+
+    /// R-03: the fast ep legality probe must agree with the full legal-move probe.
+    #[test]
+    fn fast_ep_probe_matches_full_legality() {
+        let fens = [
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+            "8/8/8/8/k2Pp2Q/8/8/3K4 b - d3 0 1",
+            "8/8/8/KPpr4/8/8/8/k7 w - c6 0 1",
+            "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+        ];
+        let mut checked = 0u64;
+        for fen in fens {
+            let mut pos = Position::from_fen(fen).expect("fen");
+            walk(&mut pos, 3, &mut checked);
+        }
+        assert!(checked > 1000, "too few ep positions exercised: {checked}");
     }
 }

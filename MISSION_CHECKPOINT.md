@@ -165,3 +165,8 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - R-02 + R-12 (draw rules, mate precedence, TT probe before terminal): FIXED. Repetition is a draw only at ply > 0, so the root is always searched. Fifty-move is a claimable draw: the node is searched, its value is clamped to >= DRAW, TT score cutoffs and pruning are skipped there. Quiesce uses the same rule via a wrapper. Three regression tests added (`search::draw_rule_tests`); two fail on the pre-fix code.
 - Bench after the fix: signature unchanged (`141943aa23b3fc68`), because no bench position reaches these draw paths. Gates after the fix: fmt clean, clippy clean, 43/43 tests green.
 - Reproduction note: UCI tests must send `quit` only after `bestmove`; piping `quit` right after `go` stops the search. This invalidates the R-06 reproduction in the review.
+
+- R-03 (ep legality probe cloned the position and history and generated all legal moves per make_move): FIXED. The probe now tests king safety for the single en-passant capture on the resulting occupancy. Equivalence test `position::ep_legality_tests` compares it with the old full probe over all positions reachable to depth 3 from 6 FENs (>1,000 ep positions, pin cases included): identical.
+- R-10 (magic_ready scanned 64 entries on every slider lookup): FIXED (readiness cached at build time).
+- Bench after R-03/R-10: signature unchanged (`141943aa23b3fc68`, 2,530,885 nodes). Perft spot checks match CPW: startpos d4 197,281; Kiwipete d3 97,862; pos4 d3 9,467. Gates: fmt clean, clippy clean, 44/44 tests green.
+- Throughput (single runs, 1-CPU sandbox, noisy): 243k nps before R-02, 350k nps after R-03/R-10. Not a validated measurement; re-measure on the reference machine.
