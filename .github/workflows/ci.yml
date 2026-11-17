@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (pinned)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format (rustfmt)
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --release --all-targets -- -D warnings
+
+      - name: Tests (release)
+        run: cargo test --release --locked
+
+      - name: Python harness + estimator regression tests
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" --version 2>&1 | sed 's/^/::notice::python: /'
+          "$PY" -m pip install --user chess==1.11.2 2> pip-err.txt || "$PY" -m pip install chess==1.11.2 2>> pip-err.txt
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::pip install chess==1.11.2 failed"
+            tr '\n' '%0A' < pip-err.txt | head -c 3500 | sed 's/^/::error::pip: /'
+            exit $status
+          fi
+          "$PY" -c "import chess; print('::notice::chess', chess.__version__)"
+          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py; do
+            if ! "$PY" "$suite" > suite-out.txt 2>&1; then
+              echo "::error::$suite FAILED"
+              # Surface the REAL diagnostic through annotations (logs are unreadable
+              # from the dev sandbox; annotations API is the only reliable channel).
+              tail -c 3500 suite-out.txt | tr '\n' '%0A' | sed 's/^/::error::out: /'
+              exit 1
+            fi
+            tail -1 suite-out.txt | sed 's/^/::notice::ok: /'
+          done
+
+      - name: Verify amended 50-opening suites and prospective power model
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/verify_opening_subsets.py
+          "$PY" scripts/power_analysis.py --replicates 1000 --out power-smoke.json
+          "$PY" -c "import json; r=json.load(open('power-smoke.json')); assert r['status']=='BLOCKED' and r['eligible_for_confirmatory_dispatch'] is False; assert r['engine_sha256']=='9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428'; assert r['screening_inputs']['selected_batch_a_opening_clusters']==50; assert len(r['scenarios'])==36; assert r['opening_suites']['batch_a_sha256']=='5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df'; assert r['opening_suites']['batch_b_sha256']=='ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253'"
+          rm -f power-smoke.json
+
+      - name: Release build
+        run: cargo build --release --locked
+
+      - name: Bench (informational — prints fixed-depth-10 signature)
+        continue-on-error: true
+        shell: bash
+        run: |
+          ./target/release/flawless bench | tee "bench-signature-${{ matrix.os }}.txt"
+
+      - name: Stage release binary evidence (SHA-256 + commit)
+        continue-on-error: true
+        shell: bash
+        run: |
+          sha256sum target/release/flawless > "release-binary-${{ matrix.os }}.sha256"
+          printf 'git_commit=%s\nbinary=%s\n'             "${{ github.sha }}" "target/release/flawless" > "release-manifest-${{ matrix.os }}.txt"
+
+      - name: Upload evidence artifacts (bench signature, binary SHA-256, manifest)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-evidence-${{ matrix.os }}
+          path: |
+            bench-signature-${{ matrix.os }}.txt
+            release-binary-${{ matrix.os }}.sha256
+            release-manifest-${{ matrix.os }}.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: UCI handshake smoke test
+        shell: bash
+        run: |
+          out=$(printf 'uci\nisready\nquit\n' | ./target/release/flawless uci)
+          echo "$out"
+          echo "$out" | grep -q '^uciok$' || { echo "missing uciok"; exit 1; }
+          echo "$out" | grep -q '^readyok$' || { echo "missing readyok"; exit 1; }
+
+      - name: UCI bestmove smoke test (search depth 2)
+        shell: bash
+        run: |
+          out=$(printf 'uci\nisready\nposition startpos\ngo depth 2\nquit\n' | ./target/release/flawless uci)
+          echo "$out"
+          echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8]([qrbn])?' || { echo "no legal bestmove"; exit 1; }
+
+      - name: Perft sanity (depth 3 startpos)
+        shell: bash
+        run: |
+          out=$(./target/release/flawless perft 3)
+          echo "$out"
+          echo "$out" | grep -q '8902' || { echo "perft d3 mismatch"; exit 1; }
+
+  msrv:
+    name: msrv (rust 1.80)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.80.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.80.0
+
+      - name: Check on MSRV
+        run: cargo check --release --locked
+        env:
+          RUSTUP_TOOLCHAIN: "1.80.0"
+          CARGO_NET_OFFLINE: "false"

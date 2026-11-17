@@ -1,0 +1,44 @@
+[Event "benchmark match"]
+[Site "local"]
+[Date "2026.11.14"]
+[Round "1"]
+[White "flawless"]
+[Black "sf19-lite-skill0"]
+[Result "1-0"]
+[Opening "Ruy Lopez"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Bxc6 bxc6 5. d4 Bb4+ 6. c3 Bd6 7. dxe5 Be7 8. O-O d5 9. Qa4 Qd7 10. Rd1 Rb8 11. c4 Nh6 12. exd5 cxd5 13. Qxd7+ Kxd7 14. Nc3 Re8 15. Nxd5 Kc6 16. Nxe7+ Rxe7 17. Rd8 Ng4 18. Bg5 Nxe5 19. Nd4+ Kb6 20. c5+ Kb7 21. Bxe7 Ka8 22. Bf8 a5 23. Bxg7 Nd3 24. Nc6 Kb7 25. Nxb8 Nxc5 26. Nc6 Kxc6 27. Rxc8 Nd3 28. Rf8 Kd6 29. Rd8+ Ke7 30. Rxd3 f6 31. Re1+ Kf7 32. Rd7+ Kg6 33. Re6 Kh5 34. Rxf6 c5 35. Rd5+ Kg4 36. f3+ Kh4 37. Rf4# 1-0
+
+[Event "benchmark match"]
+[Site "local"]
+[Date "2026.11.14"]
+[Round "2"]
+[White "sf19-lite-skill0"]
+[Black "flawless"]
+[Result "0-1"]
+[Opening "Ruy Lopez"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 b5 5. Bb3 Qf6 6. d3 Bc5 7. O-O Nge7 8. a3 O-O 9. Bg5 Qd6 10. c3 Ng6 11. Be3 Bxe3 12. Bd5 Bf4 13. c4 bxc4 14. Bxc6 Qxc6 15. Nbd2 cxd3 16. Rc1 Qb7 17. g3 Bh6 18. b3 d6 19. h3 Bxh3 20. Ne1 Bxf1 21. a4 Be2 22. Rxc7 Qxc7 23. Qb1 Bxd2 24. Nxd3 Qc3 25. Qa2 Bxd3 26. b4 Bxe4 27. f3 Qe3+ 28. Kh1 Qxf3+ 29. Kh2 Qh1# 0-1
+
+[Event "benchmark match"]
+[Site "local"]
+[Date "2026.11.14"]
+[Round "3"]
+[White "flawless"]
+[Black "sf19-lite-skill0"]
+[Result "1-0"]
+[Opening "Italian"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O d6 5. Ne1 Bb6 6. Nc3 Qf6 7. Nd5 Qg6 8. Nxb6 cxb6 9. d3 Nge7 10. c3 Bd7 11. b4 O-O 12. Qa4 Rad8 13. Be3 Na5 14. Bb5 Nac6 15. Nf3 Bh3 16. Ne1 d5 17. f3 Be6 18. Nc2 f5 19. Bxc6 fxe4 20. fxe4 Rxf1+ 21. Rxf1 Nxc6 22. b5 Na5 23. exd5 Bf5 24. Nb4 Bxd3 25. Rd1 Be2 26. Re1 Bg4 27. Rf1 Bh3 28. Qc2 Qxc2 29. Nxc2 Bd7 30. Na3 Bg4 31. c4 Rc8 32. Rc1 Be2 33. d6 Nxc4 34. Nxc4 Rxc4 35. d7 Rxc1+ 36. Bxc1 Kf8 37. d8=Q+ Kf7 38. Qd5+ Ke8 39. Qxe5+ Kf8 40. Qxe2 Kg8 41. Qe8# 1-0
+
+[Event "benchmark match"]
+[Site "local"]
+[Date "2026.11.14"]
+[Round "4"]
+[White "sf19-lite-skill0"]
+[Black "flawless"]
+[Result "0-1"]
+[Opening "Italian"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. a4 Qf6 5. d3 Na5 6. Bd5 Ne7 7. Bg5 Qb6 8. Bd2 Qxb2 9. Nc3 O-O 10. Rb1 Qa3 11. Nb5 Qxa4 12. Nxc7 Rb8 13. Na6 bxa6 14. Rxb8 Bd6 15. Bb3 Nxb3 16. Rxb3 f5 17. exf5 Rxf5 18. c3 Bc5 19. c4 d6 20. Qb1 Nc6 21. O-O Rxf3 22. gxf3 Nd4 23. Rb8 Qc6 24. f4 Ne2# 0-1
+

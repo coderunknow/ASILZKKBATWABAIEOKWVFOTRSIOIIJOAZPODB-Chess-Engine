@@ -1,0 +1,14 @@
+{
+  "white_cmd": "./target/release/asilzkkbbatwabaieokwvfotrsioiij uci",
+  "black_cmd": "node /home/user/opponents/node_modules/stockfish/bin/stockfish-19-lite-single.js",
+  "white_name": "ours",
+  "black_name": "sf19lite-s0",
+  "movetime_ms": 100,
+  "depth": null,
+  "hash_mb": null,
+  "skill_white": null,
+  "skill_black": 0,
+  "openings_file": "/home/user/ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB-Chess-Engine/benches/openings-20.txt",
+  "n_games_planned": 40,
+  "date_utc": "2026-11-14T03:18:07Z"
+}

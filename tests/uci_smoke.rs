@@ -1,0 +1,328 @@
+//! UCI integration smoke: handshake, unknown-command tolerance, deterministic seeded
+//! fuzz over a small command grammar, and graceful `quit`.
+//!
+//! Runs the actual binary via CARGO_BIN_EXE_flawless. Not a comprehensive fuzzer —
+//! a regression tripwire so protocol handling cannot silently start crashing.
+
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{channel, Receiver};
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// Spawn the engine and a reader thread; lines arrive on an mpsc channel.
+/// `read_line` on the raw stdout would block forever when the child stalls
+/// (or to its EOF), so the test side never reads it directly.
+fn start() -> (Child, Receiver<String>) {
+    let bin = env!("CARGO_BIN_EXE_flawless");
+    let mut child = Command::new(bin)
+        .arg("uci")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn flawless");
+    let stdout = child.stdout.take().expect("stdout piped");
+    let (tx, rx) = channel();
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(l) => {
+                    if tx.send(l).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    (child, rx)
+}
+
+fn kill_and_reap(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Bounded reap: `wait()` on a hung child would block forever, so poll try_wait.
+fn wait_child(mut child: Child, timeout: Duration) -> std::process::ExitStatus {
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    kill_and_reap(&mut child);
+                    panic!("child did not exit within {timeout:?}");
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(e) => panic!("failed to wait for child: {e}"),
+        }
+    }
+}
+
+fn wait_for(
+    child: &mut Child,
+    rx: &Receiver<String>,
+    token: &str,
+    timeout: Duration,
+) -> Vec<String> {
+    let start = Instant::now();
+    let mut lines = Vec::new();
+    loop {
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            eprintln!("timed out waiting for {token}; lines so far: {lines:?}");
+            kill_and_reap(child);
+            panic!("timed out waiting for {token}");
+        }
+        match rx.recv_timeout(remaining) {
+            Ok(line) => {
+                let line = line.trim_end().to_string();
+                if line.starts_with(token) {
+                    lines.push(line);
+                    return lines;
+                }
+                lines.push(line);
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                eprintln!("timed out waiting for {token}; lines so far: {lines:?}");
+                kill_and_reap(child);
+                panic!("timed out waiting for {token}");
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                kill_and_reap(child);
+                panic!("engine exited early waiting for {token}; lines so far: {lines:?}");
+            }
+        }
+    }
+}
+
+/// After the bounded child has exited, the reader thread reaches EOF and the channel
+/// disconnects. Drain everything the engine printed (not just up to the first token)
+/// so panic markers late in the session are not silently missed.
+fn drain_reader(rx: &Receiver<String>, timeout: Duration) -> Vec<String> {
+    let mut lines = Vec::new();
+    loop {
+        match rx.recv_timeout(timeout) {
+            Ok(line) => lines.push(line.trim_end().to_string()),
+            Err(_) => return lines,
+        }
+    }
+}
+
+/// Any line we are willing to discard must at least not contain the engine's
+/// explicit panic marker, or we would silently swallow a broken search.
+fn assert_no_panic_markers(lines: &[String]) {
+    for l in lines {
+        assert!(
+            !l.contains("search thread panicked"),
+            "engine reported a panicked search thread: {l}"
+        );
+    }
+}
+
+#[test]
+fn handshake_isready_quit() {
+    let (mut child, reader) = start();
+    let stdin = child.stdin.as_mut().unwrap();
+    writeln!(stdin, "uci").unwrap();
+    writeln!(stdin, "isready").unwrap();
+    writeln!(stdin, "quit").unwrap();
+    stdin.flush().unwrap();
+    let lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(10));
+    assert!(
+        lines.iter().any(|l| l == "uciok"),
+        "expected uciok before readyok"
+    );
+    assert_no_panic_markers(&lines);
+    let status = wait_child(child, Duration::from_secs(10));
+    assert!(status.success());
+}
+
+#[test]
+fn unknown_commands_do_not_crash() {
+    let (mut child, reader) = start();
+    let stdin = child.stdin.as_mut().unwrap();
+    writeln!(stdin, "uci").unwrap();
+    writeln!(stdin, "isready").unwrap();
+    for junk in [
+        "definitely-not-a-command",
+        "setoption name Nope value 1",
+        "go depth notanumber",
+        "go nodes -1",
+        "position fen not-a-fen",
+        "position startpos moves e2e5xx",
+        "register later",
+        "ponderhit", // ponderhit with no active search must be tolerated
+        "stop",      // stop with no active search must be tolerated
+        "",
+    ] {
+        writeln!(stdin, "{junk}").unwrap();
+    }
+    writeln!(stdin, "isready").unwrap();
+    writeln!(stdin, "quit").unwrap();
+    stdin.flush().unwrap();
+    let mut lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(10));
+    let status = wait_child(child, Duration::from_secs(10));
+    lines.extend(drain_reader(&reader, Duration::from_secs(5)));
+    assert_no_panic_markers(&lines);
+    assert!(status.success());
+}
+
+#[test]
+fn seeded_fuzz_command_sequences() {
+    // Deterministic PRNG (splitmix64); same sequences on every platform.
+    let grammar: &[&str] = &[
+        "uci",
+        "isready",
+        "ucinewgame",
+        "stop",
+        "ponderhit",
+        "position startpos",
+        "position startpos moves e2e4 e7e5 g1f3",
+        "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "go depth 1",
+        "go movetime 50",
+        "go nodes 10",
+        "go wtime 10000 btime 10000",
+        "setoption name Hash value 16",
+        "setoption name MultiPV value 2",
+        "debug on",
+        "debug off",
+        "register",
+        "go searchmoves e2e4 d2d4 depth 1",
+        "garbage token storm !!",
+        "go depth 99999999999999999999",
+    ];
+    let mut seed: u64 = 0xA341_5EED_5EED_0001;
+    let mut next = move || {
+        seed = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = seed;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    };
+    for trial in 0..6 {
+        let (mut child, reader) = start();
+        let stdin = child.stdin.as_mut().unwrap();
+        writeln!(stdin, "uci").unwrap();
+        for _ in 0..25 {
+            let idx = (next() % grammar.len() as u64) as usize;
+            writeln!(stdin, "{}", grammar[idx]).unwrap();
+        }
+        // always finish with a liveness probe and a clean quit
+        writeln!(stdin, "isready").unwrap();
+        writeln!(stdin, "quit").unwrap();
+        stdin.flush().unwrap();
+        let mut lines = wait_for(&mut child, &reader, "readyok", Duration::from_secs(30));
+        let status = wait_child(child, Duration::from_secs(10));
+        lines.extend(drain_reader(&reader, Duration::from_secs(5)));
+        assert_no_panic_markers(&lines);
+        assert!(status.success(), "trial {trial}: nonzero exit");
+    }
+}
+
+/// Regression for the hold/ponderhit bestmove handoff (PR #1 review thread
+/// PRRT_..D-, src/uci.rs:433): after `go ponder`, exactly one `bestmove` must be
+/// emitted as soon as the search ends or `ponderhit`/`stop` arrives — never
+/// deferred until a later GUI command, never duplicated. The trials race the
+/// worker's end-of-search section against the main thread's command handling
+/// with sub-millisecond jitter and tiny movetimes, hammering both orderings.
+#[test]
+fn ponderhit_or_stop_racing_search_end_emits_exactly_one_bestmove() {
+    for trial in 0..30u32 {
+        let (mut child, reader) = start();
+        {
+            let stdin = child.stdin.as_mut().unwrap();
+            writeln!(stdin, "uci").unwrap();
+            writeln!(stdin, "isready").unwrap();
+        }
+        wait_for(&mut child, &reader, "readyok", Duration::from_secs(10));
+        let mt = 2 + (trial % 7); // 2..8 ms: search ends almost immediately
+        {
+            let stdin = child.stdin.as_mut().unwrap();
+            writeln!(stdin, "position startpos").unwrap();
+            writeln!(stdin, "go ponder movetime {mt}").unwrap();
+            // Jittered arrival: sometimes the command lands before the search ends,
+            // sometimes after the worker already held back bestmove.
+            std::thread::sleep(Duration::from_micros(50 * u64::from(trial % 41)));
+            if trial % 2 == 0 {
+                writeln!(stdin, "ponderhit").unwrap();
+            } else {
+                writeln!(stdin, "stop").unwrap();
+            }
+            stdin.flush().unwrap();
+        }
+        // Exactly one bestmove must arrive WITHOUT any further command.
+        let mut lines = Vec::new();
+        let mut bestmoves = 0u32;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline && bestmoves == 0 {
+            for line in drain_reader(&reader, Duration::from_millis(150)) {
+                if line.starts_with("bestmove") {
+                    bestmoves += 1;
+                }
+                assert!(!line.contains("panicked"), "trial {trial}: {line}");
+                lines.push(line);
+            }
+        }
+        // Grace window: catch a duplicated bestmove if the handoff were broken.
+        for line in drain_reader(&reader, Duration::from_millis(300)) {
+            if line.starts_with("bestmove") {
+                bestmoves += 1;
+            }
+            assert!(!line.contains("panicked"), "trial {trial}: {line}");
+            lines.push(line);
+        }
+        assert_eq!(
+            bestmoves, 1,
+            "trial {trial} (mt={mt}, cmd={}): expected exactly one bestmove without further input; saw lines: {lines:?}",
+            if trial % 2 == 0 { "ponderhit" } else { "stop" }
+        );
+        writeln!(child.stdin.as_mut().unwrap(), "quit").unwrap();
+        let _ = child.stdin.as_mut().unwrap().flush();
+        let status = wait_child(child, Duration::from_secs(10));
+        assert!(status.success(), "trial {trial}: nonzero exit");
+    }
+}
+
+/// R-07: a rejected `position` command must not be searched silently. The next `go`
+/// answers `bestmove 0000`; a later valid `position` restores normal search.
+#[test]
+fn rejected_position_yields_null_bestmove_until_fixed() {
+    let (mut child, rx) = start();
+    let mut stdin = child.stdin.take().expect("stdin piped");
+    writeln!(stdin, "uci").unwrap();
+    writeln!(stdin, "position startpos moves e2e4 e2e5").unwrap();
+    writeln!(stdin, "go depth 3").unwrap();
+    let mut bad = None;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        if let Ok(line) = rx.recv_timeout(Duration::from_millis(50)) {
+            if line.starts_with("bestmove") {
+                bad = Some(line);
+                break;
+            }
+        }
+    }
+    assert_eq!(bad.as_deref(), Some("bestmove 0000"));
+    writeln!(stdin, "position startpos moves e2e4 e7e5").unwrap();
+    writeln!(stdin, "go depth 3").unwrap();
+    let mut good = None;
+    while Instant::now() < deadline {
+        if let Ok(line) = rx.recv_timeout(Duration::from_millis(50)) {
+            if line.starts_with("bestmove") {
+                good = Some(line);
+                break;
+            }
+        }
+    }
+    let good = good.expect("bestmove after valid position");
+    assert_ne!(good, "bestmove 0000");
+    writeln!(stdin, "quit").unwrap();
+    drop(stdin);
+    wait_child(child, Duration::from_secs(10));
+}

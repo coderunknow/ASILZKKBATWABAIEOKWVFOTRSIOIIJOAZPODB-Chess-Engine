@@ -1,0 +1,13 @@
+{
+  "_note": "TEMPLATE ONLY — never run a gate batch with this file. Fill every field with INDEPENDENTLY VERIFIED data from the authoritative list (CCRL 40/15 or CEGT 40/20) before any gate run: exact engine name/version, SHA-256 of the exact binary, published Elo and its error AS PUBLISHED (with the CI convention noted), list publication date, and your retrieval date. Never invent or extrapolate anchor values; a batch whose anchor cannot be verified must not contribute.",
+  "rating_source": "TBD (CCRL 40/15 list URL and publication date, or CEGT 40/20 list)",
+  "list_publication_date": "TBD",
+  "retrieval_date": "TBD",
+  "time_control": "TBD (must match the list's control, e.g. 40/15; do not mix)",
+  "engines": [
+    {"name": "TBD-anchor-1", "version": "TBD", "sha256": "TBD", "published_elo": null, "published_error": null, "error_convention": "TBD (68% SD / 95% half-width / other quantile — state which)"},
+    {"name": "TBD-anchor-2", "version": "TBD", "sha256": "TBD", "published_elo": null, "published_error": null, "error_convention": "TBD"},
+    {"name": "TBD-anchor-3", "version": "TBD", "sha256": "TBD", "published_elo": null, "published_error": null, "error_convention": "TBD"}
+  ],
+  "hardware_note": "Record CPU/RAM/OS in the batch meta.json automatically (scripts/match.py does this); reference hardware must match docs/ENVIRONMENT.md target class for gate claims."
+}

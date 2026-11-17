@@ -1,0 +1,90 @@
+{
+  "manifest_version": 2,
+  "completion_status": "completed",
+  "white_cmd": "./target/release/flawless uci",
+  "black_cmd": "node /home/z/opponents/stockfish-19-lite-single.js",
+  "white_name": "flawless-engine1",
+  "black_name": "SF19lite-skill5",
+  "batch_id": "PROBE",
+  "shard_id": "probe-006-engine1",
+  "time_control": {
+    "mode": "movetime",
+    "depth": null,
+    "movetime_ms": 100,
+    "note": "screening only \u2014 never gate evidence"
+  },
+  "hash_mb": 16,
+  "skill_white": null,
+  "skill_black": 5,
+  "openings_file": "/home/z/my-project/FlawLessChess/benches/openings-20.txt",
+  "openings_file_sha256": "97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d",
+  "schedule": {
+    "repetitions": 2,
+    "colors": "AB/BA exact reversal per (opening, repetition)",
+    "order": "opening-major, repetition-minor, AB then BA",
+    "schedule_sha256": "30791e096c6b18ac8a26d6a5ec202fee6b645363cc40ce9b37ec2166fd823ceb",
+    "n_scheduled": 80,
+    "shard": {
+      "shard_index": 0,
+      "shard_count": 1,
+      "schedule_lo": 0,
+      "schedule_hi": 80
+    }
+  },
+  "n_games_planned": 80,
+  "error_policy": {
+    "max_errors_per_side": 2,
+    "max_replays_per_game": 1,
+    "move_cap_policy": "unadjudicated",
+    "note": "engine-error attempts are recorded uncounted and replayed; batch aborts as invalid at max_errors_per_side for any side"
+  },
+  "white_artifact": {
+    "cmd": "./target/release/flawless uci",
+    "artifacts": [
+      {
+        "path": "./target/release/flawless",
+        "sha256": "a33250119659213f75b190e6a9c3b82edcc8f2b9a85fa436eb36c8c5b26e9151"
+      }
+    ],
+    "binary_path": "./target/release/flawless",
+    "sha256": "a33250119659213f75b190e6a9c3b82edcc8f2b9a85fa436eb36c8c5b26e9151"
+  },
+  "black_artifact": {
+    "cmd": "node /home/z/opponents/stockfish-19-lite-single.js",
+    "artifacts": [
+      {
+        "path": "/usr/bin/node",
+        "sha256": "a7ec1b37e6ff9d187e4198c5b6df9a4eb1c74dd31804fb3bac55cc4ceca1ac01"
+      },
+      {
+        "path": "/home/z/opponents/stockfish-19-lite-single.js",
+        "sha256": "ccb130d7ff29408531c47d859a49f91d59d4f482d05a53eb1a3231a4f624c91a"
+      }
+    ],
+    "binary_path": "/usr/bin/node",
+    "sha256": "a7ec1b37e6ff9d187e4198c5b6df9a4eb1c74dd31804fb3bac55cc4ceca1ac01"
+  },
+  "git_commit": "2e46fc9ab7bc488e5400b389cc6ecea72140db27",
+  "hardware": {
+    "platform": "Linux-5.10.134-013.15.kangaroo.al8.x86_64-x86_64-with-glibc2.41",
+    "os": "Linux 5.10.134-013.15.kangaroo.al8.x86_64",
+    "kernel": "#1 SMP Thu Jul 30 12:54:59 UTC 2026",
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "cpu_count": 2,
+    "ram_bytes": 4361621504,
+    "hostname": "c-6af93e8c-140d72b5-abf6fc55a097",
+    "python": "3.12.16",
+    "machine": "x86_64"
+  },
+  "anchor_pool": null,
+  "color_pairs": "AB/BA alternating per (opening, repetition) (exact color reversal)",
+  "adjudication": "FIDE termination via python-chess outcome(claim_draw=True) (50-move/3-fold claims enforced); flag-on-time => loss; illegal/exit/timeout => engine_error attempt (recorded, replayed per policy); move_cap => unadjudicated '*' by default",
+  "match_utc_start": "2026-11-15T06:40:54Z",
+  "match_utc_end": "2026-11-15T06:56:43Z",
+  "n_attempts": 80,
+  "n_games_counted": 80,
+  "n_replays": 0,
+  "n_engine_errors": 0,
+  "n_unadjudicated": 0,
+  "engine_errors_by_side": {}
+}

@@ -1,0 +1,60 @@
+{
+  "white_cmd": "./target/release/flawless uci",
+  "black_cmd": "node /home/user/opponents/stockfish-19-lite-single.js",
+  "white_name": "Flawless",
+  "black_name": "SF19-lite-Skill5",
+  "movetime_ms": 100,
+  "depth": null,
+  "hash_mb": null,
+  "skill_white": null,
+  "skill_black": 5,
+  "openings_file": "/home/user/ASILZKKBATWABAIEOKWVFOTRSIOIIJOAZPODB-Chess-Engine/benches/openings-20.txt",
+  "n_games_planned": 40,
+  "date_utc": "2026-11-14T09:01:11Z",
+  "white_artifact": {
+    "cmd": "./target/release/flawless uci",
+    "artifacts": [
+      {
+        "path": "./target/release/flawless",
+        "sha256": "9d7b22d5d1af0c56b0d56f908edd679b8628d90126d2fe5efc3c4faf24144208"
+      }
+    ],
+    "binary_path": "./target/release/flawless",
+    "sha256": "9d7b22d5d1af0c56b0d56f908edd679b8628d90126d2fe5efc3c4faf24144208"
+  },
+  "black_artifact": {
+    "cmd": "node /home/user/opponents/stockfish-19-lite-single.js",
+    "artifacts": [
+      {
+        "path": "/usr/local/bin/node",
+        "sha256": "e6ec2c188d83d813f81f2de8aea084d74dce603ac1abedd0a30ad941b10087b2"
+      },
+      {
+        "path": "/home/user/opponents/stockfish-19-lite-single.js",
+        "sha256": "ccb130d7ff29408531c47d859a49f91d59d4f482d05a53eb1a3231a4f624c91a"
+      },
+      {
+        "path": "/home/user/opponents/stockfish-19-lite-single.wasm",
+        "sha256": "ee4f115bdb2d32cadf96cada104a05b5ec257d7ad6f57582190b49bc71f096de"
+      }
+    ],
+    "binary_path": "/usr/local/bin/node",
+    "sha256": "e6ec2c188d83d813f81f2de8aea084d74dce603ac1abedd0a30ad941b10087b2"
+  },
+  "git_commit": "45f8507789e4dcc1c8353a2eee88fda51535e1f3",
+  "hardware": {
+    "platform": "Linux-6.1.158+-x86_64-with-glibc2.36",
+    "os": "Linux 6.1.158+",
+    "kernel": "#1 SMP PREEMPT_DYNAMIC Mon May 11 18:48:24 UTC 2026",
+    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.60GHz",
+    "cpu_count": 2,
+    "ram_bytes": 4131278848,
+    "hostname": "e2b.local",
+    "python": "3.11.2",
+    "machine": "x86_64"
+  },
+  "anchor_pool": null,
+  "match_utc_start": "2026-11-14T09:01:11Z",
+  "color_pairs": "AB/BA alternating per opening (exact color reversal)",
+  "adjudication": "FIDE termination via python-chess outcome(claim_draw=True); max_moves cap; flag/illegal/exit => forfeit"
+}
