@@ -124,3 +124,7 @@ The 100-game design is currently **BLOCKED** for confirmatory use: selected-subs
 - Hosted Ubuntu fixed-depth-10 bench signature: `141943aa23b3fc68` (12 fixed positions, 2,530,885 nodes in 7.09 s on the recorded runner). This is a deterministic implementation fingerprint, not a playing-strength or throughput comparison.
 - The earlier `fc907eba40b7869f` signature belongs to the pre-SEE ordering candidate and is retained only as historical evidence. The anchor verifier now expects the new signature.
 - The new candidate binary SHA-256 remains pending a successful exact-head anchor-verification run. No rating games have been dispatched for this candidate.
+
+## 2026-11-17 — reduced-suite byte-integrity correction
+
+The initial reduced-suite bytes were rejected by the Python standard-library selector verifier in CI; no confirmatory work ran. Corrected selector uses hashlib.sha256 over the documented domain-separated normalized original line, selecting the 50 lowest digests and retaining source order. Corrected suite byte hashes: Batch A 5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df; Batch B ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253. The power assessment remains BLOCKED; no dispatch is authorized.

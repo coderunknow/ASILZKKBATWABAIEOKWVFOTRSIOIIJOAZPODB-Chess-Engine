@@ -85,3 +85,7 @@ Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
 
 - No merge, tag, or release has been performed. Those require explicit user authorization
   separate from merge-readiness (mission §9).
+
+## 2026-11-17 validation checkpoint
+
+The first CI run for the SEE + RATING-100 implementation passed Rust formatting, Clippy and unit tests on Linux and Windows and passed all five Python test suites; both jobs were rejected by the newly added opening-subset verifier. This was a real selector-generation defect, caught before any confirmatory dispatch. Corrected suites, hashes, CI assertions and append-only preregistration/protocol notes are prepared for the next commit. The exact-head CI checklist remains UNCHECKED until both OS jobs pass after that correction.

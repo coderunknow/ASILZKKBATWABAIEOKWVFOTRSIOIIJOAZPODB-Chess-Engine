@@ -512,3 +512,15 @@ The 100-game amendment is currently **BLOCKED** for confirmatory dispatch. The s
 - **Binary identity:** NOT YET FROZEN. The first verification job stopped after the signature comparison and did not emit its SHA-256 manifest. A successful exact-head anchor-verification run must publish the binary SHA-256 before this candidate is eligible for any future engine-specific preregistration.
 - **Validation:** Rust 1.80 MSRV passed on the initial implementation; Linux/Windows CI stopped at rustfmt before tests. Those formatting-only diffs were corrected in the follow-up. No rating games, screening games or controls were dispatched for ENGINE-2.
 - **Dispatch restriction:** ENGINE-2 is not covered by the previous ENGINE-1 CTRL-2-R / SCREEN-3 evidence or BATCH-HASH binding. No RATING-100 or legacy confirmatory dispatch may use ENGINE-2 until the binary hash, candidate-specific controls and screening evidence are separately preregistered and the power assessment is reviewed PASS. RATING-100 remains BLOCKED.
+
+
+### RATING-100 selector-integrity correction — 2026-11-17 (append-only)
+
+The first hosted verifier run (CI run 44062359630, Linux + Windows) correctly rejected the two reduced suites: their initial selector generation used an incorrect local SHA-256 helper. No confirmatory job was dispatched and no rating evidence was produced. The faulty suite bytes are superseded by the two files in this commit; the original 60-opening suites and all historical records remain unchanged.
+
+The corrected selector is now recomputed with standard-library `hashlib.sha256` exactly as implemented by `scripts/verify_opening_subsets.py`: normalize each original non-comment line with Python `strip()`, hash the UTF-8 bytes of `FlawLessChess|rating-100|amendment-2026-11-16|sha256-v1|<batch>|<line>`, choose the 50 lexicographically lowest lowercase hexadecimal digests, and emit the chosen lines in their original suite order. The verifier independently checks selected line identity, order, byte-level suite SHA-256 and disjointness.
+
+- Corrected Batch A SHA-256: `5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df`.
+- Corrected Batch B SHA-256: `ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253`.
+- Both suites contain exactly 50 unique opening labels; their intersection is empty. The CI verifier is mandatory before any dispatch-marker tooling can be used.
+- The pre-registered 100-game design remains BLOCKED for confirmatory dispatch. Fixing selector integrity does not change the power assessment, sample-size rule, time control, anchors, confidence-bound threshold or null controls.

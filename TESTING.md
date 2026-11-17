@@ -109,3 +109,7 @@ missing artifact.
 | `scripts/test_match.py` | New end-to-end exact schedule-index recovery and out-of-shard rejection | PENDING hosted CI |
 
 SCREEN-3 and CTRL-2-R have terminal successful shard jobs but skipped their evidence aggregation jobs. Their shard artifacts are not canonical gate evidence and have not been scored in this checkpoint.
+
+## RATING-100 hosted validation record — 2026-11-17
+
+CI run 44062359630 (before the SHA-256 subset correction): Linux and Windows each passed Rust fmt, clippy and Rust test groups (12, 3, 21 and 4 tests), match.py 111/111, rating_estimator 65/65, reduced_sample 7/7, dispatch recovery 5/5 and merge-batch self-test. Both operating systems then failed verify_opening_subsets.py because the initially generated reduced suites did not match the standard SHA-256 selector. The files/hash pins are superseded. Rerun result on the corrected commit is PENDING; do not mark the verifier PASS based on this failed run.

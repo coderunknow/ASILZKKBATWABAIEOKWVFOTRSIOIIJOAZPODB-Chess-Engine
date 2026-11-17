@@ -248,3 +248,10 @@ Review policy: a reviewer FINISHED only when the service actually completes and 
 ## 2026-11-17 — first hosted validation and follow-up
 
 The first PR CI at `7d368cd` passed the Rust 1.80 MSRV job; Linux and Windows stopped at rustfmt in the newly added SEE helpers before tests. The formatter layout has been corrected. Anchor verification recorded the new deterministic depth-10 signature `141943aa23b3fc68`; its expected value has been updated, but the new candidate binary SHA-256 remains pending a successful verification rerun. The rating gate failed closed due to no gate plan, and rating-run skipped all shard jobs; no tournament was dispatched.
+
+## 2026-11-17T10:31Z — validation checkpoint
+
+- Current HEAD at checkpoint: fe6d34067e776ca64e676617c2102966675b4744 (PR open, draft, not merged).
+- New RATING-100 selector verifier failure on CI run 44062359630 is contained: both operating systems passed Rust formatting, clippy, Rust unit tests and the Python regression suites, then failed at the exact deterministic opening-subset check. The suite-generator SHA-256 constant defect was fixed; corrected suite hashes are recorded in PREREGISTRATION.md and the machine report. Hosted verification on the corrected commit is pending.
+- ENGINE-2 SEE ordering candidate: hosted PR merge-tree bench signature 141943aa23b3fc68, binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. This is a deterministic build identity, not an Elo, speedup or playing-strength result.
+- RATING-100 remains BLOCKED. The rating gate failed closed because no gate plan/evidence exists; no confirmatory batch was launched.

@@ -92,3 +92,13 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - Rating-gate run `44061648153`: FAILED CLOSED because no gate plan or canonical rating evidence exists; this is not a rating estimate.
 - Rating-run run `44061648184`: resolver success, shard matrix and evidence job skipped because `benches/dispatch.json` was untouched; no new tournament games ran.
 - No confirmatory dispatch, merge, tag or release has occurred. RATING-100 remains BLOCKED.
+
+## Latest verified checkpoint — 2026-11-17 10:31Z
+
+- Remote branch / PR #1 head: fe6d34067e776ca64e676617c2102966675b4744; PR open, draft, unmerged. This is the commit before the suite-hash correction being prepared in this session.
+- 44062359630 (CI) failed on both Ubuntu and Windows only at scripts/verify_opening_subsets.py because the initial reduced-suite generation helper used an incomplete SHA-256 constant table. Both jobs passed Rust fmt, clippy and Rust tests (groups 12/3/21/4); Python tests passed 111/111, 65/65, 7/7, 5/5 and merge self-test. No correct CI pass may be claimed until the fixed suites pass the verifier at the new exact branch HEAD.
+- Anchor verification 44062359732 succeeded for the PR merge tree 4cdf57c5e0d898e9accc6ec9d51ef00d82290575: depth-10 bench signature 141943aa23b3fc68, binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. This is not yet bound to a source branch SHA; verify the PR merge tree and branch tree have identical compiler inputs or rerun anchor verification after the correction commit.
+- The corrected opening-suite byte hashes prepared for the next commit are Batch A 5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df and Batch B ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253. The selector is 50 lowest standard SHA-256 digests with original suite order retained; 50 unique openings per batch, no overlap.
+- 44062359728 rating-gate failed closed because no gate plan/canonical evidence exists. 44062359655 rating-run resolver succeeded, but its shard and evidence jobs were skipped because dispatch.json was unchanged. No confirmatory games ran.
+- SCREEN-3 (43820645420) and CTRL-2-R (43820392119) remain terminal with all shard jobs successful but the evidence jobs skipped. Their artifacts are not canonical committed evidence and have not been promoted to rating/control results.
+- RATING-100 power remains BLOCKED. No confirmatory dispatch, merge, tag or release is authorized; PR remains Draft.

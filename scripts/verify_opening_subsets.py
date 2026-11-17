@@ -7,8 +7,8 @@ import hashlib
 
 
 EXPECTED = {
-    "A": "abf1627495d3ad9c42240f076921e2453e5e30cac42782856ea5f0673ca60239",
-    "B": "f7414154ce2fe38faeac15dadc9f9c250245a54e908422e37451d089ff352219",
+    "A": "5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df",
+    "B": "ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253",
 }
 
 
