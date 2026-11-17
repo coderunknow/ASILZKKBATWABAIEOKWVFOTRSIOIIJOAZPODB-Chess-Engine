@@ -400,3 +400,9 @@
 - Anchor-verification run 44066217113 succeeded 13/13. The verify-flawless artifact records signature 141943aa23b3fc68 and binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. Merge commit 7434e948357eda05f9435e430c37da082f202741 is a two-parent synthetic merge with source branch commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad as a parent and identical tree SHA 75bc5633e1466d5abf1f4c7d5999bc4a3915e193.
 - The RATING-100 report is explicitly pinned to ENGINE-1 hash 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. Its generator verifies source manifests, merged raw-file hashes, attempt/count totals, frozen SCREEN-2 suite identity, anchor identities and identical engine hashes. Dispatcher and workflow resolver reject report/binary SHA mismatch.
 - ENGINE-2 identity is now verified, but its own screening and candidate-specific controls have NOT been run. The ENGINE-1 power model cannot authorize ENGINE-2. RATING-100 remains blocked, no games dispatched.
+
+## 2026-11-17 — provenance-guard test adjustment
+
+- Run 44067364552 on 29b627e failed only in the new scripts/test_power_analysis.py assertion that expected a later cross-manifest mismatch string. The implementation rejected an out-of-scope engine SHA earlier, at the explicit SCREEN-2 / ENGINE-1 hash allowlist. This is the intended fail-closed path.
+- Updated the assertion to match the earliest rejection. Other Linux suites before this point passed: match 111/111, estimator 65/65, reduced_sample 7/7 and dispatch recovery 7/7. Anchor verification 44067364568 completed 13/13; rating-run resolver skipped shards; rating-gate failed closed.
+- A full exact-head CI rerun is required after the test-only correction.

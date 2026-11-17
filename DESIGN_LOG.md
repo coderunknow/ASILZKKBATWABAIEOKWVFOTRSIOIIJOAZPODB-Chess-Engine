@@ -396,3 +396,9 @@ DRAFT ONLY — no code changes under this entry.
 - ENGINE-2 binary identity is now frozen for this exact source tree. This is an identity/build result only, not a strength or throughput measurement.
 - New fail-closed provenance guard: the RATING-100 power data come from SCREEN-2 / ENGINE-1, frozen SHA-256 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. The power-analysis script now verifies the source manifests, raw-game merged hashes, original screening-suite hash, 120 attempts/120 counted games per anchor, both anchor identities and the same ENGINE-1 binary hash before generating a report. The dispatcher and rating-run resolver also require the power report engine hash to equal the candidate binary hash. ENGINE-1 evidence can no longer be reused to authorize ENGINE-2.
 - Candidate-specific ENGINE-2 screening and controls remain NOT RUN. RATING-100 remains BLOCKED, no confirmatory dispatch has run, and no playing-strength or throughput claim is made.
+
+## 2026-11-17 — power provenance regression test correction
+
+- CI run 44067364552 on commit 29b627e: Rust / MSRV passed; existing Python suites passed through dispatch recovery 7/7. The new power provenance suite reported 3/4, with one expected-error-string mismatch.
+- The test passed a new/unknown engine SHA; production code correctly rejected it in read_screening_manifest at the candidate allowlist, before comparing A and B manifest hashes. Updated the test to expect that earlier, stricter rejection. No weakening or production-code workaround.
+- Commit 29b627e is not an accepted CI pass. The follow-up must rerun full CI at its exact HEAD.

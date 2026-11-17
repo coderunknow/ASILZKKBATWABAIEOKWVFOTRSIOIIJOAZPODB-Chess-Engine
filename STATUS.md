@@ -262,3 +262,7 @@ The first PR CI at `7d368cd` passed the Rust 1.80 MSRV job; Linux and Windows st
 At commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad, hosted CI run 44066217195 passed on Ubuntu, Windows and Rust 1.80. The amended opening-suite verifier, Python harness/estimator/reduced-sample/dispatch-recovery tests, power-model smoke and engine release/UCI/perft checks all passed. Anchor-verification run 44066217113 succeeded 13/13; the exact source tree built binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7 with bench signature 141943aa23b3fc68.
 
 The RATING-100 power file is sourced from ENGINE-1 SHA-256 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. New manifest and dispatch guards prevent its reuse for ENGINE-2. ENGINE-2 has an identified binary, but its own screening and controls have not been run. RATING-100 remains BLOCKED and no confirmatory games have been dispatched.
+
+## 2026-11-17T10:43Z — provenance guard validation correction
+
+Commit 29b627e added ENGINE-1/ENGINE-2 binary isolation for RATING-100. The first CI rerun caught a regression-test expectation mismatch: an unknown engine hash is rejected by the explicit SCREEN-2 allowlist before the same-binary comparison. Production behavior is the intended stricter fail-closed result; the test expectation is being corrected. The commit is not yet CI-green. Anchor verification 44067364568 remains successful, and no tournament ran.

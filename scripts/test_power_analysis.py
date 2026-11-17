@@ -49,7 +49,7 @@ class ScreeningIdentityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             games_a = write_anchor(td, "topple-0.1.1", ENGINE_SHA)
             games_b = write_anchor(td, "topple-0.2.1", "8" * 64)
-            with self.assertRaisesRegex(ValueError, "same frozen engine binary"):
+            with self.assertRaisesRegex(ValueError, "preregistered only for SCREEN-2"):
                 read_screening_engine_sha(games_a, games_b)
 
     def test_games_file_hash_must_match_manifest(self):

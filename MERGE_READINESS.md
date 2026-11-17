@@ -94,3 +94,7 @@ The first CI run for the SEE + RATING-100 implementation passed Rust formatting,
 ## 2026-11-17 — exact-head validation (commit 5b63e27)
 
 CI run 44066217195 passed on Ubuntu + Windows + Rust 1.80, including the corrected suite selector, all Python/Rust tests, power smoke, release, UCI and perft checks. Anchor verification run 44066217113 passed 13/13 and recorded the exact source-tree binary SHA-256. This check describes commit 5b63e27; a follow-up commit adds the engine-provenance guard and must receive its own exact-head CI before any readiness item is checked. Fresh CodeRabbit review at the eventual final HEAD remains pending. PR stays Draft.
+
+## 2026-11-17 — provenance test follow-up
+
+The first CI run after adding engine-SHA isolation (44067364552) failed the new power-manifest suite on one overly specific expected-error message; production code rejected the non-SCREEN-2 hash at the earlier allowlist. The test expectation is corrected in the next commit. Exact-head CI remains unchecked until the follow-up run is green. Anchor verification itself passed 13/13.

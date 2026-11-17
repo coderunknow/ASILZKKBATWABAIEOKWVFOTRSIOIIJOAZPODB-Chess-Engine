@@ -399,3 +399,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Exact-head CI 44066217195 passed: Linux, Windows and MSRV 1.80; all Rust, Python harness, estimator, reduced-sample, dispatch-recovery, power-manifest, merge, suite selector and power smoke checks. The previous run 44062359630 remains a historical failure and is not overwritten.
 - Added a fail-closed provenance guard so SCREEN-2 power data cannot be used for a different engine binary: both source manifests must prove the same ENGINE-1 hash, exact original screening-suite hash, 120 counted games/120 attempts and correct merged raw-game hashes; the dispatcher and workflow compare the report's engine SHA with the actual dispatch SHA.
 - ENGINE-2 binary hash is now measured and pinned to source tree 75bc5633e1466d5abf1f4c7d5999bc4a3915e193 (branch source commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad): 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. No candidate-specific games or controls have been run.
+
+## 2026-11-17 — provenance regression expected-error mismatch
+
+- **Observed:** CI run 44067364552 on commit 29b627e failed the new power-analysis test suite (3/4 tests); the failing case expected an error string mentioning the later same-engine comparison.
+- **Root cause:** the test supplied a non-SCREEN-2 engine hash. The production guard correctly rejected it earlier in read_screening_manifest because the power model is explicitly registered only for SCREEN-2 / ENGINE-1. The test asserted the wrong layer of the fail-closed path.
+- **Correction:** change the expected message to "preregistered only for SCREEN-2". No production logic was changed or relaxed. Full CI on the follow-up exact HEAD is required before declaring validation green.

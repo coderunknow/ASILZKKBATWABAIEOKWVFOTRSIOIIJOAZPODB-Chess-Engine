@@ -120,3 +120,7 @@ CI run 44062359630 (before the SHA-256 subset correction): Linux and Windows eac
 CI run 44066217195 on commit 5b63e273d77cfb097f0ad73bc28dda05cc19adad passed on Ubuntu, Windows and Rust 1.80. Both OS jobs reported match.py 111/111, rating_estimator 65/65, reduced_sample 7/7, dispatch-recovery 5/5, merge-batch self-test ALL CASES PASS, and the deterministic suite verifier confirmed 50 Batch A openings, 50 Batch B openings, zero overlap and the registered hashes. The 36-scenario power smoke completed and asserted status BLOCKED. Rust test groups passed (12, 3, 21 and 4); release build, UCI smoke and perft d3 passed. Anchor verification run 44066217113 passed all 13 jobs; candidate tree binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7, bench signature 141943aa23b3fc68.
 
 A subsequent commit adds engine-SHA provenance checks to the power generator, dispatch CLI and rating-run workflow; its tests and exact-head CI are still pending.
+
+## 2026-11-17 — power-provenance test correction
+
+CI run 44067364552 on 29b627e: test_make_batch_dispatch passed (7/7); test_power_analysis had 3/4 passing, with one error-message expectation mismatch. An unknown engine hash was correctly rejected at the SCREEN-2/ENGINE-1 manifest allowlist before the subsequent A/B engine-hash equality check. The test now expects the earlier fail-closed message. No CI pass is claimed for 29b627e; a new full run is required on the follow-up commit.
