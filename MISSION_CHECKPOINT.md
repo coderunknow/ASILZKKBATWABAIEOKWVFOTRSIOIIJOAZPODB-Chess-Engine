@@ -127,3 +127,32 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - Anchor verification 44067826881 succeeded 13/13; binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7; bench signature 141943aa23b3fc68.
 - rating-run resolver succeeded with shards/evidence skipped. rating-gate failed closed for absent gate plan/evidence. No games dispatched.
 - RATING-100 remains BLOCKED and ENGINE-2 lacks its own screening/controls.
+
+## Latest verified checkpoint — 2026-11-17 11:55Z (this session, segment 25 start)
+
+- Remote PR #1 / arena branch head at session start: `03d2066b3ae2cf33c6246280bd4c5c5ced86985d`
+  (API-verified: open, **draft**, unmerged, mergeable=true, 144 commits, 133 changed files).
+- CTRL-2-R run **43820392119** (dispatch rev 13) and SCREEN-3 run **43820645420** (dispatch rev 14)
+  are BOTH TERMINAL (`completed success`, resolver + all shard jobs green, aggregate-and-commit-evidence
+  SKIPPED). Nothing in progress on those controls; no conflicting dispatch permitted or needed.
+- Exact-head CI at `03d2066`: run **44068565273 = SUCCESS** (Ubuntu, Windows, Rust 1.80). rating-gate
+  run **44068565038 = FAILED CLOSED** (no gate plan/canonical evidence — expected, not a code defect).
+  anchor-verify 44068565067 and evidence-bridge 44068565055 succeeded. No new tournament games ran.
+- Sandbox toolchain rebuilt from static.rust-lang.org (crates.io not needed; zero-dependency crate):
+  rustc/cargo/rustfmt 1.99.0 + clippy 0.1.99 + gcc/g++ 12.2.0, python venv with python-chess 1.11.2.
+  Baseline re-measured at head: bench 2,530,885 nodes / 8.76 s = 288,912 nps, signature
+  `141943aa23b3fc68`; `cargo test --release` 40/40; fmt + clippy `-D warnings` clean.
+- Repo "About" description FIXED via API (PATCH 200, verified on the repo page):
+  "Flawless: an original, from-scratch Rust chess engine (Apache-2.0). Not a Stockfish derivative."
+  README/LICENSE/Cargo.toml already describe the engine as original; no Stockfish-based wording found
+  (historical evidence keeps old identifiers per ADR-0002, untouched).
+- Manual review at `03d2066` recorded in `REVIEW_MANUAL_03d2066.md`: 15 findings (3 HIGH, 7 MEDIUM,
+  5 LOW; 3 LOW accepted with rationale). Each HIGH/MEDIUM finding is reproduced against the head binary.
+- Local opponent set for PRELIMINARY internal estimates only (never gate evidence): SF19-lite WASM
+  (hashes re-verified identical to BENCHMARKING.md: js ccb130d7…, wasm ee4f115b…), plus from-source
+  MIT anchors Wowl 1.3.7 (sha256 cd6a8c76…) and Topple 0.2.1 (sha256 b131ed7a…) built here with
+  g++ 12.2.0. These local builds are NOT the pinned/verified gate binaries; they are used only for
+  internal trend/estimate purposes and labelled as such everywhere.
+- Batch A/B confirmatory runs are OUT OF SCOPE this round: no gate plan is created, no dispatch.json
+  change, no >2,000 gate claim. Budget for this round: experiments capped at 40-120 paired games per
+  change (fixed movetime / fixed-depth harness), no open-ended matches, no confirmatory shards.
