@@ -794,7 +794,11 @@ fn static_exchange_eval(pos: &Position, m: Move) -> i32 {
     let captured_sq = if pos.piece_on(m.to).is_some() {
         m.to
     } else if mover == PAWN && file_of(m.from) != file_of(m.to) && pos.ep >= 0 {
-        if us == WHITE { m.to.saturating_sub(8) } else { m.to.saturating_add(8) }
+        if us == WHITE {
+            m.to.saturating_sub(8)
+        } else {
+            m.to.saturating_add(8)
+        }
     } else {
         return 0;
     };
@@ -835,8 +839,7 @@ fn static_exchange_eval(pos: &Position, m: Move) -> i32 {
         };
         let from_mask = 1u64 << from;
         let promotion = attacker == PAWN
-            && ((side == WHITE && rank_of(m.to) == 7)
-                || (side == BLACK && rank_of(m.to) == 0));
+            && ((side == WHITE && rank_of(m.to) == 7) || (side == BLACK && rank_of(m.to) == 0));
         let next_occupant = if promotion { QUEEN } else { attacker };
         let promotion_gain = if promotion {
             PIECE_VALUE_MG[QUEEN] - PIECE_VALUE_MG[PAWN]
@@ -881,8 +884,7 @@ fn see_least_attacker(
     side: usize,
     target: Square,
 ) -> Option<(usize, Square)> {
-    let reverse_pawns = attack::pawn_attacks_lookup(1 - side, target)
-        & pieces[side * 6 + PAWN];
+    let reverse_pawns = attack::pawn_attacks_lookup(1 - side, target) & pieces[side * 6 + PAWN];
     let attackers = reverse_pawns
         | (attack::KNIGHT_ATTACKS[target as usize] & pieces[side * 6 + KNIGHT])
         | (attack::bishop_attacks(target, occupied)
@@ -899,22 +901,14 @@ fn see_least_attacker(
     None
 }
 
-fn see_square_attacked(
-    pieces: &[u64; 12],
-    occupied: u64,
-    by_side: usize,
-    square: Square,
-) -> bool {
-    let pawns = attack::pawn_attacks_lookup(1 - by_side, square)
-        & pieces[by_side * 6 + PAWN];
-    let knights = attack::KNIGHT_ATTACKS[square as usize]
-        & pieces[by_side * 6 + KNIGHT];
+fn see_square_attacked(pieces: &[u64; 12], occupied: u64, by_side: usize, square: Square) -> bool {
+    let pawns = attack::pawn_attacks_lookup(1 - by_side, square) & pieces[by_side * 6 + PAWN];
+    let knights = attack::KNIGHT_ATTACKS[square as usize] & pieces[by_side * 6 + KNIGHT];
     let bishops = attack::bishop_attacks(square, occupied)
         & (pieces[by_side * 6 + BISHOP] | pieces[by_side * 6 + QUEEN]);
     let rooks = attack::rook_attacks(square, occupied)
         & (pieces[by_side * 6 + ROOK] | pieces[by_side * 6 + QUEEN]);
-    let kings = attack::KING_ATTACKS[square as usize]
-        & pieces[by_side * 6 + KING];
+    let kings = attack::KING_ATTACKS[square as usize] & pieces[by_side * 6 + KING];
     (pawns | knights | bishops | rooks | kings) != 0
 }
 

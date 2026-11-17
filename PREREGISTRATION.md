@@ -504,3 +504,11 @@ A recovered matrix shard can contain only the missing member(s) of its original 
 ### RATING-100 evidence-state clarification — 2026-11-17
 
 The 100-game amendment is currently **BLOCKED** for confirmatory dispatch. The sensitivity analysis uses the actual selected Batch-A 50-opening subset for the two available screening anchors; it does not have complete cluster data for the third anchor or disjoint Batch B. The report remains `status=BLOCKED` and `eligible_for_confirmatory_dispatch=false`. Do not change these fields or dispatch the design as confirmatory without a reviewed, evidence-backed prospective power PASS.
+
+### ENGINE-2 — SEE ordering candidate validation record (2026-11-17; no games authorized)
+
+- **Scope:** candidate search change uses material-only SEE for capture ordering; SEE is ordering-only and is not used to prune quiescence captures. The previous ENGINE-1 benchmark signature `fc907eba40b7869f` is historical and is no longer the expected signature for this source candidate.
+- **Preliminary hosted measurement:** fixed-depth-10 benchmark signature `141943aa23b3fc68` on the first Ubuntu verification build. This is a deterministic source/build fingerprint only. It is not an Elo, tactical-strength, or NPS improvement claim.
+- **Binary identity:** NOT YET FROZEN. The first verification job stopped after the signature comparison and did not emit its SHA-256 manifest. A successful exact-head anchor-verification run must publish the binary SHA-256 before this candidate is eligible for any future engine-specific preregistration.
+- **Validation:** Rust 1.80 MSRV passed on the initial implementation; Linux/Windows CI stopped at rustfmt before tests. Those formatting-only diffs were corrected in the follow-up. No rating games, screening games or controls were dispatched for ENGINE-2.
+- **Dispatch restriction:** ENGINE-2 is not covered by the previous ENGINE-1 CTRL-2-R / SCREEN-3 evidence or BATCH-HASH binding. No RATING-100 or legacy confirmatory dispatch may use ENGINE-2 until the binary hash, candidate-specific controls and screening evidence are separately preregistered and the power assessment is reviewed PASS. RATING-100 remains BLOCKED.

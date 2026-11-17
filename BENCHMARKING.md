@@ -117,3 +117,10 @@ RATING-100 reduces the proposed counted sample from 2,040 to 100 games per ancho
 The new workflow records per-shard `/usr/bin/time -v` output and pre/post cgroup values including CPU quota (`cpu.max`), throttling counters (`cpu.stat`), effective cpuset and memory limit. Future throughput reports must compare elapsed wall time, user/system CPU, peak RSS, cpu throttling, runner model/image, actual shard count/concurrency and counted-game totals. Do not infer a concurrency win from vCPU labels alone.
 
 The 100-game design is currently **BLOCKED** for confirmatory use: selected-subset variance is available for only two screening anchors; the third-anchor covariance and disjoint Batch-B cluster distribution remain unmeasured. Near a 2,100 Elo true-rating alternative, the sensitivity analysis shows only ~63–77% power for all three lower-bound conditions without variance inflation, ~22–31% at 1.5× cluster SD and ~8.7–12.4% at 2×. The registered strict 95% lower-bound rule and both null controls are unchanged.
+
+## 2026-11-17 — ENGINE-2 SEE-ordering candidate (preliminary hosted build)
+
+- Candidate source: the RATING-100 / SEE-ordering implementation commit. The SEE change is limited to capture ordering; no SEE-based quiescence pruning is used.
+- Hosted Ubuntu fixed-depth-10 bench signature: `141943aa23b3fc68` (12 fixed positions, 2,530,885 nodes in 7.09 s on the recorded runner). This is a deterministic implementation fingerprint, not a playing-strength or throughput comparison.
+- The earlier `fc907eba40b7869f` signature belongs to the pre-SEE ordering candidate and is retained only as historical evidence. The anchor verifier now expects the new signature.
+- The new candidate binary SHA-256 remains pending a successful exact-head anchor-verification run. No rating games have been dispatched for this candidate.

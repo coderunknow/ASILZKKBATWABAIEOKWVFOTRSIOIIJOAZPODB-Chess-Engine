@@ -83,3 +83,12 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 3. Query runs: `GET /repos/coderunknow/FlawLessChess/actions/runs/43820392119/jobs` and `.../43820645420/jobs` (paginate with per_page=100).
 4. The previously in-progress CTRL-2-R and SCREEN-3 runs are now terminal; their evidence jobs were skipped. Recover and verify their existing shard artifacts before deriving any screening/control statistic. Do not duplicate or cancel completed runs.
 5. Authentication: the owner supplies the token for the session. Use a credential helper that reads it at call time. Never persist it in `.git/config`, the repo, logs, or memory.
+
+## Latest validation checkpoint — 2026-11-17 10:07Z
+
+- Implementation commit `7d368cd74e8d559ab0782c88f3fbaeb05fcd12a0` was pushed and verified as PR #1 head (open, draft, unmerged).
+- CI run `44061648187`: Rust 1.80 MSRV PASS; Linux and Windows stopped at rustfmt in SEE helper layout before tests. The exact rustfmt diffs are fixed in the follow-up source blob.
+- Anchor verification run `44061648150`: binary built, measured bench signature `141943aa23b3fc68`, then failed because the verifier still expected historical `fc907eba40b7869f`. The expected signature is corrected in the follow-up; binary SHA-256 remains pending successful verification.
+- Rating-gate run `44061648153`: FAILED CLOSED because no gate plan or canonical rating evidence exists; this is not a rating estimate.
+- Rating-run run `44061648184`: resolver success, shard matrix and evidence job skipped because `benches/dispatch.json` was untouched; no new tournament games ran.
+- No confirmatory dispatch, merge, tag or release has occurred. RATING-100 remains BLOCKED.

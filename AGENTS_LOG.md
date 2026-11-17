@@ -376,3 +376,9 @@
 - Corrected defects found during pre-commit source review: the first draft 50-opening suites did not match the specified deterministic selector and were replaced; workflow resolver/evidence wiring was corrected for validation order, batch-separated run paths, exact recovery slots, explicit evidence default-on, and YAML/Python indentation.
 - Live workflow audit: SCREEN-3 run 43820645420 = resolver success + 60/60 shard success; aggregate-and-commit-evidence skipped. CTRL-2-R run 43820392119 = resolver success + 120/120 shard success; aggregate-and-commit-evidence skipped. The shard artifacts exist but have not become canonical committed evidence; no gate/anchor-selection conclusion is inferred from them.
 - No tournament was dispatched by these code changes: `benches/dispatch.json` is unchanged and the power assessment is BLOCKED. PR #1 remains draft/unmerged; no tag/release.
+
+## 2026-11-17 — hosted validation correction
+
+- First hosted CI at `7d368cd`: MSRV Rust 1.80 passed; Linux and Windows failed at rustfmt in new SEE helper layout before unit tests. Applied the exact rustfmt layout from both runner logs in the follow-up commit.
+- The anchor verifier detected the expected depth-10 bench signature change: measured `141943aa23b3fc68`, old expected `fc907eba40b7869f`. The expected signature is updated to the newly measured value; binary SHA-256 was not emitted because verification exited at the signature check.
+- rating-gate failed closed because no gate plan/canonical evidence exists. rating-run resolver succeeded and skipped shard jobs; no new tournament was launched. The RATING-100 power report remains BLOCKED.

@@ -244,3 +244,7 @@ Review policy: a reviewer FINISHED only when the service actually completes and 
 - **NOT yet done (binary):** CTRL-2-R result; SCREEN-3 result; gate-plan.json commit; Batch A
   revs 15-18; Batch B revs 19-22; merge+verify; 2000 gate; audit closeout; final CodeRabbit
   review at final SHA; final CI matrix; Ready-for-review flip.
+
+## 2026-11-17 — first hosted validation and follow-up
+
+The first PR CI at `7d368cd` passed the Rust 1.80 MSRV job; Linux and Windows stopped at rustfmt in the newly added SEE helpers before tests. The formatter layout has been corrected. Anchor verification recorded the new deterministic depth-10 signature `141943aa23b3fc68`; its expected value has been updated, but the new candidate binary SHA-256 remains pending a successful verification rerun. The rating gate failed closed due to no gate plan, and rating-run skipped all shard jobs; no tournament was dispatched.

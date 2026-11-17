@@ -378,3 +378,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **One-leg recovery gap:** a two-game shard could count one color leg and abort before the reverse-color leg; rerunning the whole shard could duplicate the counted game. Added exact schedule-index selection to match.py, dispatcher-generated per-shard missing-index maps, and merge-level exact slot verification.
 - **Skipped evidence jobs in completed screening/control workflows:** SCREEN-3 run 43820645420 and CTRL-2-R run 43820392119 completed all resolver/shard jobs but each skipped `aggregate-and-commit-evidence`. Their artifacts are not canonical committed evidence. Resolver config now defaults evidence capture on; only explicit `run_evidence: false` opts out. Historical runs are not retroactively relabelled or claimed aggregated.
 - **SEE pruning reconsidered:** removed SEE-negative capture pruning from quiescence before implementation. SEE's pin-legality model is approximate; the candidate uses SEE for ordering only. No performance or Elo effect is asserted before testing.
+
+## 2026-11-17 — validation issues caught before follow-up commit
+
+- **Rustfmt:** first hosted CI found five formatting diffs in SEE helpers on Linux and Windows. Fixed to match rustfmt output exactly; no algorithm change.
+- **Bench fingerprint:** the SEE ordering changed the deterministic depth-10 signature from the old `fc907eba40b7869f` to the measured `141943aa23b3fc68`. The old anchor-verifier expectation was stale; update it to the new measured fingerprint and rerun verification. Do not claim the candidate binary hash until the successful run writes it.
+- **Evidence boundary:** rating-gate failure was the expected fail-closed result with no gate plan; rating-run resolver skipped all shards because `benches/dispatch.json` was unchanged. Neither failure is evidence of a rating or game result.
