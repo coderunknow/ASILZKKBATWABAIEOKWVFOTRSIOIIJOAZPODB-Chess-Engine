@@ -384,3 +384,42 @@ mod tests {
         assert_eq!(p.score, Some(200));
     }
 }
+
+#[cfg(test)]
+mod mate_score_range_tests {
+    use super::*;
+    use crate::eval::MATE_SCORE;
+
+    /// R-05: mate scores stored ply-relative must round-trip exactly at the deepest ply
+    /// (MAX_PLY = 128). The largest stored magnitude is MATE_SCORE + 128 = 30_128, which
+    /// fits in i16; this test pins that invariant so a future constant change cannot clamp
+    /// mate scores silently.
+    #[test]
+    fn mate_scores_round_trip_at_max_ply() {
+        const MAX_PLY: i32 = 128;
+        assert!(MATE_SCORE + MAX_PLY <= i16::MAX as i32);
+        for ply in [0, 1, 64, MAX_PLY - 1] {
+            for score in [MATE_SCORE - 1, MATE_SCORE - ply, -(MATE_SCORE - ply)] {
+                let stored = TranspositionTable::adjust_score_to_tt(score, ply);
+                let back = TranspositionTable::adjust_score_from_tt(stored, ply);
+                assert_eq!(back, score, "round trip failed at ply {ply}, score {score}");
+            }
+        }
+    }
+
+    #[test]
+    fn stored_mate_probe_returns_exact_score_at_high_ply() {
+        let mut tt = TranspositionTable::new(1);
+        let key = 0x9E37_79B9_7F4A_7C15u64;
+        tt.store(StoreRequest {
+            key,
+            best_move: None,
+            score: MATE_SCORE - 1,
+            depth: 5,
+            bound: BOUND_EXACT,
+            ply: 127,
+            halfmove: 0,
+        });
+        assert_eq!(tt.probe(key, 127).score, Some(MATE_SCORE - 1));
+    }
+}
