@@ -288,3 +288,41 @@ fn ponderhit_or_stop_racing_search_end_emits_exactly_one_bestmove() {
         assert!(status.success(), "trial {trial}: nonzero exit");
     }
 }
+
+/// R-07: a rejected `position` command must not be searched silently. The next `go`
+/// answers `bestmove 0000`; a later valid `position` restores normal search.
+#[test]
+fn rejected_position_yields_null_bestmove_until_fixed() {
+    let (mut child, rx) = start();
+    let mut stdin = child.stdin.take().expect("stdin piped");
+    writeln!(stdin, "uci").unwrap();
+    writeln!(stdin, "position startpos moves e2e4 e2e5").unwrap();
+    writeln!(stdin, "go depth 3").unwrap();
+    let mut bad = None;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        if let Ok(line) = rx.recv_timeout(Duration::from_millis(50)) {
+            if line.starts_with("bestmove") {
+                bad = Some(line);
+                break;
+            }
+        }
+    }
+    assert_eq!(bad.as_deref(), Some("bestmove 0000"));
+    writeln!(stdin, "position startpos moves e2e4 e7e5").unwrap();
+    writeln!(stdin, "go depth 3").unwrap();
+    let mut good = None;
+    while Instant::now() < deadline {
+        if let Ok(line) = rx.recv_timeout(Duration::from_millis(50)) {
+            if line.starts_with("bestmove") {
+                good = Some(line);
+                break;
+            }
+        }
+    }
+    let good = good.expect("bestmove after valid position");
+    assert_ne!(good, "bestmove 0000");
+    writeln!(stdin, "quit").unwrap();
+    drop(stdin);
+    wait_child(child, Duration::from_secs(10));
+}

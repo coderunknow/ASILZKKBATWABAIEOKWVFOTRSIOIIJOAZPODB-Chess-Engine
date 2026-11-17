@@ -34,6 +34,9 @@ impl Default for UciEngine {
 
 pub struct UciEngine {
     pos: Position,
+    /// Set when the last `position` command was rejected (R-07). While set, `go` answers
+    /// `bestmove 0000` instead of searching a silently truncated position.
+    position_invalid: bool,
     tt: Option<TranspositionTable>,
     hash_mb: usize,
     multi_pv: usize,
@@ -73,6 +76,7 @@ impl UciEngine {
     pub fn new() -> Self {
         UciEngine {
             pos: Position::startpos(),
+            position_invalid: false,
             tt: Some(TranspositionTable::new(64)),
             hash_mb: 64,
             multi_pv: 1,
@@ -156,7 +160,15 @@ impl UciEngine {
             Some(i) => (&args[..i], &args[i + 1..]),
             None => (args, &[]),
         };
-        let new_pos = if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
+        // All-or-nothing (R-07): a rejected command keeps the previous position out of the
+        // search and makes the next `go` answer `bestmove 0000`, so a GUI or runner error
+        // is visible instead of silently searching a different position.
+        let rejected = |why: String, flag: &mut bool| {
+            eprintln!("info string position error: {why}");
+            println!("info string position error: {why}");
+            *flag = true;
+        };
+        let base = if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
             Some(Position::startpos())
         } else {
             let fen = if fen_tokens[0] == "fen" {
@@ -167,37 +179,38 @@ impl UciEngine {
             match Position::from_fen(&fen) {
                 Ok(p) => Some(p),
                 Err(e) => {
-                    eprintln!("info string position error: {e}");
+                    rejected(e, &mut self.position_invalid);
                     None
                 }
             }
         };
-        let Some(mut pos) = new_pos else { return };
+        let Some(mut pos) = base else { return };
         for mv in move_tokens {
-            match Move::from_uci(mv) {
-                Some(m) => {
-                    let legal = generate_legal(&mut pos);
-                    match legal.iter().find(|&&x| x == m) {
-                        Some(&legal_m) => {
-                            pos.make_move(legal_m);
-                        }
-                        None => {
-                            eprintln!("info string illegal move in position command: {mv}");
-                            break;
-                        }
-                    }
+            let Some(m) = Move::from_uci(mv) else {
+                rejected(format!("malformed move {mv}"), &mut self.position_invalid);
+                return;
+            };
+            let legal = generate_legal(&mut pos);
+            match legal.iter().find(|&&x| x == m) {
+                Some(&legal_m) => {
+                    pos.make_move(legal_m);
                 }
                 None => {
-                    eprintln!("info string malformed move in position command: {mv}");
-                    break;
+                    rejected(format!("illegal move {mv}"), &mut self.position_invalid);
+                    return;
                 }
             }
         }
         self.pos = pos;
+        self.position_invalid = false;
     }
 
     fn cmd_go(&mut self, args: &[&str]) {
         self.stop_and_join();
+        if self.position_invalid {
+            println!("bestmove 0000");
+            return;
+        }
         let mut movetime: Option<u64> = None;
         let mut depth: Option<i32> = None;
         let mut nodes: Option<u64> = None;

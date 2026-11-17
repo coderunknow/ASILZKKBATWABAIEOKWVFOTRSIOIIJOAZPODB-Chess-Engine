@@ -170,3 +170,6 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - R-10 (magic_ready scanned 64 entries on every slider lookup): FIXED (readiness cached at build time).
 - Bench after R-03/R-10: signature unchanged (`141943aa23b3fc68`, 2,530,885 nodes). Perft spot checks match CPW: startpos d4 197,281; Kiwipete d3 97,862; pos4 d3 9,467. Gates: fmt clean, clippy clean, 44/44 tests green.
 - Throughput (single runs, 1-CPU sandbox, noisy): 243k nps before R-02, 350k nps after R-03/R-10. Not a validated measurement; re-measure on the reference machine.
+
+- R-07 (illegal move in `position` silently truncated the position, then searched it): FIXED. `position` is all-or-nothing; a rejected command keeps the old position out of the search and sets a flag, and the next `go` answers `bestmove 0000` until a valid `position` arrives. Test `uci_smoke::rejected_position_yields_null_bestmove_until_fixed`.
+- Gates: fmt clean, clippy clean, 45/45 tests green. Bench signature unchanged (`141943aa23b3fc68`).
