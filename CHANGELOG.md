@@ -68,10 +68,39 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   mate-bound-safe) + check extensions. A/B vs previous build: score 0.613 (Elo +80, CI overlapping 0);
   vs pinned SF Skill 5 score improved 0.438 → 0.525 (CI overlapping). Not conclusive at 40 games.
 - `bench`: fixed-depth-10 search benchmark over 12 fixed positions; deterministic FNV-1a
-  `bench signature` (current: `3086f65159758c9d`, 2,317,474 nodes; see DESIGN_LOG 2026-11-14 audit entry); node count is the regression signal.
+  `bench signature` (current: `b58979ca90492208`, 3,666,233 nodes; see DESIGN_LOG 2026-11-18 audit entry); node count is the regression signal.
 - Not committed tags; v1.0.0 NOT authorized.
 
 ## [0.1.0-dev.1] — 2026-11-14
 
 - Project bootstrap: repository recon, environment record, architecture RFC, ADRs, docs skeleton.
 - No engine code yet. Perft gates pending. Not released.
+
+## [Unreleased] — 2026-11-18 (screening work on PR #2; no release authorized)
+
+- **Fixed:** the outpost evaluation term used the wrong pawn-attack table in
+  both of its lookups. The pawn-attack table is directional — the squares from
+  which a pawn of colour C attacks square X are `PAWN_ATTACKS_[other(C)][X]` —
+  and both lookups read that other table, so the term asked "is this square
+  attacked by a pawn of the same colour as the piece?" twice. It was rewarding
+  undefended pieces and counting attacked ones. The defect is symmetric under
+  the board flip, so the antisymmetry gate was satisfied by a wrong evaluator.
+  Commit `c702066`; new gate `outpost_requires_defence_and_safety_in_the_right_direction`
+  in `tests/eval_quality.rs`, verified to fail on the pre-fix source.
+- **Withdrawn:** the EVAL-1 ablation campaign. Every EVAL-1 binary was built
+  from the defective source, so the whole campaign measured a program that is
+  not in the tree. The raw records are retained unmodified under
+  `/home/user/matches/eval-*-invalidated-outpostbug/` and are not citable.
+  Re-registered and re-dispatched as **EVAL-2** with seven fresh binaries
+  (`PREREGISTRATION.md`).
+- **Performance:** the evaluation cost dropped about 11 % (1219 ns → 1088 ns per
+  evaluation, min of 15 runs over the four `bench_eval` positions) with **no
+  change to any evaluation value** — the bench signature and node count are
+  unchanged at `b58979ca90492208` / 3,666,233. Commit `815ca47`: the slider
+  attack masks are computed once per side and shared between the mobility and
+  king-safety terms (they were computed twice per evaluation); the
+  pawn-structure section uses square-indexed lookup tables; and `evaluate` no
+  longer routes through the ten-component `breakdown` taper.
+- **CI:** the `anchor-verify` workflow pinned the pre-fix bench signature, which
+  is why run 44327388368 failed. It now pins `b58979ca90492208`; anchor
+  verification passes 13/13 (run 44333865340).

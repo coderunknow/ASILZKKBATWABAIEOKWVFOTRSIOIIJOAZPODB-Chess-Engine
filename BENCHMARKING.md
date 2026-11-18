@@ -200,12 +200,18 @@ parent tree's bench signature `8370f143c3b76fb4` and node count 2,697,573 exactl
 |---|---|---|---|---|
 | EVAL-NONE | all six | `1fa874d2…` | `8370f143c3b76fb4` | 2,697,573 |
 | EVAL-ALL | none | `7fddfc05…` | `03e46bba31f35591` | 3,445,466 |
-| EVAL-NO-MOBILITY-TAPER | `FEAT_MOBILITY_TAPER` | `08e188c3…` | `1b2f3873f1f65bbc` | 4,190,833 |
-| EVAL-NO-PAWN-STRUCTURE | `FEAT_PAWN_STRUCTURE` | `39c6d8d3…` | `c164bbabc73cfc45` | 3,616,578 |
-| EVAL-NO-PASSER | `FEAT_PASSER` | `0259980f…` | `be5762f6d9461ed4` | 3,451,781 |
-| EVAL-NO-SPACE | `FEAT_SPACE` | `95eee808…` | `0b3852a75cde2015` | 3,234,182 |
-| EVAL-NO-OUTPOSTS | `FEAT_OUTPOSTS` | `96b42843…` | `906fe14c58ff639f` | 4,278,204 |
-| EVAL-NO-KING-SAFETY | `FEAT_KING_SAFETY` | `07c5610c…` | `57f87ee72db1cc53` | 4,255,486 |
+| EVAL-NO-MOBILITY-TAPER | `FEAT_MOBILITY_TAPER` | `b4cb1dfd…` | `ef9410f8cce0da89` | 3,161,626 |
+| EVAL-NO-PAWN-STRUCTURE | `FEAT_PAWN_STRUCTURE` | `2e3bfdd0…` | `c164bbabc73cfc45` | 3,335,879 |
+| EVAL-NO-PASSER | `FEAT_PASSER` | `511e6d65…` | `ef9410f8cce0da89` | 3,590,574 |
+| EVAL-NO-SPACE | `FEAT_SPACE` | `47e2e22f…` | `e282fa6554c5cecd` | 4,547,011 |
+| EVAL-NO-OUTPOSTS | `FEAT_OUTPOSTS` | `7eb2c79e…` | `906fe14c58ff639f` | 4,278,204 |
+| EVAL-NO-KING-SAFETY | `FEAT_KING_SAFETY` | `85331959…` | `acf066a921c1dde1` | 3,080,004 |
+
+These identities supersede the EVAL-1 set above, which was withdrawn: the
+outpost pawn-attack tables were found to be inverted in both directions, the
+fix changes the evaluation values, and every EVAL-1 binary therefore measured
+a different program from the one in the tree. See `PREREGISTRATION.md`
+§ "EVAL-2" and `FAILURE_LEDGER.md`.
 
 Note that the ablation builds differ in *node count* as well as in score: changing the
 evaluation changes which lines the search follows. That is why a node-count comparison
@@ -217,4 +223,36 @@ flagged HARMFUL if its ablation point estimate is more than 40 Elo *higher* than
 EVAL-ALL's; features within 40 Elo are INDETERMINATE and are retained but not claimed.
 No individual feature may be claimed as a strength improvement from this screening.
 
-**Result:** see `PREREGISTRATION.md` § "EVAL-1 — result record".
+**Result:** see `PREREGISTRATION.md` § "EVAL-2". The EVAL-1 result record was
+withdrawn (see above) and its numbers must not be cited.
+
+## 2026-11-18 — evaluation cost
+
+The evaluation was measured at **24.5 % of node time** (2,667,410 evaluation
+calls over 3,666,233 nodes in the depth-10 bench), and the profile put the
+pawn-structure section at roughly a third of the evaluation cost.
+
+Three changes, all of which leave the evaluation *values* bit-identical,
+brought the cost down by about 11 %:
+
+| Change | What it removes |
+|---|---|
+| Share the slider attack masks | `eval_color` runs once per side and computed the masks for a side's own pieces (mobility) and again for the other side's pieces (king safety), so every slider's mask was computed twice per evaluation. A queen was worst: `queen_attacks` for mobility, then `bishop_attacks` and `rook_attacks` separately for king safety — three lookups for one queen. |
+| Lookup tables in the pawn-structure section | For every pawn the section recomputed the union of the neighbouring files, the square directly behind, the two squares diagonally behind, and the number of adjacent files. These depend only on the pawn's square, so they are now tables: `FILE_NEIGHBOURS`, `BEHIND_SQUARE`, `BEHIND_DIAGONALS`, `SIDE_FILES`. |
+| `evaluate` no longer routes through `breakdown` | `breakdown` tapers all ten components separately, each with its own integer division, and the search discarded every one of them. `evaluate` now computes the total directly; `breakdown` keeps the decomposition for the `eval` subcommand and the tests. |
+
+Measured with `bench_eval`, minimum of 15 runs summed over the four positions:
+**1219 ns before, 1088 ns after**.
+
+### How a performance change is verified here
+
+A change that alters no value can be verified *exactly*: the fixed-depth-10
+bench signature and node count pin the searched tree. Both stayed at
+`b58979ca90492208` and 3,666,233 nodes, which is the proof that the
+evaluation values did not change and that the tree is identical. That check
+is used instead of a hand-written equivalence test.
+
+An attempt to also flatten the piece-square tables and fold the material
+total out of the per-square loop was measured and **reverted**: it was a
+consistent 3 % regression, presumably because a popcount per piece type costs
+more than the adds it replaces at the piece counts actually seen.

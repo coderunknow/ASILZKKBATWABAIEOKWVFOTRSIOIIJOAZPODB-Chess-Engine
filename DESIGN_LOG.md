@@ -504,3 +504,88 @@ The EVAL-NONE build (all six flags off) reproduces the parent tree's bench
 signature `8370f143c3b76fb4` and node count 2,697,573 exactly. This was
 checked before any EVAL-1 game was played, so that a measured difference can
 be attributed to the flags and not to incidental refactoring.
+
+## 2026-11-18 — the outpost term used the wrong pawn-attack table
+
+### The defect
+
+The pawn-attack tables are directional. `PAWN_ATTACKS_WHITE[sq]` is the set of
+squares a **White** pawn standing on `sq` would attack; `PAWN_ATTACKS_BLACK[sq]`
+is the set a **Black** pawn standing on `sq` would attack. Equivalently: the
+squares from which a pawn of colour C attacks square X are
+`PAWN_ATTACKS_[other(C)][X]`.
+
+The outpost term needed two different questions, and asked both with the
+wrong table:
+
+| Question | Code used | For a White piece on d5 that is | The correct answer is |
+|---|---|---|---|
+| Is it defended by one of our own pawns? | `pawn_attacks_lookup(color, sq) & pawns` | `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — the squares a White pawn *standing on d5* would attack | `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — where the White pawns that *defend* d5 stand |
+| Is it attacked by an enemy pawn? | `pawn_attacks_lookup(them, sq) & enemy_pawns` | `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — the squares a Black pawn *standing on d5* would attack | `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — where the Black pawns that *attack* d5 stand |
+
+Both lookups therefore asked the same question: "is this square attacked by a
+pawn of the same colour as the piece?" The outpost term was rewarding pieces
+that were *not* defended and counting pieces that *were* attacked.
+
+The third test in the term — "no enemy pawn can step forward to attack it" —
+already looked at the right squares and was left unchanged.
+
+### Why the gates did not catch it
+
+The defect is symmetric under the board flip. The evaluator therefore stayed
+antisymmetric, and `evaluation_is_antisymmetric_under_board_flip` — the gate
+that is supposed to be the catch-all for colour errors — was satisfied by a
+wrong evaluator. The other two gates (finiteness/bounds, and exact
+decomposition of the breakdown) are colour-agnostic and could not catch it
+either.
+
+This is a general limitation, not a mistake in the gate: **a symmetry test
+cannot catch a defect that is itself symmetric.** The new gate
+`outpost_requires_defence_and_safety_in_the_right_direction` exercises the two
+directions separately with four positions, and was verified to fail on the
+pre-fix source.
+
+### Consequence
+
+The evaluation values change, so the searched tree changes: the depth-10 bench
+signature moves from `03e46bba31f35591` to `b58979ca90492208` and the node
+count from 3,445,466 to 3,666,233. Every EVAL-1 binary was built from the
+defective source, so the EVAL-1 campaign was withdrawn and re-registered as
+EVAL-2 with fresh binaries. The withdrawn raw records are retained unmodified
+and are not citable.
+
+## 2026-11-18 — evaluation cost
+
+The evaluation was measured at 24.5 % of node time and the pawn-structure
+section at roughly a third of the evaluation cost. Three value-identical
+changes brought the cost down about 11 % (1219 ns to 1088 ns, minimum of 15
+runs summed over the four `bench_eval` positions):
+
+1. **Share the slider attack masks.** `eval_color` is called once per side.
+   For side X it computed the masks for X's own pieces (mobility) and again
+   for Y's pieces (king safety); the call for side Y then computed the same
+   masks again. Every slider's mask was computed exactly twice per
+   evaluation, and a queen three times (once combined for mobility, once as a
+   bishop and once as a rook for king safety). The masks are now computed
+   once per side, in `SliderMasks`, and both terms read them.
+2. **Lookup tables in the pawn-structure section.** The union of the
+   neighbouring files, the square directly behind, the two squares diagonally
+   behind and the number of adjacent files depend only on the pawn's square.
+   They are now `FILE_NEIGHBOURS`, `BEHIND_SQUARE`, `BEHIND_DIAGONALS` and
+   `SIDE_FILES`.
+3. **`evaluate` does not route through `breakdown`.** `breakdown` tapers all
+   ten components separately, each with its own integer division, and the
+   search discarded every one of them.
+
+The king-zone mask also became a table (`KING_ZONE`) instead of being rebuilt
+with a 3x3 loop on every evaluation.
+
+The bench signature and node count are **unchanged** at `b58979ca90492208` /
+3,666,233, which proves the evaluation values did not change. That is the
+verification method for this class of change: a performance change that
+alters no value can be checked exactly against the tree signature, rather
+than with a hand-written equivalence test.
+
+A further attempt — flattening the piece-square tables and computing material
+with a popcount — was measured and **reverted** as a consistent 3 %
+regression.

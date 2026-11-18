@@ -312,3 +312,51 @@ CI on c564c5c passed Ubuntu but failed the Windows power-analysis smoke because 
 - Gates at head: fmt clean, clippy `-D warnings` clean, 45/45 tests (+2 R-05 tests), DIFTEST default 2,321 positions 0 mismatches, perft subset exact, bench signature `141943aa23b3fc68` unchanged.
 - Preliminary Elo (internal, not gate evidence): NOT MEASURED this session. No match runs were executed.
 - Open: MSRV 1.80 unverified; ENGINE-1 hash no longer matches the code (decision needed); rating-gate fail-closed cause not investigated; R-08 residual overrun.
+
+## 2026-11-18 — outpost pawn-attack defect found, EVAL-1 withdrawn, EVAL-2 dispatched
+
+**The defect.** The outpost term used the wrong pawn-attack table in both of
+its lookups. The pawn-attack table is directional — the squares from which a
+pawn of colour C attacks square X are `PAWN_ATTACKS_[other(C)][X]` — and both
+lookups read that other table. The term therefore asked "is this square
+attacked by a pawn of the same colour as the piece?" twice instead of asking
+"is it defended by ours?" and "is it attacked by theirs?". For a White piece on
+d5 the defending White pawns stand on c4/e4 (`PAWN_ATTACKS_BLACK[d5]`) and the
+attacking Black pawns stand on c6/e6 (`PAWN_ATTACKS_WHITE[d5]`); the code read
+the opposite table in each case.
+
+**Why it survived the gates.** The defect is symmetric under the board flip, so
+the evaluator stayed antisymmetric and the antisymmetry gate was satisfied by a
+wrong evaluator. A symmetry test cannot catch a defect that is itself
+symmetric. A new gate, `outpost_requires_defence_and_safety_in_the_right_direction`,
+exercises the two directions separately with four positions and was verified to
+fail on the pre-fix source.
+
+**Consequence.** The evaluation values change, so the tree changes: bench
+signature `03e46bba31f35591` → `b58979ca90492208`, node count 3,445,466 →
+3,666,233. Every EVAL-1 binary measured a different program from the tree, so
+**the EVAL-1 campaign is withdrawn**. The withdrawn raw records are retained
+unmodified under `/home/user/matches/eval-*-invalidated-outpostbug/` and are
+explicitly not citable.
+
+**Evaluation cost.** The evaluation was 24.5 % of node time and the
+pawn-structure section about a third of the evaluation cost. Three
+value-identical changes cut the evaluation cost by about 11 % (1219 ns → 1088 ns,
+min of 15 runs over the four `bench_eval` positions): sharing the slider
+attack masks between the mobility and king-safety terms, replacing the
+per-pawn square-dependent recomputation with lookup tables, and stopping
+`evaluate` from routing through the ten-component `breakdown` taper. The bench
+signature and node count are unchanged, which is the proof that no evaluation
+value changed.
+
+**EVAL-2 dispatched** on 2026-11-18 with seven fresh binaries; see
+`PREREGISTRATION.md` § "EVAL-2" for the pinned identities, the control
+validity check, and the restated decision rules. The anchor-verify workflow's
+pinned signature was corrected, and anchor verification now passes (run
+44333865340, 13/13 anchors, `bench_signature=b58979ca90492208` recorded on the
+runner).
+
+**No strength claim is made from any of this.** SPEED-1 remains the only
+KEPT screening result (+89 Elo, CI [+13, +168]); HIST-1 is INCONCLUSIVE; the
+evaluation work remains unmeasured until EVAL-2 completes. PR #2 stays Draft
+and `OWNER_TEST_PENDING` remains.

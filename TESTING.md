@@ -160,3 +160,55 @@ result, so the evaluation can be trusted before it is measured in games:
 The antisymmetry gate is the important one: it is what would have caught the
 candidate-pawn gap being colour-asymmetric, and it now guards every future change to
 the evaluator.
+
+## 2026-11-18 — the antisymmetry gate could not catch the outpost defect
+
+The three evaluation gates above all passed on a build whose outpost term was
+wrong. The reason is worth stating plainly, because it changes what a gate is
+worth:
+
+**The outpost term used the wrong pawn-attack table in both of its lookups.**
+The pawn-attack table is directional: the set of squares from which a pawn of
+colour C attacks square X is `PAWN_ATTACKS_[other(C)][X]`. The code asked
+
+- "is this square defended by one of our own pawns?" using
+  `pawn_attacks_lookup(color, sq) & pawns` — for a White piece on d5 that is
+  `PAWN_ATTACKS_WHITE[d5] = {c6, e6}`, the squares a White pawn *standing on
+  d5* would attack, whereas the pawns that actually *defend* d5 stand on
+  c4/e4 (`PAWN_ATTACKS_BLACK[d5]`);
+- "is this square attacked by an enemy pawn?" using
+  `pawn_attacks_lookup(them, sq) & enemy_pawns` — for the same piece that is
+  `PAWN_ATTACKS_BLACK[d5] = {c4, e4}`, the squares a Black pawn *standing on
+  d5* would attack, whereas the Black pawns that actually *attack* d5 stand on
+  c6/e6 (`PAWN_ATTACKS_WHITE[d5]`).
+
+Both lookups therefore asked "is this square attacked by a pawn of the same
+colour as the piece". The defect is **symmetric under the board flip**, so the
+antisymmetry gate was satisfied by a wrong evaluator: it could not have
+caught this, and it is not evidence that the evaluator is correct.
+
+### The gate that does catch it
+
+`outpost_requires_defence_and_safety_in_the_right_direction` exercises the two
+directions separately, with four positions:
+
+| Position | Expected |
+|---|---|
+| White knight d5, White pawn e4, no Black pawns | an outpost |
+| White knight d5, White pawn e6 (behind the knight, not defending it) | not an outpost |
+| White knight d5, White pawn e4, Black pawn e6 (attacks d5) | not an outpost |
+| White knight d5, White pawn e4, Black pawn e7 (can step to e6 and then attack d5) | not an outpost |
+
+The test was verified to **fail on the pre-fix source and pass on the fixed
+source**, by reverting the fix and re-running. That is the standard this
+project applies to every regression test: a test that has never been seen to
+fail is not evidence of anything.
+
+### The general lesson
+
+A symmetry test cannot catch a defect that is itself symmetric. Any term that
+consults a *directional* table — pawn attacks, and by extension any
+colour-dependent lookup — needs a test that exercises each direction on its
+own, not only a test that checks the whole evaluator's symmetry. The
+antisymmetry gate remains worth having; it just does not cover this class of
+bug.
