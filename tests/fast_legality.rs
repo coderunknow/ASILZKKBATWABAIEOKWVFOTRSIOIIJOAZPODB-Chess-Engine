@@ -8,6 +8,7 @@
 // and castling edge cases far more reliably than hand-picked positions.
 // ---------------------------------------------------------------------------
 
+use flawless::attack;
 use flawless::movegen;
 use flawless::position::Position;
 use flawless::types::*;
@@ -151,4 +152,91 @@ fn fast_legality_perft_matches_reference_counts() {
 
 fn attack_init() {
     flawless::attack::init_attacks();
+}
+
+/// The pawn-attack tables are directional, and this is the convention:
+///
+/// `PAWN_ATTACKS_WHITE[sq]` is the set of squares a **White** pawn *standing
+/// on `sq`* would attack. So the squares from which a pawn of colour C
+/// attacks square X are `PAWN_ATTACKS_[other(C)][X]`.
+///
+/// Getting this backwards in a single place is invisible to a symmetry test
+/// (the mistake is itself symmetric) and produces quietly wrong answers: an
+/// outpost term that rewards undefended pieces, or a legality filter that
+/// misses a pawn check. The 2026-11-18 outpost defect was exactly this.
+///
+/// This test pins the convention at the table level and checks the engine's
+/// own "is this square attacked" queries against it, so the direction is
+/// verified once, in one place, rather than re-derived at every use.
+#[test]
+fn pawn_attack_direction_convention_holds() {
+    attack_init();
+
+    // --- the table itself ------------------------------------------------
+    // A White pawn on d4 attacks c5 and e5. Those are the squares a White
+    // pawn standing on d4 attacks, so they are in PAWN_ATTACKS_WHITE[d4 as usize].
+    let d4 = make_square(3, 3);
+    let c5 = make_square(2, 4);
+    let e5 = make_square(4, 4);
+    assert_ne!(
+        attack::PAWN_ATTACKS_WHITE[d4 as usize] & (1u64 << c5),
+        0,
+        "a White pawn on d4 attacks c5"
+    );
+    assert_ne!(
+        attack::PAWN_ATTACKS_WHITE[d4 as usize] & (1u64 << e5),
+        0,
+        "a White pawn on d4 attacks e5"
+    );
+    // And a Black pawn on d4 attacks c3 and e3, so those are in
+    // PAWN_ATTACKS_BLACK[d4 as usize] and NOT in PAWN_ATTACKS_WHITE[d4 as usize].
+    let c3 = make_square(2, 2);
+    assert_ne!(
+        attack::PAWN_ATTACKS_BLACK[d4 as usize] & (1u64 << c3),
+        0,
+        "a Black pawn on d4 attacks c3"
+    );
+    assert_eq!(
+        attack::PAWN_ATTACKS_WHITE[d4 as usize] & (1u64 << c3),
+        0,
+        "a White pawn on d4 does not attack c3"
+    );
+
+    // --- the engine's own queries agree with the convention ---------------
+    // A White pawn attacks d5 when it stands on c4 or e4, so the pawn is on
+    // c4 here and the Black king is on d5.
+    let pos = Position::from_fen("8/8/8/3k4/2P5/8/8/4K3 b - - 0 1").unwrap();
+    let d5 = make_square(3, 4);
+    assert!(
+        pos.is_attacked(d5, WHITE),
+        "the White pawn on c4 attacks d5"
+    );
+    assert!(!pos.is_attacked(d5, BLACK), "no Black pawn attacks d5");
+
+    // The mirror image: a Black pawn attacks d5 when it stands on c6 or e6.
+    let pos = Position::from_fen("8/8/2p5/3K4/8/8/8/4k3 w - - 0 1").unwrap();
+    assert!(
+        pos.is_attacked(d5, BLACK),
+        "the Black pawn on c6 attacks d5"
+    );
+    assert!(!pos.is_attacked(d5, WHITE), "no White pawn attacks d5");
+
+    // --- and the lookup helper follows the same rule ----------------------
+    // `pawn_attacks_lookup(side, sq)` gives the squares a pawn *of that side*
+    // standing on `sq` attacks. To find the pawns of `side` that attack `sq`,
+    // read the *other* side's table: the Black pawn on c6 attacks d5 because
+    // c6 is a square a White pawn standing on d5 would attack.
+    let black_pawns_attacking_d5 =
+        attack::pawn_attacks_lookup(WHITE, d5) & pos.pieces[BLACK * 6 + PAWN];
+    assert_ne!(
+        black_pawns_attacking_d5, 0,
+        "the Black pawn on c6 is found as an attacker of d5 via the White table"
+    );
+    // Reading the same-colour table finds nothing, which is exactly the
+    // mistake the outpost term made.
+    assert_eq!(
+        attack::pawn_attacks_lookup(BLACK, d5) & pos.pieces[BLACK * 6 + PAWN],
+        0,
+        "the same-colour table does not find the attacker of d5"
+    );
 }
