@@ -933,3 +933,42 @@ from the raw records, independently of the analysis code path that produced
 them. The withdrawn pairs passed the integrity checks as well; they are
 withdrawn for a different reason — they measured binaries that are not in the
 tree.
+
+### EVAL-2 — note on a later value-identical performance commit
+
+After the EVAL-2 campaign was dispatched, commit `a0ea236` reduced the
+evaluation cost by a further ~8 % **without changing any evaluation value**.
+The campaign therefore ran with binaries whose evaluation *behaviour* is
+identical to the current tree's, but whose binary hashes are not.
+
+This is checked two ways rather than asserted:
+
+- the depth-10 bench signature and node count are unchanged at
+  `b58979ca90492208` / 3,666,233 nodes, so the **searched tree is identical**;
+- the full per-component breakdown was compared between the campaign's binary
+  and the current tree's binary over ten positions — including the four the
+  outpost regression test uses — with **zero differences**.
+
+Because the searched tree is identical and the search is deterministic, the
+games the campaign produced are the games the current tree produces. The
+binary identities in the table above are the ones the campaign used; the
+current tree's binaries have different SHA-256 values and the same bench
+signature and node count.
+
+### EVAL-2 — compute environment note
+
+The campaign runs two match shards concurrently on a 2-vCPU sandbox, and the
+sandbox is shared with the development work in this session (builds,
+benchmarks and test runs). A fixed `movetime` budget means a busier CPU
+searches fewer nodes within that budget, so the absolute depth reached varied
+during the campaign.
+
+This does not bias the comparison *within* a pair: both engines in a game
+face the same machine at the same time, and the schedule pairs them
+game-for-game with exact AB/BA colour reversal. It does mean the absolute
+scores are not comparable to a campaign run on an idle machine, and it is one
+more reason the result is screening evidence and not a rating. A confirmatory
+run on a quiet machine would be required before any claim beyond the
+registered screening decision rules.
+
+The STRENGTH-1 campaign has the same property and was run the same way.
