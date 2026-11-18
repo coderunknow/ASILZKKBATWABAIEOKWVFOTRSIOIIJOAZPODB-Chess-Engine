@@ -543,8 +543,8 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **Verification:** the bench signature and node count are **unchanged** at
   `b58979ca90492208` / 3,666,233, which proves the evaluation values did not
   change — the searched tree is identical. Measured cost fell from 1219 ns to
-  1088 ns (minimum of 15 runs summed over the four `bench_eval` positions),
-  about 11%.
+  1077 ns (minimum of 20 runs summed over the four `bench_eval` positions),
+  about 12 %.
 - **Lesson applied:** a performance change that alters no value can be
   verified exactly, by comparing the bench signature and node count. That
   check was used instead of a hand-written equivalence test.

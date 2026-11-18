@@ -269,7 +269,8 @@ brought the cost down by about 11 %:
 | `evaluate` no longer routes through `breakdown` | `breakdown` tapers all ten components separately, each with its own integer division, and the search discarded every one of them. `evaluate` now computes the total directly; `breakdown` keeps the decomposition for the `eval` subcommand and the tests. |
 
 Measured with `bench_eval`, minimum of 15 runs summed over the four positions:
-**1219 ns before, 1088 ns after**.
+**1219 ns before, 996 ns after** — about 18 % less, measured as the minimum of 20
+runs summed over the four positions on an otherwise idle machine.
 
 ### How a performance change is verified here
 

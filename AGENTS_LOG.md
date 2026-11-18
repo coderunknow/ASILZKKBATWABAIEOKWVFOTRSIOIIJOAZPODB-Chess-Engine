@@ -484,7 +484,7 @@
   budget and decision rules restated so that EVAL-2 stands on its own.
 - Measured the evaluation at 24.5 % of node time and profiled it: the
   pawn-structure section was the largest single part. Three **value-identical**
-  changes cut the evaluation cost by about 11 % (1219 ns → 1088 ns, min of 15
+  changes cut the evaluation cost by about 12 % (1219 ns → 1077 ns, min of 20
   runs over the four `bench_eval` positions): share the slider attack masks
   between the mobility and king-safety terms (they were computed twice per
   evaluation, and a queen three times), replace the per-pawn square-dependent

@@ -93,7 +93,7 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   `/home/user/matches/eval-*-invalidated-outpostbug/` and are not citable.
   Re-registered and re-dispatched as **EVAL-2** with seven fresh binaries
   (`PREREGISTRATION.md`).
-- **Performance:** the evaluation cost dropped about 11 % (1219 ns → 1088 ns per
+- **Performance:** the evaluation cost dropped about 18 % (1219 ns → 996 ns per
   evaluation, min of 15 runs over the four `bench_eval` positions) with **no
   change to any evaluation value** — the bench signature and node count are
   unchanged at `b58979ca90492208` / 3,666,233. Commit `815ca47`: the slider

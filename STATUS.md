@@ -341,8 +341,8 @@ explicitly not citable.
 
 **Evaluation cost.** The evaluation was 24.5 % of node time and the
 pawn-structure section about a third of the evaluation cost. Three
-value-identical changes cut the evaluation cost by about 11 % (1219 ns → 1088 ns,
-min of 15 runs over the four `bench_eval` positions): sharing the slider
+value-identical changes cut the evaluation cost by about 12 % (1219 ns → 1077 ns,
+min of 20 runs over the four `bench_eval` positions): sharing the slider
 attack masks between the mobility and king-safety terms, replacing the
 per-pawn square-dependent recomputation with lookup tables, and stopping
 `evaluate` from routing through the ten-component `breakdown` taper. The bench
@@ -398,7 +398,7 @@ not been run.
 **Overall standing.** SPEED-1 remains the only KEPT screening result (+89 Elo,
 CI [+13, +168]). HIST-1 is INCONCLUSIVE. The evaluation upgrade is
 INCONCLUSIVE. The evaluation cost came down about 18 % across three
-value-identical commits (1219 ns → 1004 ns per evaluation), each verified by
+value-identical commits (1219 ns → 996 ns per evaluation), each verified by
 an unchanged bench signature and node count. PR #2 stays Draft and
 `OWNER_TEST_PENDING` remains. `benches/rating-100-power-assessment.json`
 remains BLOCKED.

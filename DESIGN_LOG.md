@@ -558,7 +558,7 @@ and are not citable.
 
 The evaluation was measured at 24.5 % of node time and the pawn-structure
 section at roughly a third of the evaluation cost. Three value-identical
-changes brought the cost down about 11 % (1219 ns to 1088 ns, minimum of 15
+changes brought the cost down about 12 % (1219 ns to 1077 ns, minimum of 20
 runs summed over the four `bench_eval` positions):
 
 1. **Share the slider attack masks.** `eval_color` is called once per side.
@@ -621,10 +621,10 @@ band, so their features are retained and unclaimed.
 
 | Commit | Change | Evaluation cost |
 |---|---|---|
-| `815ca47` | share the slider masks; lookup tables in the pawn section; `evaluate` stops routing through `breakdown` | 1219 ns → 1088 ns |
-| `a0ea236` | `const FULL` so the fast path stops writing the components it discards | 1088 ns → 1004 ns |
+| `815ca47` | share the slider masks; lookup tables in the pawn section; `evaluate` stops routing through `breakdown` | 1219 ns → 1077 ns |
+| `a0ea236` | `const FULL` so the fast path stops writing the components it discards | 1077 ns → 996 ns |
 
-Cumulative: **1219 ns → 1004 ns, about 18 % less evaluation time**, with the
+Cumulative: **1219 ns → 996 ns, about 18 % less evaluation time**, with the
 bench signature and node count unchanged at `b58979ca90492208` / 3,666,233
 throughout. The `const FULL` commit was additionally checked by comparing the
 full per-component breakdown between the old and new binaries over ten
