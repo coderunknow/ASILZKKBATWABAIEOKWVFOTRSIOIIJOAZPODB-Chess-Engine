@@ -551,19 +551,18 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // Futility pruning at low depths
-        if depth <= 2 && !in_chk && !is_pv && !fifty_claim {
+        // One static evaluation per node, shared by the two pruning tests and by
+        // the quiescence stand-pat. The evaluator is a full board scan, so evaluating
+        // the same node two or three times was a measurable share of the node cost.
+        if depth <= 3 && !in_chk && !is_pv && !fifty_claim {
             let s = self.static_eval(pos);
-            if s + 150 * depth <= alpha {
-                return self.quiesce(pos, alpha, beta, ply);
+            // Futility pruning at low depths
+            if depth <= 2 && s + 150 * depth <= alpha {
+                return self.quiesce_with_eval(pos, alpha, beta, ply, Some(s));
             }
-        }
-
-        // Reverse futility pruning (static null-move): far-above-beta quiet
-        // positions fail high without searching. Non-PV, not in check, mate-bound safe.
-        if depth <= 3 && !in_chk && !is_pv && !fifty_claim && beta.abs() < MATE_BOUND {
-            let s = self.static_eval(pos);
-            if s - 150 * depth >= beta {
+            // Reverse futility pruning (static null-move): far-above-beta quiet
+            // positions fail high without searching. Non-PV, not in check, mate-bound safe.
+            if depth <= 3 && beta.abs() < MATE_BOUND && s - 150 * depth >= beta {
                 return beta;
             }
         }
@@ -679,9 +678,22 @@ impl<'a> Searcher<'a> {
     }
 
     fn quiesce(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
+        self.quiesce_with_eval(pos, alpha, beta, ply, None)
+    }
+
+    /// Quiescence search that reuses an already-computed static evaluation.
+    /// `eval` is `Some(v)` when the caller has just evaluated this node.
+    fn quiesce_with_eval(
+        &mut self,
+        pos: &mut Position,
+        alpha: i32,
+        beta: i32,
+        ply: i32,
+        eval: Option<i32>,
+    ) -> i32 {
         // Fifty-move is a claimable draw (see `search`): the value is at least DRAW.
         let claim = pos.is_fifty_move();
-        let v = self.quiesce_core(pos, alpha, beta, ply);
+        let v = self.quiesce_core(pos, alpha, beta, ply, eval);
         if claim && v < DRAW_SCORE {
             DRAW_SCORE
         } else {
@@ -689,7 +701,14 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn quiesce_core(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
+    fn quiesce_core(
+        &mut self,
+        pos: &mut Position,
+        alpha: i32,
+        beta: i32,
+        ply: i32,
+        eval: Option<i32>,
+    ) -> i32 {
         self.nodes += 1;
         if ply as usize >= self.seldepth as usize {
             self.seldepth = ply;
@@ -721,7 +740,10 @@ impl<'a> Searcher<'a> {
         }
 
         let stand_pat = if !in_chk {
-            let sp = self.static_eval(pos);
+            let sp = match eval {
+                Some(v) => v,
+                None => self.static_eval(pos),
+            };
             if sp >= beta {
                 return beta;
             }
