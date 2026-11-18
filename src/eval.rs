@@ -178,22 +178,53 @@ fn mirror_sq(sq: Square) -> Square {
 const PASSED_MG: [i32; 6] = [0, 10, 20, 38, 65, 100];
 const PASSED_EG: [i32; 6] = [0, 25, 45, 80, 140, 220];
 
+/// File masks indexed by file (0 = a-file).
+const FILE_MASKS: [u64; 8] = [
+    FILE_A,
+    FILE_A << 1,
+    FILE_A << 2,
+    FILE_A << 3,
+    FILE_A << 4,
+    FILE_A << 5,
+    FILE_A << 6,
+    FILE_A << 7,
+];
+
+/// Ranks strictly ahead of `rank`, from White's point of view (`ahead[0][rank]`),
+/// and from Black's point of view (`ahead[1][rank]`).
+const AHEAD_RANKS: [[u64; 8]; 2] = {
+    let mut t = [[0u64; 8]; 2];
+    let mut rank = 0usize;
+    while rank < 8 {
+        // White: ranks above `rank`.
+        let mut m = 0u64;
+        let mut rr = rank + 1;
+        while rr < 8 {
+            m |= RANK_1 << (rr * 8);
+            rr += 1;
+        }
+        t[0][rank] = m;
+        // Black: ranks below `rank`.
+        let mut m = 0u64;
+        let mut rr = 0usize;
+        while rr < rank {
+            m |= RANK_1 << (rr * 8);
+            rr += 1;
+        }
+        t[1][rank] = m;
+        rank += 1;
+    }
+    t
+};
+
+#[inline]
 fn file_mask(file: i32) -> u64 {
-    FILE_A << (file as u64)
+    FILE_MASKS[(file as usize) & 7]
 }
 
+#[inline]
 fn ahead_ranks_mask(us_white: bool, rank: u8) -> u64 {
-    let mut m = 0u64;
-    if us_white {
-        for rr in (rank + 1)..8 {
-            m |= RANK_1 << (rr * 8);
-        }
-    } else {
-        for rr in 0..rank {
-            m |= RANK_1 << (rr * 8);
-        }
-    }
-    m
+    AHEAD_RANKS[if us_white { 0 } else { 1 }][rank as usize]
 }
 
 /// Bitboard of pawns on `pawns` that are passed against `enemy_pawns`.
