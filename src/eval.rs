@@ -654,12 +654,16 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
             if rel < 3 {
                 continue; // not advanced enough to be an outpost
             }
-            // defended by one of our own pawns
-            if attack::pawn_attacks_lookup(color, sq) & pawns == 0 {
+            // Defended by one of our own pawns. The pawns that defend `sq` stand
+            // on the squares a pawn of the OPPOSITE colour standing on `sq`
+            // would attack: for a White piece on d5 those are c4/e4.
+            if attack::pawn_attacks_lookup(them, sq) & pawns == 0 {
                 continue;
             }
-            // no enemy pawn attacks it now, and none can step forward to do so
-            let mut safe = attack::pawn_attacks_lookup(them, sq) & enemy_pawns == 0;
+            // No enemy pawn attacks it now. The pawns that attack `sq` stand on
+            // the squares a pawn of OUR colour standing on `sq` would attack:
+            // for a White piece on d5 those are c6/e6.
+            let mut safe = attack::pawn_attacks_lookup(color, sq) & enemy_pawns == 0;
             if safe {
                 let step = if is_white { 1i32 } else { -1i32 };
                 'outer: for df in [-1i32, 1] {

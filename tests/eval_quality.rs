@@ -132,3 +132,58 @@ fn evaluation_is_finite_and_bounded() {
         );
     }
 }
+
+/// The pawn-attack tables are asymmetric with respect to colour, and the outpost
+/// test needs two different directions of lookup:
+///
+///  * the pawns that DEFEND a square stand on the squares a pawn of the
+///    opposite colour standing there would attack;
+///  * the pawns that ATTACK a square stand on the squares a pawn of the same
+///    colour standing there would attack.
+///
+/// Getting either backwards produces an outpost test that is subtly wrong in a
+/// way no symmetry test catches, so it is pinned down explicitly here.
+#[test]
+fn outpost_requires_defence_and_safety_in_the_right_direction() {
+    // White knight on d5, defended by a White pawn on e4.
+    // Black has no pawns at all, so nothing attacks d5 and nothing can step
+    // forward to attack it: this is an outpost.
+    let defended = Position::from_fen("4k3/8/8/3N4/4P3/8/8/4K3 w - - 0 1").unwrap();
+    let b = breakdown(&defended);
+    assert!(
+        b.outposts > 0,
+        "a defended, unattacked knight on d5 must count as an outpost (outposts={})",
+        b.outposts
+    );
+
+    // Same position, but the defending pawn is on e6 instead of e4 -- behind the
+    // knight rather than in front of it -- so the knight is undefended and must
+    // NOT be an outpost.
+    let undefended = Position::from_fen("4k3/8/4P3/3N4/8/8/8/4K3 w - - 0 1").unwrap();
+    let b = breakdown(&undefended);
+    assert_eq!(
+        b.outposts, 0,
+        "an undefended knight must not count as an outpost (outposts={})",
+        b.outposts
+    );
+
+    // Same as the first position, but Black has a pawn on e6, which attacks d5.
+    // The knight is defended but attacked, so it is not a safe outpost.
+    let attacked = Position::from_fen("4k3/8/4p3/3N4/4P3/8/8/4K3 w - - 0 1").unwrap();
+    let b = breakdown(&attacked);
+    assert_eq!(
+        b.outposts, 0,
+        "an attacked knight must not count as an outpost (outposts={})",
+        b.outposts
+    );
+
+    // Black has a pawn on e7 which can step to e6 and then attack d5, so the
+    // knight is not safe even though it is not attacked yet.
+    let stepping = Position::from_fen("4k3/4p3/8/3N4/4P3/8/8/4K3 w - - 0 1").unwrap();
+    let b = breakdown(&stepping);
+    assert_eq!(
+        b.outposts, 0,
+        "a knight that an enemy pawn can step forward to attack is not an outpost (outposts={})",
+        b.outposts
+    );
+}
