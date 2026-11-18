@@ -207,6 +207,112 @@ fn mirror_sq(sq: Square) -> Square {
 const PASSED_MG: [i32; 6] = [0, 10, 20, 38, 65, 100];
 const PASSED_EG: [i32; 6] = [0, 25, 45, 80, 140, 220];
 
+/// The 3x3 zone around each king square, used by the king-safety term.
+/// Indexed by square, so the zone mask is a single table lookup instead of a
+/// nested loop that is rebuilt on every evaluation.
+const KING_ZONE: [u64; 64] = {
+    let mut t = [0u64; 64];
+    let mut sq = 0usize;
+    while sq < 64 {
+        let f = sq % 8;
+        let r = sq / 8;
+        let mut m = 0u64;
+        let mut df = -1i32;
+        while df <= 1 {
+            let mut dr = -1i32;
+            while dr <= 1 {
+                let nf = f as i32 + df;
+                let nr = r as i32 + dr;
+                if nf >= 0 && nf < 8 && nr >= 0 && nr < 8 {
+                    m |= 1u64 << (nr * 8 + nf);
+                }
+                dr += 1;
+            }
+            df += 1;
+        }
+        t[sq] = m;
+        sq += 1;
+    }
+    t
+};
+
+/// The union of the two files adjacent to each file (0 = a-file).
+///
+/// Used by the pawn-structure term for the isolation, doubled, backward and
+/// candidate-pawn tests, all of which ask about the neighbouring files of a
+/// pawn's own file.
+const FILE_NEIGHBOURS: [u64; 8] = {
+    let mut t = [0u64; 8];
+    let mut f = 0usize;
+    while f < 8 {
+        let mut m = 0u64;
+        if f > 0 {
+            m |= FILE_A << (f - 1);
+        }
+        if f < 7 {
+            m |= FILE_A << (f + 1);
+        }
+        t[f] = m;
+        f += 1;
+    }
+    t
+};
+
+/// The number of files adjacent to each file: 1 on the a- and h-files, 2 in
+/// the interior. The space term counts the squares a pawn controls sideways.
+const SIDE_FILES: [i32; 8] = [1, 2, 2, 2, 2, 2, 2, 1];
+
+/// The square directly behind each square, for a White pawn (index 0) and for a
+/// Black pawn (index 1). Zero when there is no such square.
+const BEHIND_SQUARE: [[u64; 64]; 2] = {
+    let mut t = [[0u64; 64]; 2];
+    let mut sq = 0usize;
+    while sq < 64 {
+        let r = sq / 8;
+        if r > 0 {
+            t[0][sq] = 1u64 << (sq - 8);
+        }
+        if r < 7 {
+            t[1][sq] = 1u64 << (sq + 8);
+        }
+        sq += 1;
+    }
+    t
+};
+
+/// The two squares diagonally behind each square, for a White pawn (index 0)
+/// and for a Black pawn (index 1).
+const BEHIND_DIAGONALS: [[u64; 64]; 2] = {
+    let mut t = [[0u64; 64]; 2];
+    let mut sq = 0usize;
+    while sq < 64 {
+        let f = sq % 8;
+        let r = sq / 8;
+        let mut w = 0u64;
+        let mut b = 0u64;
+        if r > 0 {
+            if f > 0 {
+                w |= 1u64 << (sq - 9);
+            }
+            if f < 7 {
+                w |= 1u64 << (sq - 7);
+            }
+        }
+        if r < 7 {
+            if f > 0 {
+                b |= 1u64 << (sq + 7);
+            }
+            if f < 7 {
+                b |= 1u64 << (sq + 9);
+            }
+        }
+        t[0][sq] = w;
+        t[1][sq] = b;
+        sq += 1;
+    }
+    t
+};
+
 /// File masks indexed by file (0 = a-file).
 const FILE_MASKS: [u64; 8] = [
     FILE_A,
@@ -304,8 +410,26 @@ pub trait Evaluator {
 pub struct ClassicalEvaluator;
 
 impl Evaluator for ClassicalEvaluator {
+    /// The tapered score only.
+    ///
+    /// This deliberately does not call `breakdown`: that function tapers all ten
+    /// components separately, each with its own integer division, and the search
+    /// throws every one of them away. Computing the total directly saves ten
+    /// divisions per evaluation while producing exactly the same value.
     fn evaluate(&mut self, pos: &Position) -> i32 {
-        self.breakdown(pos).total
+        let phase = game_phase(pos);
+        let white = SliderMasks::new(pos, WHITE);
+        let black = SliderMasks::new(pos, BLACK);
+        let w = eval_color(pos, WHITE, true, &white, &black);
+        let b = eval_color(pos, BLACK, false, &black, &white);
+        let mg = w.mg - b.mg;
+        let eg = w.eg - b.eg;
+        let tapered = (mg * phase + eg * (TOTAL_PHASE - phase)) / TOTAL_PHASE;
+        if pos.side == WHITE {
+            tapered + TEMPO
+        } else {
+            -tapered + TEMPO
+        }
     }
     fn breakdown(&mut self, pos: &Position) -> EvalBreakdown {
         breakdown(pos)
@@ -337,7 +461,72 @@ struct ColorEval {
     rook_file_eg: i32,
 }
 
-fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
+/// The attack masks of one side's sliding pieces.
+///
+/// The mobility term needs each piece's own attack set, and the king-safety
+/// term needs the *enemy's* attack sets.  Computing them once per side and
+/// passing them around halves the number of magic-bitboard lookups per
+/// evaluation.
+///
+/// The lists are kept separate per piece type because the two terms consume
+/// them differently: the mobility term wants the combined mask for a queen,
+/// while the king-safety term counts a queen once as a bishop and once as a
+/// rook.
+#[derive(Default)]
+struct SliderMasks {
+    /// (square, bishop attack mask) for each bishop.
+    ///
+    /// The arrays are sized for the ten pieces of one type a side can hold
+    /// after promotions, so the index can never go out of bounds.
+    bishops: [(u8, u64); 10],
+    n_bishops: usize,
+    /// (square, rook attack mask) for each rook.
+    rooks: [(u8, u64); 10],
+    n_rooks: usize,
+    /// (square, bishop attack mask, rook attack mask) for each queen.
+    queens: [(u8, u64, u64); 10],
+    n_queens: usize,
+}
+
+impl SliderMasks {
+    fn new(pos: &Position, color: usize) -> Self {
+        let base = color * 6;
+        let occ = pos.occ_all;
+        let mut m = SliderMasks::default();
+        let mut bits = pos.pieces[base + BISHOP];
+        while bits != 0 {
+            let sq = lsb(bits);
+            bits &= bits - 1;
+            m.bishops[m.n_bishops] = (sq as u8, attack::bishop_attacks(sq, occ));
+            m.n_bishops += 1;
+        }
+        let mut bits = pos.pieces[base + ROOK];
+        while bits != 0 {
+            let sq = lsb(bits);
+            bits &= bits - 1;
+            m.rooks[m.n_rooks] = (sq as u8, attack::rook_attacks(sq, occ));
+            m.n_rooks += 1;
+        }
+        let mut bits = pos.pieces[base + QUEEN];
+        while bits != 0 {
+            let sq = lsb(bits);
+            bits &= bits - 1;
+            let b = attack::bishop_attacks(sq, occ);
+            let r = attack::rook_attacks(sq, occ);
+            m.queens[m.n_queens] = (sq as u8, b, r);
+            m.n_queens += 1;
+        }
+        m
+    }
+}
+
+fn eval_color(
+    pos: &Position,
+    color: usize,
+    is_white: bool,
+    own: &SliderMasks,
+    enemy: &SliderMasks,
+) -> ColorEval {
     let base = color * 6;
     let them = 1 - color;
     let mut out = ColorEval {
@@ -388,7 +577,6 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
 
     // mobility
     let own_occ = pos.occ[color];
-    let occ = pos.occ_all;
     let mut mob_mg = 0i32;
     let mut mob_eg = 0i32;
     // Mobility is tapered: the same free square is worth more in the endgame for the
@@ -406,34 +594,27 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
         // Knight mobility weighs the same in the midgame and the endgame.
         mobility_piece(attack::KNIGHT_ATTACKS[sq as usize], 4, 4, 4);
     }
-    let mut bishops_b = pos.pieces[base + BISHOP];
-    while bishops_b != 0 {
-        let sq = lsb(bishops_b);
-        bishops_b &= bishops_b - 1;
+    for i in 0..own.n_bishops {
         if FEAT_MOBILITY_TAPER {
-            mobility_piece(attack::bishop_attacks(sq, occ), 3, 4, 3);
+            mobility_piece(own.bishops[i].1, 3, 4, 3);
         } else {
-            mobility_piece(attack::bishop_attacks(sq, occ), 3, 3, 3);
+            mobility_piece(own.bishops[i].1, 3, 3, 3);
         }
     }
-    let mut rooks_b = pos.pieces[base + ROOK];
-    while rooks_b != 0 {
-        let sq = lsb(rooks_b);
-        rooks_b &= rooks_b - 1;
+    for i in 0..own.n_rooks {
         if FEAT_MOBILITY_TAPER {
-            mobility_piece(attack::rook_attacks(sq, occ), 2, 4, 5);
+            mobility_piece(own.rooks[i].1, 2, 4, 5);
         } else {
-            mobility_piece(attack::rook_attacks(sq, occ), 2, 2, 5);
+            mobility_piece(own.rooks[i].1, 2, 2, 5);
         }
     }
-    let mut queens_b = pos.pieces[base + QUEEN];
-    while queens_b != 0 {
-        let sq = lsb(queens_b);
-        queens_b &= queens_b - 1;
+    for i in 0..own.n_queens {
+        let (_, b, r) = own.queens[i];
+        let combined = b | r;
         if FEAT_MOBILITY_TAPER {
-            mobility_piece(attack::queen_attacks(sq, occ), 1, 2, 9);
+            mobility_piece(combined, 1, 2, 9);
         } else {
-            mobility_piece(attack::queen_attacks(sq, occ), 1, 1, 9);
+            mobility_piece(combined, 1, 1, 9);
         }
     }
     out.mobility_mg = mob_mg;
@@ -453,22 +634,16 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
     while p != 0 {
         let sq = lsb(p);
         p &= p - 1;
-        let f = file_of(sq) as i32;
+        let f = file_of(sq) as usize;
         let r = rank_of(sq);
         let rel = if is_white { r } else { 7 - r };
-        let mut neighbors = 0u64;
-        if f > 0 {
-            neighbors |= file_mask(f - 1);
-        }
-        if f < 7 {
-            neighbors |= file_mask(f + 1);
-        }
+        let neighbors = FILE_NEIGHBOURS[f];
         if pawns & neighbors == 0 {
             pscore_mg -= 12;
             pscore_eg -= 16;
         }
         let ahead = ahead_ranks_mask(is_white, r);
-        if pawns & file_mask(f) & ahead != 0 {
+        if pawns & FILE_MASKS[f] & ahead != 0 {
             pscore_mg -= 10;
             pscore_eg -= 14;
         }
@@ -476,19 +651,9 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
         // Connected pawn: a friendly pawn diagonally behind (chain) or directly
         // behind (phalanx). Connected pawns are hard to attack and support each
         // other's advance.
-        let behind_rank: i32 = if is_white { r as i32 - 1 } else { r as i32 + 1 };
         if FEAT_PAWN_STRUCTURE {
-            let mut diag_behind = 0u64;
-            if (0..8).contains(&behind_rank) {
-                if f > 0 {
-                    diag_behind |= 1u64 << make_square((f - 1) as u8, behind_rank as u8);
-                }
-                if f < 7 {
-                    diag_behind |= 1u64 << make_square((f + 1) as u8, behind_rank as u8);
-                }
-            }
-            let phalanx = (0..8).contains(&behind_rank)
-                && (pawns & (1u64 << make_square(f as u8, behind_rank as u8))) != 0;
+            let diag_behind = BEHIND_DIAGONALS[if is_white { 0 } else { 1 }][sq as usize];
+            let phalanx = pawns & BEHIND_SQUARE[if is_white { 0 } else { 1 }][sq as usize] != 0;
             if pawns & diag_behind != 0 || phalanx {
                 pscore_mg += 6;
                 pscore_eg += 8;
@@ -500,8 +665,8 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
             // Ranks at or behind the pawn (the complement of "ahead").
             let back_ranks: u64 = !ahead;
             let support = (neighbors & back_ranks & pawns) != 0;
-            let enemy_blocked_ahead =
-                (enemy_pawns & neighbors & ahead) != 0 || (enemy_pawns & file_mask(f) & ahead) != 0;
+            let enemy_blocked_ahead = (enemy_pawns & neighbors & ahead) != 0
+                || (enemy_pawns & FILE_MASKS[f] & ahead) != 0;
             if pawns & neighbors != 0 && !support && enemy_blocked_ahead {
                 pscore_mg -= 8;
                 pscore_eg -= 12;
@@ -511,7 +676,7 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
         // Candidate pawn: far ahead of the next friendly pawn on its file, with no
         // enemy pawn able to stop it. It may become a passer.
         if FEAT_PAWN_STRUCTURE && passers & (1u64 << sq) == 0 {
-            let own_ahead = pawns & file_mask(f) & ahead;
+            let own_ahead = pawns & FILE_MASKS[f] & ahead;
             let gap = if own_ahead != 0 {
                 // The nearest friendly pawn ahead on this file: for White the lowest
                 // square above, for Black the highest square below.
@@ -542,14 +707,7 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
 
         // Space: advanced pawns control squares in the enemy half.
         if FEAT_SPACE && rel >= 2 {
-            let mut controlled = 0i32;
-            if f > 0 {
-                controlled += 1;
-            }
-            if f < 7 {
-                controlled += 1;
-            }
-            space += controlled * (rel as i32 - 1) * 2;
+            space += SIDE_FILES[f] * (rel as i32 - 1) * 2;
         }
     }
     let mut pp = passers;
@@ -565,22 +723,13 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
             let mut mg = PASSED_MG[r_idx - 1];
             let mut eg = PASSED_EG[r_idx - 1];
             if FEAT_PASSER {
-                // A defended passer is much harder to stop.
-                let f = file_of(sq) as i32;
-                let r = rank_of(sq);
-                let behind_rank: i32 = if is_white { r as i32 - 1 } else { r as i32 + 1 };
-                if (0..8).contains(&behind_rank) {
-                    let mut support = 0u64;
-                    if f > 0 {
-                        support |= 1u64 << make_square((f - 1) as u8, behind_rank as u8);
-                    }
-                    if f < 7 {
-                        support |= 1u64 << make_square((f + 1) as u8, behind_rank as u8);
-                    }
-                    if pawns & support != 0 {
-                        mg += 8;
-                        eg += 8;
-                    }
+                // A defended passer is much harder to stop. A pawn defends the
+                // passer when it stands on one of the two squares diagonally
+                // behind it.
+                let support = BEHIND_DIAGONALS[if is_white { 0 } else { 1 }][sq as usize];
+                if pawns & support != 0 {
+                    mg += 8;
+                    eg += 8;
                 }
                 // The enemy king's distance decides whether the passer can run.
                 let df = (file_of(sq) as i32 - file_of(enemy_king) as i32).abs();
@@ -738,16 +887,7 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
 
     // Enemy attack units around the king. A piece that attacks the king square
     // itself counts double.
-    let mut zone = 0u64;
-    for df in [-1, 0, 1] {
-        for dr in [-1, 0, 1] {
-            let nf = kf + df;
-            let nr = kr + dr;
-            if (0..8).contains(&nf) && (0..8).contains(&nr) {
-                zone |= 1u64 << make_square(nf as u8, nr as u8);
-            }
-        }
-    }
+    let zone = KING_ZONE[king_sq as usize];
     let ebase = them * 6;
     let mut units = 0i32;
     let mut e = pos.pieces[ebase + KNIGHT];
@@ -763,11 +903,8 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
             };
         }
     }
-    let mut e = pos.pieces[ebase + BISHOP] | pos.pieces[ebase + QUEEN];
-    while e != 0 {
-        let sq = lsb(e);
-        e &= e - 1;
-        let att = attack::bishop_attacks(sq, occ);
+    for i in 0..enemy.n_bishops {
+        let att = enemy.bishops[i].1;
         if att & zone != 0 {
             units += if FEAT_KING_SAFETY && att & king_bit != 0 {
                 4
@@ -776,13 +913,30 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
             };
         }
     }
-    let mut e = pos.pieces[ebase + ROOK] | pos.pieces[ebase + QUEEN];
-    while e != 0 {
-        let sq = lsb(e);
-        e &= e - 1;
-        let att = attack::rook_attacks(sq, occ);
+    for i in 0..enemy.n_queens {
+        let (_, b, _) = enemy.queens[i];
+        if b & zone != 0 {
+            units += if FEAT_KING_SAFETY && b & king_bit != 0 {
+                4
+            } else {
+                2
+            };
+        }
+    }
+    for i in 0..enemy.n_rooks {
+        let att = enemy.rooks[i].1;
         if att & zone != 0 {
             units += if FEAT_KING_SAFETY && att & king_bit != 0 {
+                6
+            } else {
+                3
+            };
+        }
+    }
+    for i in 0..enemy.n_queens {
+        let (_, _, r) = enemy.queens[i];
+        if r & zone != 0 {
+            units += if FEAT_KING_SAFETY && r & king_bit != 0 {
                 6
             } else {
                 3
@@ -804,17 +958,24 @@ fn eval_color(pos: &Position, color: usize, is_white: bool) -> ColorEval {
     out
 }
 
-pub fn breakdown(pos: &Position) -> EvalBreakdown {
+/// The game phase, clamped to `TOTAL_PHASE`.
+fn game_phase(pos: &Position) -> i32 {
     let mut phase = 0i32;
     for color in 0..2 {
         for (piece, &pw) in PHASE_WEIGHT.iter().enumerate() {
             phase += pw * popcount(pos.pieces[color * 6 + piece]) as i32;
         }
     }
-    phase = phase.min(TOTAL_PHASE);
+    phase.min(TOTAL_PHASE)
+}
 
-    let w = eval_color(pos, WHITE, true);
-    let b = eval_color(pos, BLACK, false);
+pub fn breakdown(pos: &Position) -> EvalBreakdown {
+    let phase = game_phase(pos);
+
+    let white = SliderMasks::new(pos, WHITE);
+    let black = SliderMasks::new(pos, BLACK);
+    let w = eval_color(pos, WHITE, true, &white, &black);
+    let b = eval_color(pos, BLACK, false, &black, &white);
 
     let mg = w.mg - b.mg;
     let eg = w.eg - b.eg;
