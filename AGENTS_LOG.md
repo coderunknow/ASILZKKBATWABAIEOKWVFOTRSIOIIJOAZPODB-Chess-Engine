@@ -451,3 +451,63 @@
   tables, preregistration, evaluation, tests, results) and verified fmt,
   clippy `-D warnings`, the full release test suite and the perft matrix at the
   head.
+
+## 2026-11-18 — outpost defect, EVAL-1 withdrawal, EVAL-2, evaluation cost
+
+- Audited the evaluation code after the EVAL-1 dispatch and found a
+  **correctness defect in the outpost term**: both of its pawn-attack lookups
+  used the wrong-colour table, so the term asked "is this square attacked by a
+  pawn of the same colour as the piece?" twice. The pawn-attack table is
+  directional — the squares from which a pawn of colour C attacks square X
+  are `PAWN_ATTACKS_[other(C)][X]` — and both lookups read the other table.
+  Verified the direction at the square level on d5 with a Python check of the
+  two tables before changing any code.
+- The defect was **invisible to the existing gates**: it is symmetric under
+  the board flip, so the evaluator stayed antisymmetric and the antisymmetry
+  gate was satisfied by a wrong evaluator. A symmetry test cannot catch a
+  defect that is itself symmetric.
+- Fixed it (`c702066`) and added a regression test that exercises the two
+  directions separately with four positions. **Verified the test fails on the
+  pre-fix source** by reverting the fix and re-running, and passes on the
+  fixed source. Added `pawn_attack_direction_convention_holds` to pin the
+  convention itself, and `every_term_has_the_right_direction` to check every
+  evaluation term directly.
+- The fix changes the evaluation values, so the searched tree changes (bench
+  signature `03e46bba31f35591` → `b58979ca90492208`, 3,445,466 → 3,666,233
+  nodes). **Withdrew the whole EVAL-1 campaign**: every EVAL-1 binary was
+  built from the defective source, so the campaign measured a program that is
+  not in the tree. The raw records are retained unmodified under
+  `/home/user/matches/eval-*-invalidated-outpostbug/` and are marked
+  not citable; nothing was rewritten or deleted.
+- Re-registered as **EVAL-2** before dispatch, with seven fresh binary
+  identities, the control validity check re-run, and the hypotheses, design,
+  budget and decision rules restated so that EVAL-2 stands on its own.
+- Measured the evaluation at 24.5 % of node time and profiled it: the
+  pawn-structure section was the largest single part. Three **value-identical**
+  changes cut the evaluation cost by about 11 % (1219 ns → 1088 ns, min of 15
+  runs over the four `bench_eval` positions): share the slider attack masks
+  between the mobility and king-safety terms (they were computed twice per
+  evaluation, and a queen three times), replace the per-pawn square-dependent
+  recomputation with lookup tables, and stop `evaluate` routing through the
+  ten-component `breakdown` taper.
+  The proof that no evaluation value changed is that the bench signature and
+  node count stayed identical — the searched tree is the same tree. A further
+  attempt (flattening the piece-square tables, popcount material) was
+  measured and **reverted** as a consistent 3 % regression.
+- Added `scripts/audit_pair.py`, which re-derives the integrity properties of
+  a match pair from the raw records independently of `scripts/stats.py`, and
+  `scripts/test_audit_pair.py` (22 assertions). Writing the tests found a real
+  gap: the audit reported the colour balance but did not require it, so an
+  imbalanced pair would have passed. Fixed, and the suite is wired into CI.
+- Added `scripts/collect_eval_results.py`, which applies the registered
+  decision rules mechanically instead of by hand.
+- Corrected the `anchor-verify` workflow, which pinned the pre-fix bench
+  signature and is why run 44327388368 failed. Anchor verification now passes
+  13/13 and the runner recorded `bench_signature=b58979ca90492208`.
+- Everything was verified at the head: fmt clean, clippy `-D warnings` clean,
+  the full release test suite green, and all 23 fast-perft counts matching.
+  CI is green on Linux, Windows and Rust 1.80.
+- EVAL-2 dispatched and running. No strength claim is made from any of this:
+  SPEED-1 remains the only KEPT screening result, and the evaluation work
+  stays unmeasured until EVAL-2 completes. PR #2 remains Draft and
+  `OWNER_TEST_PENDING` remains.
