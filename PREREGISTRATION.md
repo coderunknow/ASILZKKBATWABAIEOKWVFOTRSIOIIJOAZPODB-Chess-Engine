@@ -835,8 +835,10 @@ found in the outpost term, and the fix changes the search tree:
   For the record, the withdrawn EVAL-1 results were: EVAL-ALL 37.5/80 =
   0.469, CI [0.350, 0.588], Elo −22 CI [−108, +61] (INCONCLUSIVE);
   EVAL-NO-MOBILITY-TAPER 38.0/80 = 0.475, CI [0.369, 0.588], Elo −17 CI
-  [−93, +61] (INCONCLUSIVE); EVAL-NO-PAWN-STRUCTURE reached 72 of 80 games
-  before the campaign was stopped. **None of these numbers may be cited as a
+  [−93, +61] (INCONCLUSIVE); EVAL-NO-PAWN-STRUCTURE reached 77 of 80 games
+  before the campaign was stopped (it was stopped at 72 when the withdrawal
+  was decided; the two in-flight shards finished the games they had already
+  started, so the retained record holds 77). **None of these numbers may be cited as a
   result.** They describe the withdrawn binaries only.
 
 ### Additional change between EVAL-1 and EVAL-2
@@ -907,3 +909,27 @@ behaviourally identical to the parent tree.
 - If EVAL-ALL is REJECTED or INCONCLUSIVE, the evaluation change is not
   merged; the flags stay in the tree as measurement scaffolding only, or the
   working tree is reverted.
+
+### Independent re-audit of the STRENGTH-1 and EVAL-1 raw records
+
+The raw game records were re-audited from disk with `scripts/audit_pair.py`
+(added for this purpose), independently of the `stats.py` analysis that
+produced the numbers above. The audit checks the counted-game count against
+the registered 80, engine errors, uncounted records, duplicate schedule slots
+(opening x repetition x colour assignment), the AB/BA colour balance, and the
+opening coverage.
+
+| Pair | Games | Counted | Errors | Uncounted | Duplicate slots | Colours | Openings | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| STRENGTH-1 SPEED-1 | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| STRENGTH-1 HIST-1 | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-1 EVAL-ALL *(withdrawn)* | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS (but withdrawn — wrong binaries) |
+| EVAL-1 EVAL-NO-MOBILITY-TAPER *(withdrawn)* | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS (but withdrawn — wrong binaries) |
+| EVAL-1 EVAL-NO-PAWN-STRUCTURE *(withdrawn)* | 77 | 77 | 0 | 0 | 0 | — | — | incomplete (campaign stopped) |
+
+The re-audit reproduces the recorded candidate scores exactly (SPEED-1
+50.0/80, HIST-1 32.5/80, EVAL-ALL 37.5/80, EVAL-NO-MOBILITY-TAPER 38.0/80)
+from the raw records, independently of the analysis code path that produced
+them. The withdrawn pairs passed the integrity checks as well; they are
+withdrawn for a different reason — they measured binaries that are not in the
+tree.
