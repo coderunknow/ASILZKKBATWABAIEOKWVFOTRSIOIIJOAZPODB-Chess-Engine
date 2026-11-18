@@ -104,3 +104,15 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
 - **CI:** the `anchor-verify` workflow pinned the pre-fix bench signature, which
   is why run 44327388368 failed. It now pins `b58979ca90492208`; anchor
   verification passes 13/13 (run 44333865340).
+
+- **EVAL-2 result:** the seven-pair evaluation ablation campaign completed
+  (560 games, zero engine errors, every pair passing the schedule audit).
+  **EVAL-ALL vs EVAL-NONE: INCONCLUSIVE** — score 0.519, CI [0.419, 0.619],
+  Elo +13, CI [−57, +84]. The registered rule keeps the change only if the CI
+  lower bound is > 0 and rejects it only if the upper bound is <= 0, so the
+  evaluation upgrade is **not merged as a strength improvement**; the six
+  feature flags stay in the tree as measurement scaffolding. No individual
+  feature is claimed: none is flagged HARMFUL, and turning the mobility taper
+  off is 70 Elo worse than keeping it on — the only comparison outside the
+  40-Elo indeterminate band. This is screening evidence at a fixed 100 ms/move
+  clock, not a rating.

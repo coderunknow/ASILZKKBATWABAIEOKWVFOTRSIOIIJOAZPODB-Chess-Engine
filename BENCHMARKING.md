@@ -223,8 +223,35 @@ flagged HARMFUL if its ablation point estimate is more than 40 Elo *higher* than
 EVAL-ALL's; features within 40 Elo are INDETERMINATE and are retained but not claimed.
 No individual feature may be claimed as a strength improvement from this screening.
 
-**Result:** see `PREREGISTRATION.md` § "EVAL-2". The EVAL-1 result record was
-withdrawn (see above) and its numbers must not be cited.
+**Result:** see `PREREGISTRATION.md` § "EVAL-2 — result record". The EVAL-1
+result record was withdrawn (see above) and its numbers must not be cited.
+
+The EVAL-2 campaign measured all seven pairs, 560 games, zero engine errors,
+and every pair passed the schedule audit (80 counted games, no duplicate
+slots, 40 AB / 40 BA, 20 openings with 4 games each).
+
+| Pair | Score | Score CI | Elo diff | Elo CI |
+|---|---|---|---|---|
+| EVAL-NONE vs EVAL-ALL | 0.519 | [0.419, 0.619] | **+13** | [−57, +84] |
+| EVAL-NONE vs EVAL-NO-MOBILITY-TAPER | 0.419 | [0.319, 0.512] | −57 | [−132, +9] |
+| EVAL-NONE vs EVAL-NO-PAWN-STRUCTURE | 0.525 | [0.456, 0.594] | +17 | [−30, +66] |
+| EVAL-NONE vs EVAL-NO-PASSER | 0.506 | [0.388, 0.625] | +4 | [−80, +89] |
+| EVAL-NONE vs EVAL-NO-SPACE | 0.469 | [0.381, 0.556] | −22 | [−84, +39] |
+| EVAL-NONE vs EVAL-NO-OUTPOSTS | 0.469 | [0.394, 0.537] | −22 | [−75, +26] |
+| EVAL-NONE vs EVAL-NO-KING-SAFETY | 0.506 | [0.406, 0.606] | +4 | [−66, +75] |
+
+**Aggregate: INCONCLUSIVE.** The registered rule keeps the change only if the
+CI lower bound is > 0 and rejects it only if the upper bound is <= 0; the
+interval [−57, +84] contains zero, so neither applies. The evaluation
+upgrade is **not** merged as a strength improvement, and the six flags stay in
+the tree as measurement scaffolding, which the registered rule explicitly
+permits.
+
+**Per feature:** no feature is flagged HARMFUL. Turning the mobility taper off
+is 70 Elo worse than keeping it on — the only comparison outside the
+40-Elo indeterminate band. The other five are within the band and are
+retained but **not claimed**. No individual feature is described as a
+strength improvement.
 
 ## 2026-11-18 — evaluation cost
 

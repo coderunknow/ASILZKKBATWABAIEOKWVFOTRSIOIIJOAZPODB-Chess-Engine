@@ -511,3 +511,28 @@
   SPEED-1 remains the only KEPT screening result, and the evaluation work
   stays unmeasured until EVAL-2 completes. PR #2 remains Draft and
   `OWNER_TEST_PENDING` remains.
+
+## 2026-11-18 — EVAL-2 completed
+
+- The seven-pair EVAL-2 campaign finished: **560 games, zero engine errors**,
+  and every pair passed the independent schedule audit (80 counted games, no
+  duplicate slots, 40 AB / 40 BA, 20 openings with 4 games each). Terminal
+  reasons: 472 checkmate, 63 threefold repetition, 14 insufficient material,
+  9 fifty-move, 2 stalemate.
+- **EVAL-ALL vs EVAL-NONE: INCONCLUSIVE** (0.519, CI [0.419, 0.619], Elo
+  +13, CI [−57, +84]). The registered rule keeps the change only if the CI
+  lower bound is > 0 and rejects it only if the upper bound is <= 0, so the
+  evaluation upgrade is not merged as a strength improvement; the six flags
+  stay in the tree as measurement scaffolding, which the rule explicitly
+  permits.
+- **No feature is HARMFUL.** Turning the mobility taper off is 70 Elo worse
+  than keeping it on — the only comparison outside the 40-Elo indeterminate
+  band. The other five are within the band and are retained but not claimed.
+  No individual feature is described as a strength improvement.
+- Rebuilt the eight evaluation variants with the final tree and confirmed
+  that every bench signature and node count is identical to the registration,
+  which verifies that the searched trees are the ones the campaign measured.
+- Recorded the results in `PREREGISTRATION.md`, `BENCHMARKING.md`,
+  `STATUS.md`, `CHANGELOG.md` and `DESIGN_LOG.md`, and left SPEED-1 as the
+  only KEPT screening result. PR #2 remains Draft; `OWNER_TEST_PENDING`
+  remains; the rating power assessment remains BLOCKED.

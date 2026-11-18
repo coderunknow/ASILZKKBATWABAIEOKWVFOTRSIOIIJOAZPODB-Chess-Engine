@@ -589,3 +589,50 @@ than with a hand-written equivalence test.
 A further attempt — flattening the piece-square tables and computing material
 with a popcount — was measured and **reverted** as a consistent 3 %
 regression.
+
+## 2026-11-18 — EVAL-2 result and what follows from it
+
+The seven-pair ablation campaign completed: 560 games, zero engine errors,
+every pair passing the schedule audit.
+
+| Pair | Score | Elo diff | Elo CI |
+|---|---|---|---|
+| EVAL-NONE vs EVAL-ALL | 0.519 | +13 | [−57, +84] |
+| EVAL-NONE vs EVAL-NO-MOBILITY-TAPER | 0.419 | −57 | [−132, +9] |
+| EVAL-NONE vs EVAL-NO-PAWN-STRUCTURE | 0.525 | +17 | [−30, +66] |
+| EVAL-NONE vs EVAL-NO-PASSER | 0.506 | +4 | [−80, +89] |
+| EVAL-NONE vs EVAL-NO-SPACE | 0.469 | −22 | [−84, +39] |
+| EVAL-NONE vs EVAL-NO-OUTPOSTS | 0.469 | −22 | [−75, +26] |
+| EVAL-NONE vs EVAL-NO-KING-SAFETY | 0.506 | +4 | [−66, +75] |
+
+The aggregate is INCONCLUSIVE under the registered rule. The decision that
+follows is not "the evaluation is bad" but "this sample cannot tell": the
+interval is consistent with a gain of up to about 84 Elo and with a loss of up
+to about 57 Elo. The flags stay in the tree as measurement scaffolding, which
+the registered rule permits, and nothing about the evaluation is described as
+a strength improvement.
+
+The one clear signal is about an ablation rather than the aggregate: turning
+the mobility taper off costs 70 Elo relative to keeping it on, well outside
+the 40-Elo indeterminate band. The other five ablations all land within the
+band, so their features are retained and unclaimed.
+
+### What the three evaluation-cost commits bought
+
+| Commit | Change | Evaluation cost |
+|---|---|---|
+| `815ca47` | share the slider masks; lookup tables in the pawn section; `evaluate` stops routing through `breakdown` | 1219 ns → 1088 ns |
+| `a0ea236` | `const FULL` so the fast path stops writing the components it discards | 1088 ns → 1004 ns |
+
+Cumulative: **1219 ns → 1004 ns, about 18 % less evaluation time**, with the
+bench signature and node count unchanged at `b58979ca90492208` / 3,666,233
+throughout. The `const FULL` commit was additionally checked by comparing the
+full per-component breakdown between the old and new binaries over ten
+positions: zero differences.
+
+That last point is the general lesson worth keeping: a performance change
+that alters no value can be verified **exactly**, because the fixed-depth
+bench signature pins the searched tree. Two of the three cost commits were
+also *rejected* by measurement — flattening the piece-square tables and
+popcount-based material were a consistent 3 % regression — and the bench
+signature is what made it safe to try them at all.

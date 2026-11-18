@@ -360,3 +360,45 @@ runner).
 KEPT screening result (+89 Elo, CI [+13, +168]); HIST-1 is INCONCLUSIVE; the
 evaluation work remains unmeasured until EVAL-2 completes. PR #2 stays Draft
 and `OWNER_TEST_PENDING` remains.
+
+## 2026-11-18T15:20Z — EVAL-2 complete: the evaluation upgrade is INCONCLUSIVE
+
+The seven-pair EVAL-2 ablation campaign finished: **560 games, zero engine
+errors, every pair passing the schedule audit** (80 counted games, no
+duplicate slots, 40 AB / 40 BA, 20 openings with 4 games each).
+
+| Pair | Score | Elo diff | Elo CI |
+|---|---|---|---|
+| EVAL-NONE vs EVAL-ALL | 0.519 | **+13** | [−57, +84] |
+| EVAL-NONE vs EVAL-NO-MOBILITY-TAPER | 0.419 | −57 | [−132, +9] |
+| EVAL-NONE vs EVAL-NO-PAWN-STRUCTURE | 0.525 | +17 | [−30, +66] |
+| EVAL-NONE vs EVAL-NO-PASSER | 0.506 | +4 | [−80, +89] |
+| EVAL-NONE vs EVAL-NO-SPACE | 0.469 | −22 | [−84, +39] |
+| EVAL-NONE vs EVAL-NO-OUTPOSTS | 0.469 | −22 | [−75, +26] |
+| EVAL-NONE vs EVAL-NO-KING-SAFETY | 0.506 | +4 | [−66, +75] |
+
+**Aggregate decision: INCONCLUSIVE.** The registered rule keeps the change
+only if the CI lower bound is > 0 Elo and rejects it only if the upper bound
+is <= 0; [−57, +84] contains zero. The evaluation upgrade is therefore **not
+merged as a strength improvement**. The six feature flags stay in the tree as
+measurement scaffolding, which the registered rule explicitly permits, and no
+part of the evaluation is described as a strength improvement anywhere.
+
+**Per feature:** none is flagged HARMFUL. Turning the mobility taper off is
+70 Elo worse than keeping it on — the only comparison outside the 40-Elo
+indeterminate band. The other five are within the band and are retained but
+not claimed.
+
+This is a screening result at a fixed 100 ms/move clock on a shared 2-vCPU
+sandbox. It is **not** a rating, not a CCRL/CEGT result, and not an absolute
+Elo claim. A confirmatory campaign with a larger sample would be needed to
+settle the aggregate, and that is a separate registered experiment which has
+not been run.
+
+**Overall standing.** SPEED-1 remains the only KEPT screening result (+89 Elo,
+CI [+13, +168]). HIST-1 is INCONCLUSIVE. The evaluation upgrade is
+INCONCLUSIVE. The evaluation cost came down about 18 % across three
+value-identical commits (1219 ns → 1004 ns per evaluation), each verified by
+an unchanged bench signature and node count. PR #2 stays Draft and
+`OWNER_TEST_PENDING` remains. `benches/rating-100-power-assessment.json`
+remains BLOCKED.

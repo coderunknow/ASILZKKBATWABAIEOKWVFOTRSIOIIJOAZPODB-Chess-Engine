@@ -972,3 +972,118 @@ run on a quiet machine would be required before any claim beyond the
 registered screening decision rules.
 
 The STRENGTH-1 campaign has the same property and was run the same way.
+
+---
+
+## EVAL-2 — RESULT RECORD (analysis run 2026-11-18, after the campaign)
+
+### Integrity
+
+All seven pairs were re-audited from the raw records with `scripts/audit_pair.py`,
+independently of `scripts/stats.py`:
+
+| Pair | Games | Counted | Engine errors | Uncounted | Duplicate slots | Colours | Openings | Audit |
+|---|---|---|---|---|---|---|---|---|
+| EVAL-ALL | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-MOBILITY-TAPER | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-PAWN-STRUCTURE | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-PASSER | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-SPACE | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-OUTPOSTS | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-KING-SAFETY | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+
+**560 games in total**, zero engine errors. Terminal reasons: 472 checkmate,
+63 threefold repetition, 14 insufficient material, 9 fifty-move, 2 stalemate.
+Raw evidence: `/home/user/matches/eval-*/games.jsonl` and
+`/home/user/matches/eval-*/shard{0,1}/games.jsonl`; the campaign log is
+`/home/user/matches/eval2_campaign.log`.
+
+### Results (candidate perspective, opening-clustered 95% bootstrap, seed 20261118)
+
+| Pair | Score | Score CI | Elo difference | Elo CI | Audit |
+|---|---|---|---|---|---|
+| EVAL-NONE vs EVAL-ALL | 41.5/80 = 0.519 | [0.419, 0.619] | **+13** | [−57, +84] | PASS |
+| EVAL-NONE vs EVAL-NO-MOBILITY-TAPER | 33.5/80 = 0.419 | [0.319, 0.512] | −57 | [−132, +9] | PASS |
+| EVAL-NONE vs EVAL-NO-PAWN-STRUCTURE | 42.0/80 = 0.525 | [0.456, 0.594] | +17 | [−30, +66] | PASS |
+| EVAL-NONE vs EVAL-NO-PASSER | 40.5/80 = 0.506 | [0.388, 0.625] | +4 | [−80, +89] | PASS |
+| EVAL-NONE vs EVAL-NO-SPACE | 37.5/80 = 0.469 | [0.381, 0.556] | −22 | [−84, +39] | PASS |
+| EVAL-NONE vs EVAL-NO-OUTPOSTS | 37.5/80 = 0.469 | [0.394, 0.537] | −22 | [−75, +26] | PASS |
+| EVAL-NONE vs EVAL-NO-KING-SAFETY | 40.5/80 = 0.506 | [0.406, 0.606] | +4 | [−66, +75] | PASS |
+
+### The aggregate decision
+
+**EVAL-ALL vs EVAL-NONE: INCONCLUSIVE.**
+
+The registered rule is KEPT if the 95 % CI lower bound is > 0 Elo and REJECTED
+if the upper bound is <= 0. The observed interval is **[−57, +84]**: it
+contains zero, so neither condition holds. The point estimate (+13 Elo) is
+positive but the interval is wide — the sample cannot distinguish the
+evaluation upgrade from no change.
+
+**Consequence, applied as registered:** the evaluation change is **not merged
+as a strength improvement**. The six feature flags stay in the tree as
+measurement scaffolding, which the registered rule explicitly permits. The
+evaluation is not described as a strength improvement anywhere.
+
+### The per-feature decisions
+
+The registered per-feature rule compares EVAL-ALL's point estimate with each
+ablation's. A feature is retained when EVAL-ALL is at least as good as the
+ablation; an ablation more than 40 Elo *higher* would be HARMFUL; a
+difference within 40 Elo is INDETERMINATE and the feature is retained but
+**not claimed**.
+
+| Feature | EVAL-ALL | Ablation | Difference | Decision |
+|---|---|---|---|---|
+| `FEAT_MOBILITY_TAPER` | +13 | −57 | +70 | **RETAINED** — the ablation is 70 Elo worse, well outside the 40 Elo band |
+| `FEAT_PAWN_STRUCTURE` | +13 | +17 | −4 | INDETERMINATE (retained, not claimed) |
+| `FEAT_PASSER` | +13 | +4 | +9 | INDETERMINATE (retained, not claimed) |
+| `FEAT_SPACE` | +13 | −22 | +35 | INDETERMINATE (retained, not claimed) |
+| `FEAT_OUTPOSTS` | +13 | −22 | +35 | INDETERMINATE (retained, not claimed) |
+| `FEAT_KING_SAFETY` | +13 | +4 | +9 | INDETERMINATE (retained, not claimed) |
+
+**No feature is flagged HARMFUL.** No ablation scored more than 40 Elo
+higher than EVAL-ALL, so nothing has to be removed or re-weighted on this
+evidence.
+
+**No individual feature may be claimed as a strength improvement.** Five of
+the six are INDETERMINATE by the registered rule, and the one that is not
+(the mobility taper) is supported by a single 80-game screening pair whose
+own interval [−132, +9] straddles zero. The only defensible summary is that
+the evaluation upgrade as a whole is not distinguishable from the control at
+this sample size, and that the mobility taper is the one component whose
+ablation is clearly worse.
+
+### What this does and does not say
+
+- It does **not** say the evaluation upgrade is harmful. The aggregate
+  interval [−57, +84] is consistent with a real gain of up to about 84 Elo
+  and with a real loss of up to about 57 Elo.
+- It does **not** support a claim of strength for the upgrade, for any
+  individual feature, or for the engine's absolute playing strength.
+- The one clear signal is negative for the *ablation*: turning the mobility
+  taper off costs 70 Elo relative to keeping it on. That is the only
+  per-feature comparison in this campaign that falls outside the
+  indeterminate band.
+- A confirmatory campaign with a larger sample would be needed to settle the
+  aggregate. That is a separate registered experiment and has not been run.
+
+### Binary identities of the current tree
+
+The campaign ran with the binaries registered in the EVAL-2 section above.
+Commit `a0ea236` subsequently changed the binaries without changing any
+evaluation value (see the note above). The current tree's binaries are:
+
+| ID | Binary SHA-256 (current tree) | Bench signature | Depth-10 nodes |
+|---|---|---|---|
+| EVAL-NONE | `dbf64b3e94fb9c5a07d36f58fd8dfecf0d07aed3102a803157add91714d04d2e` | `8370f143c3b76fb4` | 2,697,573 |
+| EVAL-ALL | `02ff44c73e9e01cac948903b07a786c2b2fdeaebb773f0fc3e75a843630daf12` | `b58979ca90492208` | 3,666,233 |
+| EVAL-NO-MOBILITY-TAPER | `880e00e4f515397cec7f872e998de4a9915eaecd14f526ca11e6cbd34f15f47c` | `ef9410f8cce0da89` | 3,161,626 |
+| EVAL-NO-PAWN-STRUCTURE | `ea29fad3d79fc44ad755145efd571ef540af7ab44eade0e475d04a6be6fb7790` | `c164bbabc73cfc45` | 3,335,879 |
+| EVAL-NO-PASSER | `78c5b5c3034f1179611f413d01d4386209338c27aec78240aea191d44e7ed4c8` | `ef9410f8cce0da89` | 3,590,574 |
+| EVAL-NO-SPACE | `da850fbea022c3d9f059b4430b75e4525ed9ec052cc4fc30171b93f7b4c1e606` | `e282fa6554c5cecd` | 4,547,011 |
+| EVAL-NO-OUTPOSTS | `405e29fa688dd733bd4b301340e85d57c1b7573de27f17aba3bcebcf688d61f3` | `906fe14c58ff639f` | 4,278,204 |
+| EVAL-NO-KING-SAFETY | `3b0c38603ff5ca282ae8388ce1bb2e1b214b1ab6c80f77f524057c83a066abce` | `acf066a921c1dde1` | 3,080,004 |
+
+Every bench signature and node count is identical to the campaign's
+registration, which is the verification that the searched trees are the same.
