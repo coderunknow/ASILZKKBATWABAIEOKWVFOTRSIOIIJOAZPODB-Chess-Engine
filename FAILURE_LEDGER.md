@@ -476,3 +476,75 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **Correction:** the nearest friendly pawn ahead is found directly from the
   bitboard (lowest set bit for White, highest for Black). The term is now O(1)
   per pawn and is colour-symmetric, which the new antisymmetry test confirms.
+
+## 2026-11-18 — outpost test used the wrong pawn-attack table (both directions)
+
+- **Observed:** the outpost term counted pieces that were not defended and
+  ignored pieces that were attacked by an enemy pawn. The error was invisible
+  to the existing evaluation gates: the evaluator stayed antisymmetric under
+  the board flip (the defect is itself symmetric), stayed finite, and the
+  breakdown still summed to the total.
+- **Root cause:** the pawn-attack table is *directional*. The set of squares
+  from which a pawn of colour C attacks square X is
+  `PAWN_ATTACKS_[other(C)][X]`. The outpost test used the wrong table in both
+  of its two lookups:
+  - "defended by one of our own pawns" used
+    `pawn_attacks_lookup(color, sq) & pawns`. For a White piece on d5 that is
+    `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — the squares a White pawn
+    *standing on d5* would attack. The pawns that actually *defend* d5 stand
+    on c4/e4, which is `PAWN_ATTACKS_BLACK[d5]`.
+  - "no enemy pawn attacks it" used
+    `pawn_attacks_lookup(them, sq) & enemy_pawns`. For the same piece that is
+    `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — the squares a Black pawn
+    *standing on d5* would attack. The Black pawns that actually *attack* d5
+    stand on c6/e6, which is `PAWN_ATTACKS_WHITE[d5]`.
+
+  Both lookups therefore asked "is this square attacked by a pawn of the same
+  colour as the piece".
+- **Correction:** commit `c702066`. The two lookups now use the opposite
+  tables, and the code comments say which colour each one means. The "no
+  enemy pawn can step forward to attack it" test already looked at the right
+  squares and is unchanged.
+- **Regression test added:** `outpost_requires_defence_and_safety_in_the_right_direction`
+  in `tests/eval_quality.rs` pins the two directions down with four
+  positions — a defended and unattacked knight on d5 is an outpost; an
+  undefended one is not; one attacked by a Black pawn on e6 is not; and one
+  that a Black pawn on e7 can step forward to attack is not. The test was
+  verified to FAIL on the pre-fix source and PASS on the fixed source.
+- **Consequence:** the evaluation values change, so the searched tree changes:
+  the depth-10 bench signature moves from `03e46bba31f35591` to
+  `b58979ca90492208` and the node count from 3,445,466 to 3,666,233. Every
+  binary built for the EVAL-1 campaign was made from the defective source, so
+  the whole EVAL-1 campaign was **withdrawn** and re-registered as EVAL-2 with
+  fresh binaries. The withdrawn raw records are retained unmodified under
+  `/home/user/matches/eval-*-invalidated-outpostbug/` and must not be cited.
+- **Lesson applied:** an antisymmetry test cannot catch a defect that is
+  itself symmetric. Terms that consult a *directional* table need a test that
+  exercises each direction separately, not only a test that checks the whole
+  evaluator's symmetry.
+
+## 2026-11-18 — evaluation cost grew ~40-50% per evaluation with the new terms
+
+- **Observed:** the depth-10 bench fell from ~832k NPS to ~715k NPS after the
+  evaluation upgrade, even though the tree got smaller (3,445,466 nodes
+  versus 3,666,233 is not a like-for-like comparison, but the per-evaluation
+  cost measured directly rose from ~265 ns to ~365 ns).
+- **Root cause:** two separate inefficiencies. (1) The slider attack masks
+  were computed twice per evaluation: `eval_color` runs once per side, and
+  for side X it computed the masks for X's own pieces (mobility) and again for
+  Y's pieces (king safety); the second call then computed the same masks
+  again. (2) The pawn-structure section recomputed, for every pawn, values
+  that depend only on the pawn's square.
+- **Correction:** commit `815ca47`. The masks are computed once per side and
+  shared; the pawn-structure section uses lookup tables (`FILE_NEIGHBOURS`,
+  `BEHIND_SQUARE`, `BEHIND_DIAGONALS`, `SIDE_FILES`); and `evaluate` no
+  longer routes through the ten-component `breakdown` taper, which cost ten
+  integer divisions per evaluation for values the search discarded.
+- **Verification:** the bench signature and node count are **unchanged** at
+  `b58979ca90492208` / 3,666,233, which proves the evaluation values did not
+  change — the searched tree is identical. Measured cost fell from 1219 ns to
+  1088 ns (minimum of 15 runs summed over the four `bench_eval` positions),
+  about 11%.
+- **Lesson applied:** a performance change that alters no value can be
+  verified exactly, by comparing the bench signature and node count. That
+  check was used instead of a hand-written equivalence test.

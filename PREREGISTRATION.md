@@ -782,3 +782,128 @@ attributable to the flags and not to incidental refactoring.
 - If EVAL-ALL is REJECTED or INCONCLUSIVE, the evaluation change is not
   merged; the flags stay in the tree as measurement scaffolding only, or the
   working tree is reverted.
+
+---
+
+## EVAL-2 — evaluation upgrade ablation, re-registered (2026-11-18, BEFORE any game)
+
+### Why EVAL-1 was withdrawn
+
+EVAL-1 was dispatched on 2026-11-18 with binaries built from commit `7542133`.
+While auditing the evaluation code afterwards, a **correctness defect** was
+found in the outpost term, and the fix changes the search tree:
+
+- **The defect.** The outpost test asked two questions with the same
+  pawn-attack table, and in both cases used the wrong colour. "Defended by one
+  of our own pawns" used `pawn_attacks_lookup(color, sq) & pawns`, which for a
+  White piece on d5 is `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — the squares a
+  White pawn *standing on d5* would attack. The pawns that actually *defend*
+  d5 stand on c4/e4, which is `PAWN_ATTACKS_BLACK[d5]`. "No enemy pawn
+  attacks it" used `pawn_attacks_lookup(them, sq) & enemy_pawns`, which for
+  the same piece is `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — the squares a Black
+  pawn *standing on d5* would attack, whereas the Black pawns that actually
+  *attack* d5 stand on c6/e6, which is `PAWN_ATTACKS_WHITE[d5]`.
+
+  The pawn-attack table is directional: the set of squares from which a pawn
+  of colour C attacks square X is `PAWN_ATTACKS_[other(C)][X]`. Both lookups
+  were reading that other table, so the test asked "is this square attacked by
+  a pawn of the same colour as the piece" in both places.
+
+- **Why it was not caught.** The defect is invisible to a symmetry test: it is
+  symmetric under the board flip, so the evaluator stayed antisymmetric while
+  being wrong. It is also invisible to the aggregate evaluation gates, which
+  check finiteness, bounds and antisymmetry. A dedicated test now pins the two
+  directions down explicitly with four positions.
+
+- **Correction.** Commit `c702066` fixes the two lookups and adds the
+  regression test `outpost_requires_defence_and_safety_in_the_right_direction`
+  in `tests/eval_quality.rs`. The test fails on the pre-fix source and passes
+  on the fixed source; this was verified by reverting the fix and re-running.
+
+- **Consequence for the evidence.** The fixed evaluation has different outpost
+  values, so the searched tree changes: the depth-10 bench signature moves
+  from `03e46bba31f35591` to `b58979ca90492208` and the node count from
+  3,445,466 to 3,666,233. Every EVAL-1 binary was built from the defective
+  source, so **every EVAL-1 game measures a different program from the one in
+  the tree**. The EVAL-1 evidence is therefore withdrawn.
+
+- **What is preserved.** The raw EVAL-1 game records are retained unmodified
+  on disk under `/home/user/matches/eval-*-invalidated-outpostbug/`, together
+  with the campaign log at
+  `/home/user/matches/eval_campaign_invalidated.log`. They are **not** deleted
+  and **not** rewritten; they are marked as measuring the defective build.
+  For the record, the withdrawn EVAL-1 results were: EVAL-ALL 37.5/80 =
+  0.469, CI [0.350, 0.588], Elo −22 CI [−108, +61] (INCONCLUSIVE);
+  EVAL-NO-MOBILITY-TAPER 38.0/80 = 0.475, CI [0.369, 0.588], Elo −17 CI
+  [−93, +61] (INCONCLUSIVE); EVAL-NO-PAWN-STRUCTURE reached 72 of 80 games
+  before the campaign was stopped. **None of these numbers may be cited as a
+  result.** They describe the withdrawn binaries only.
+
+### Additional change between EVAL-1 and EVAL-2
+
+Commit `815ca47` reduces the evaluation cost by about 11% without changing a
+single evaluation value. It shares the slider attack masks between the
+mobility term and the king-safety term (they were computed twice per
+evaluation), replaces the per-pawn square-dependent recomputation in the
+pawn-structure section with lookup tables, and stops `evaluate` from routing
+through the ten-component `breakdown` taper. The depth-10 bench signature and
+node count are **unchanged** at `b58979ca90492208` / 3,666,233, which is the
+proof that the evaluation values did not change.
+
+### Identities (pinned before dispatch)
+
+| ID | Description | Binary SHA-256 | Bench signature | Depth-10 nodes |
+|---|---|---|---|---|
+| EVAL-NONE | all six flags **off** (control) | `a4695a7c34875c4bc88f7a9d8f75bebf56da7983ae2b125a51bd2ad58cd233ad` | `8370f143c3b76fb4` | 2,697,573 |
+| EVAL-ALL | all six flags **on** | `0ab1d0cb1b11d064f89700af1d82cbecdd5bfcdd1f80b2c51eed82ab1a8756c3` | `b58979ca90492208` | 3,666,233 |
+| EVAL-NO-MOBILITY-TAPER | taper off | `b4cb1dfd2c2be1f47948d427bd700e3036b31fd2e2665ad57a5d0a2b56f9fc5e` | `ef9410f8cce0da89` | 3,161,626 |
+| EVAL-NO-PAWN-STRUCTURE | pawn structure off | `2e3bfdd0f7a32267f554c487462e30fd2a55e2a5fed5450336aafb8e550ca62c` | `c164bbabc73cfc45` | 3,335,879 |
+| EVAL-NO-PASSER | passer refinement off | `511e6d65b5edc1ffc963f9727eff705b48585f1e17ba8686c3c058b1db890edb` | `ef9410f8cce0da89` | 3,590,574 |
+| EVAL-NO-SPACE | space off | `47e2e22f163617fbb971c1c5637a6751ceb4ee6672e86803251a1b2a93ef4d2b` | `e282fa6554c5cecd` | 4,547,011 |
+| EVAL-NO-OUTPOSTS | outposts off | `7eb2c79e863e0fe97423d6ed47eadb10f8cad4a0a58f08254f50562ffa44b1f2` | `906fe14c58ff639f` | 4,278,204 |
+| EVAL-NO-KING-SAFETY | king safety off | `8533195993427c5cc68eca5fd9946de38fcd702367e8d3ccab105fca91e777ab` | `acf066a921c1dde1` | 3,080,004 |
+
+**Control validity check (performed before dispatch):** EVAL-NONE reproduces
+the HIST-1 bench signature (`8370f143c3b76fb4`) and node count (2,697,573)
+exactly, exactly as in EVAL-1. The flag-off evaluation is therefore still
+behaviourally identical to the parent tree.
+
+### Hypotheses, design, compute budget and decision rules
+
+**Unchanged from EVAL-1** and restated here so that EVAL-2 stands on its own:
+
+- **H-EVAL-ALL:** the six changes together improve playing strength at a
+  fixed time control.
+- **H-EVAL-<X> (per feature):** each individual feature contributes a
+  non-negative amount. A feature whose ablation (EVAL-NO-X) scores
+  *significantly higher* than EVAL-ALL is evidence that the feature is harmful
+  and must be removed.
+- Harness: `scripts/match.py`, unchanged.
+- Time control: **fixed movetime 100 ms per move** (screening only).
+- Hash: 16 MiB; single-threaded for both engines.
+- Openings: `benches/openings-20.txt` (20 openings, SHA-256
+  `97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d`).
+- Schedule: opening-major, repetition-minor, exact AB/BA colour reversal;
+  20 openings x 2 repetitions x 2 colours = **80 counted games per pair**.
+- Analysis: `scripts/stats.py --focus <candidate>` — logistic Elo difference
+  and 95% bootstrap CI resampled over **openings** (clusters), seed 20261118,
+  10,000 resamples.
+- All seven pairs are played against the same control (EVAL-NONE) so that the
+  seven estimates are directly comparable.
+- Compute budget: **<= 1.5 compute-hours** of sandbox match time.
+- **EVAL-ALL vs EVAL-NONE:** KEPT if the candidate's 95% CI lower bound is
+  > 0 Elo difference. REJECTED if the 95% CI upper bound is <= 0.
+  INCONCLUSIVE otherwise.
+- **Per feature X:** the feature is KEPT only if EVAL-ALL scores at least as
+  well as EVAL-NO-X (i.e. its point estimate is >= the ablation's). A feature
+  whose ablation point estimate is *higher* by more than 40 Elo is flagged
+  HARMFUL and must be removed or re-weighted. Features whose comparison is
+  within 40 Elo are INDETERMINATE and are retained, but only the aggregate
+  result may be claimed.
+- **No individual feature may be claimed as a strength improvement from this
+  screening.** A feature-level strength claim requires a larger sample.
+- No experiment may be described as a strength improvement from NPS, bench
+  signature or node counts alone.
+- If EVAL-ALL is REJECTED or INCONCLUSIVE, the evaluation change is not
+  merged; the flags stay in the tree as measurement scaffolding only, or the
+  working tree is reverted.
