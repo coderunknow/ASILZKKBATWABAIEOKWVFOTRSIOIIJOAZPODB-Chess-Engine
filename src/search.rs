@@ -78,7 +78,22 @@ pub struct Searcher<'a> {
     limits: Arc<Mutex<SearchLimits>>,
     eval: ClassicalEvaluator,
     killers: [[Option<Move>; 2]; MAX_PLY as usize],
+    /// Quiet-move history, indexed [side][from * 64 + to].
     history: [[i32; 64 * 64]; 2],
+    /// First-order continuation history: bonus for a quiet move to `to` played as a
+    /// reply to a previous move that ended on `prev_to`. Indexed
+    /// [side][prev_to * 64 + to].
+    cont_history: [[i32; 64 * 64]; 2],
+    /// Second-order continuation history (reply to the reply).
+    cont_history2: [[i32; 64 * 64]; 2],
+    /// Counter-move table: the move that refuted `from * 64 + to`, used to order the
+    /// opponent's reply when the same move is played again.
+    counter_move: [Option<Move>; 64 * 64],
+    /// Capture history, indexed [captured piece][from * 64 + to].
+    capture_history: [[i32; 64 * 64]; 6],
+    /// Moves played on the current search path: `path[p]` is the move made at ply `p`.
+    /// `path[ply - 1]` is therefore the move that produced the node at `ply`.
+    path: [Move; MAX_PLY as usize],
     lmr: [[i32; 256]; MAX_PLY as usize + 1],
     nodes: u64,
     seldepth: i32,
@@ -88,6 +103,28 @@ pub struct Searcher<'a> {
     /// Best move found at ply 0 in the most recent completed search call. Used for
     /// restricted-root PV construction instead of stale TT entries.
     root_best: Option<Move>,
+}
+
+/// Maximum magnitude of a single history entry. Keeps the ordering bands disjoint:
+/// three quiet-history tables can contribute at most 3 * HISTORY_MAX, which stays
+/// below the killer band.
+const HISTORY_MAX: i32 = 8_192;
+
+/// Apply a history bonus/penalty with gravity (the damping term stops old entries
+/// from dominating and bounds the value without an explicit cap).
+#[inline]
+fn apply_history(slot: &mut i32, bonus: i32) {
+    let v = *slot;
+    let damped = v - (v * bonus.abs()) / HISTORY_MAX;
+    *slot = (damped + bonus).clamp(-HISTORY_MAX, HISTORY_MAX);
+}
+
+/// Age a history table between searches (multiply by 3/4).
+#[inline]
+fn age_table(table: &mut [i32]) {
+    for v in table.iter_mut() {
+        *v = (*v * 3) / 4;
+    }
 }
 
 impl<'a> Searcher<'a> {
@@ -103,6 +140,11 @@ impl<'a> Searcher<'a> {
             eval: ClassicalEvaluator,
             killers: [[None; 2]; MAX_PLY as usize],
             history: [[0; 64 * 64]; 2],
+            cont_history: [[0; 64 * 64]; 2],
+            cont_history2: [[0; 64 * 64]; 2],
+            counter_move: [None; 64 * 64],
+            capture_history: [[0; 64 * 64]; 6],
+            path: [Move::NULL; MAX_PLY as usize],
             lmr: build_lmr_table(),
             nodes: 0,
             seldepth: 0,
@@ -155,6 +197,26 @@ impl<'a> Searcher<'a> {
         self.eval.evaluate(pos)
     }
 
+    /// The move played one ply before the current node (`Move::NULL` at the root).
+    #[inline]
+    fn prev_move(&self, ply: usize) -> Move {
+        if ply >= 1 {
+            self.path[ply - 1]
+        } else {
+            Move::NULL
+        }
+    }
+
+    /// The move played two plies before the current node.
+    #[inline]
+    fn prev_move2(&self, ply: usize) -> Move {
+        if ply >= 2 {
+            self.path[ply - 2]
+        } else {
+            Move::NULL
+        }
+    }
+
     fn move_order_score(&self, pos: &Position, m: Move, tt_move: Option<Move>, ply: usize) -> i32 {
         if let Some(tm) = tt_move {
             if m == tm {
@@ -175,10 +237,22 @@ impl<'a> Searcher<'a> {
             if m.promo != PROMO_NONE {
                 score += 20_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
             }
+            // Capture history refines the order inside the capture band.
+            if let Some(p) = captured_piece(pos, m) {
+                score += self.capture_history[p][(m.from as usize) * 64 + m.to as usize] / 4;
+            }
             return score;
         }
         if m.promo != PROMO_NONE {
             return 100_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
+        }
+        // Counter move: the reply that refuted the opponent's previous move.
+        let prev = self.prev_move(ply);
+        if prev != Move::NULL {
+            let cm = self.counter_move[(prev.from as usize) * 64 + prev.to as usize];
+            if cm == Some(m) {
+                return 95_000;
+            }
         }
         if let Some(killer) = self.killers[ply][0] {
             if m == killer {
@@ -190,7 +264,16 @@ impl<'a> Searcher<'a> {
                 return 80_000;
             }
         }
-        50_000 + self.history[us][(m.from as usize) * 64 + m.to as usize]
+        // Quiet score: main history plus the two continuation-history tables.
+        let mut h = self.history[us][(m.from as usize) * 64 + m.to as usize];
+        if prev != Move::NULL {
+            h += self.cont_history[us][(prev.to as usize) * 64 + m.to as usize];
+        }
+        let prev2 = self.prev_move2(ply);
+        if prev2 != Move::NULL {
+            h += self.cont_history2[us][(prev2.to as usize) * 64 + m.to as usize];
+        }
+        50_000 + h
     }
 
     fn order_and_score(
@@ -230,9 +313,12 @@ impl<'a> Searcher<'a> {
         self.killers = [[None; 2]; MAX_PLY as usize];
         self.root_best = None;
         for side in 0..2 {
-            for v in self.history[side].iter_mut() {
-                *v /= 2;
-            }
+            age_table(&mut self.history[side]);
+            age_table(&mut self.cont_history[side]);
+            age_table(&mut self.cont_history2[side]);
+        }
+        for p in 0..6 {
+            age_table(&mut self.capture_history[p]);
         }
 
         let legal = generate_legal_fast(pos);
@@ -551,6 +637,7 @@ impl<'a> Searcher<'a> {
             }
         }
 
+        // Futility pruning at low depths
         // One static evaluation per node, shared by the two pruning tests and by
         // the quiescence stand-pat. The evaluator is a full board scan, so evaluating
         // the same node two or three times was a measurable share of the node cost.
@@ -580,6 +667,9 @@ impl<'a> Searcher<'a> {
             let m = moves.moves[i];
             let capture = is_capture(pos, m);
             let undo = pos.make_move(m);
+            // Record the move on the search path so that the continuation history and
+            // the counter-move tables know which move led to this node.
+            self.path[ply as usize] = m;
 
             // Late move reductions (quiet moves, not in check, late in the list)
             let searched_count = searched_count_usize as i32;
@@ -600,9 +690,9 @@ impl<'a> Searcher<'a> {
                     ply + 1,
                 );
                 if reduction > 0 && s > alpha {
-                    s = -self.search(pos, depth - 1 + extension, -alpha - 1, -alpha, ply + 1);
-                }
-                if s > alpha && s < beta {
+                    // The reduced search failed high: re-search at full depth with the
+                    // FULL window. A null-window re-search returns a fail-low bound,
+                    // which is a pessimistic estimate of the move's true value.
                     s = -self.search(pos, depth - 1 + extension, -beta, -alpha, ply + 1);
                 }
                 s
@@ -620,18 +710,68 @@ impl<'a> Searcher<'a> {
                 alpha = score;
             }
             if alpha >= beta {
-                if !capture {
+                let side = pos.side;
+                let bonus = depth * depth;
+                if capture {
+                    // Capture history: a capture that caused the cutoff is usually a
+                    // good capture, which refines the order inside the capture band.
+                    if let Some(p) = captured_piece(pos, m) {
+                        apply_history(
+                            &mut self.capture_history[p][(m.from as usize) * 64 + m.to as usize],
+                            bonus,
+                        );
+                    }
+                } else {
                     let ply_idx = ply as usize;
                     self.killers[ply_idx][1] = self.killers[ply_idx][0];
                     self.killers[ply_idx][0] = Some(m);
-                    let h = &mut self.history[pos.side][(m.from as usize) * 64 + m.to as usize];
-                    *h = (*h + depth * depth).min(100_000);
+                    let prev = self.prev_move(ply_idx);
+                    let prev2 = self.prev_move2(ply_idx);
+                    // Main history.
+                    apply_history(
+                        &mut self.history[side][(m.from as usize) * 64 + m.to as usize],
+                        bonus,
+                    );
+                    // Continuation history (first and second order).
+                    if prev != Move::NULL {
+                        apply_history(
+                            &mut self.cont_history[side][(prev.to as usize) * 64 + m.to as usize],
+                            bonus,
+                        );
+                    }
+                    if prev2 != Move::NULL {
+                        apply_history(
+                            &mut self.cont_history2[side][(prev2.to as usize) * 64 + m.to as usize],
+                            bonus,
+                        );
+                    }
+                    // Counter move: `m` refuted `prev`.
+                    if prev != Move::NULL {
+                        self.counter_move[(prev.from as usize) * 64 + prev.to as usize] = Some(m);
+                    }
+                    // Penalise the quiet moves that were tried and failed.
                     for q in quiet_tried.iter() {
                         if *q == Move::NULL {
                             break;
                         }
-                        let h = &mut self.history[pos.side][(q.from as usize) * 64 + q.to as usize];
-                        *h = (*h - depth * depth).max(0);
+                        apply_history(
+                            &mut self.history[side][(q.from as usize) * 64 + q.to as usize],
+                            -bonus,
+                        );
+                        if prev != Move::NULL {
+                            apply_history(
+                                &mut self.cont_history[side]
+                                    [(prev.to as usize) * 64 + q.to as usize],
+                                -bonus,
+                            );
+                        }
+                        if prev2 != Move::NULL {
+                            apply_history(
+                                &mut self.cont_history2[side]
+                                    [(prev2.to as usize) * 64 + q.to as usize],
+                                -bonus,
+                            );
+                        }
                     }
                 }
                 break;
@@ -681,8 +821,8 @@ impl<'a> Searcher<'a> {
         self.quiesce_with_eval(pos, alpha, beta, ply, None)
     }
 
-    /// Quiescence search that reuses an already-computed static evaluation.
-    /// `eval` is `Some(v)` when the caller has just evaluated this node.
+    /// Quiescence search. `eval` carries a static evaluation of `pos` that the caller
+    /// already computed (the futility-pruning path), avoiding a second board scan.
     fn quiesce_with_eval(
         &mut self,
         pos: &mut Position,
