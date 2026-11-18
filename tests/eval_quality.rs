@@ -187,3 +187,104 @@ fn outpost_requires_defence_and_safety_in_the_right_direction() {
         b.outposts
     );
 }
+
+/// Every evaluation term must point the same way for White as for Black.
+///
+/// The antisymmetry gate above cannot catch a term that is wrong in the same
+/// way for both colours — a term that rewards the *enemy's* pawns, or that
+/// measures the distance to the wrong king, is still antisymmetric. The
+/// 2026-11-18 outpost defect was exactly that: it was symmetric and wrong.
+///
+/// So each term is checked here directly, from the breakdown, on positions
+/// where the correct direction is unambiguous.
+#[test]
+fn every_term_has_the_right_direction() {
+    // --- pawns: an isolated pawn is worse than a connected one -----------
+    // White pawn c2 next to a White pawn b2: connected.
+    let connected = Position::from_fen("4k3/8/8/8/8/8/1PP5/4K3 w - - 0 1").unwrap();
+    // White pawn c2 with no neighbour: isolated.
+    let isolated = Position::from_fen("4k3/8/8/8/8/8/2P5/4K3 w - - 0 1").unwrap();
+    // (Both pawns are on rank 2, which is legal; the FEN parser rejects a pawn
+    // on rank 1 or rank 8 only.)
+    assert!(
+        breakdown(&connected).pawns > breakdown(&isolated).pawns,
+        "connected pawns must score better than an isolated pawn"
+    );
+
+    // --- pawns: a doubled structure is worse than the same two pawns on
+    // two files. Comparing against a *lone* pawn would not isolate the
+    // doubling penalty, because removing the front pawn also removes its
+    // passer and space bonuses, which are worth more than the penalty. The
+    // same two pawns, on a2+a3 versus a2+b3, differ only in the doubling.
+    let doubled = Position::from_fen("4k3/8/8/8/8/P7/P7/4K3 w - - 0 1").unwrap();
+    let spread = Position::from_fen("4k3/8/8/8/8/1P6/P7/4K3 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&doubled).pawns < breakdown(&spread).pawns,
+        "a doubled pawn structure must score worse on the pawn term than the same two pawns on two files"
+    );
+
+    // --- space: an advanced pawn on the enemy side is worth more ---------
+    // A White pawn deep in Black's half versus one on its own back rank.
+    let advanced = Position::from_fen("4k3/8/8/3P4/8/8/8/4K3 w - - 0 1").unwrap();
+    let home = Position::from_fen("4k3/8/8/8/8/8/3P4/4K3 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&advanced).space > breakdown(&home).space,
+        "an advanced pawn must claim more space"
+    );
+
+    // --- rook file: an open file is better than a blocked one ------------
+    let open = Position::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 0 1").unwrap();
+    let blocked = Position::from_fen("4k3/8/8/8/8/8/P7/R3K3 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&open).rook_file > breakdown(&blocked).rook_file,
+        "a rook on an open file must score better than one behind a pawn"
+    );
+
+    // --- rook file: the seventh rank is worth something -------------------
+    let seventh = Position::from_fen("4k3/R7/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+    let back = Position::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&seventh).rook_file > breakdown(&back).rook_file,
+        "a rook on the seventh rank must score better than on the first"
+    );
+
+    // --- king safety: it must measure the MOVER's own danger --------------
+    // The breakdown is signed so that positive means good for the side to
+    // move. A Black queen on f2 attacks the White king on e1, and it is White
+    // to move, so the term must be negative: the mover's king is the one in
+    // danger.
+    //
+    // The mirror of this position (Black to move with the Black king exposed)
+    // is not usable here: the FEN parser rejects a position in which the side
+    // to move is attacking the opponent's king, and the mirror has the wrong
+    // side to move for that rule.
+    let mover_exposed = Position::from_fen("4k3/8/8/8/8/8/5q2/4K3 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&mover_exposed).king_safety < 0,
+        "an attacked king must be a negative king-safety term for the mover"
+    );
+
+    // --- king safety: a pawn shelter is worth something -------------------
+    let sheltered = Position::from_fen("4k3/8/8/8/8/8/3PPP2/3K4 w - - 0 1").unwrap();
+    let bare = Position::from_fen("4k3/8/8/8/8/8/8/3K4 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&sheltered).king_safety > breakdown(&bare).king_safety,
+        "a pawn shelter must be worth something"
+    );
+
+    // --- mobility: more squares is better, for the side that owns the piece
+    let open_rook = Position::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 0 1").unwrap();
+    let boxed_rook = Position::from_fen("4k3/8/8/8/8/8/8/RN2K1NR w - - 0 1").unwrap();
+    assert!(
+        breakdown(&open_rook).mobility > breakdown(&boxed_rook).mobility,
+        "a rook with more squares must score better on mobility"
+    );
+
+    // --- bishop pair: two bishops beat one --------------------------------
+    let pair = Position::from_fen("4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1").unwrap();
+    let single = Position::from_fen("4k3/8/8/8/8/8/8/2B1K3 w - - 0 1").unwrap();
+    assert!(
+        breakdown(&pair).bishop_pair > breakdown(&single).bishop_pair,
+        "the bishop pair must be worth something"
+    );
+}
