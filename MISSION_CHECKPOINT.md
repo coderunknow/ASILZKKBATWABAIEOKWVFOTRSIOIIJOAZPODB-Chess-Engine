@@ -212,3 +212,37 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
 - R-05 (claimed i16 clamp of mate scores at high ply): NOT REPRODUCED as stated. MATE_SCORE (30,000) + MAX_PLY (128) = 30,128 < i16::MAX. Added regression tests `tt::mate_score_range_tests` that pin the invariant and the exact round trip at ply 127.
 - Verification run at the head after R-08 (before this commit): CPW perft matrix subset (22 counts across startpos, Kiwipete, positions 3-5) exact; DIFTEST default (300 games) PASSED, 2,321 perft-checked positions, 0 mismatches (python-chess 1.11.2, from index version 1.999 per docs/ENVIRONMENT.md); DIFTEST subset (60 games, seed 1234) PASSED.
 - MSRV 1.80 build: NOT VERIFIED. No Rust 1.80 toolchain is available through the npm mirror and rustup is blocked. Blocker recorded.
+
+- 2026-11-18 — the outpost term used the wrong pawn-attack table in both of its
+  lookups (the table is directional: the squares from which a pawn of colour C
+  attacks square X are `PAWN_ATTACKS_[other(C)][X]`). The defect is symmetric
+  under the board flip, so the antisymmetry gate was satisfied by a wrong
+  evaluator — a symmetry test cannot catch a defect that is itself symmetric.
+  FIXED in `c702066`, with a regression test that was verified to fail on the
+  pre-fix source, plus `pawn_attack_direction_convention_holds` and
+  `every_term_has_the_right_direction`.
+- Consequence: the evaluation values change, so the searched tree changes
+  (bench signature `03e46bba31f35591` → `b58979ca90492208`, 3,445,466 →
+  3,666,233 nodes). The EVAL-1 campaign was **withdrawn** because every one of
+  its binaries was built from the defective source; the raw records are
+  retained unmodified and are not citable. Re-registered and re-dispatched as
+  EVAL-2 with seven fresh binaries.
+- Evaluation cost: measured at 24.5 % of node time. Three value-identical
+  commits cut it by about 18 % (1219 ns → 996 ns per evaluation, idle machine,
+  minimum of 20 runs over the four `bench_eval` positions): sharing the slider
+  attack masks between the mobility and king-safety terms, replacing the
+  per-pawn square-dependent recomputation with lookup tables, and a
+  `const FULL` parameter so the fast path stops writing the per-component
+  fields it discards. Verified by an unchanged bench signature and node count
+  throughout, and additionally by a zero-difference component breakdown over
+  ten positions.
+- EVAL-2 result (560 games, zero engine errors, all seven pairs passing the
+  schedule audit): **EVAL-ALL vs EVAL-NONE is INCONCLUSIVE** (+13 Elo, CI
+  [−57, +84]). The evaluation upgrade is not merged as a strength improvement;
+  the six flags remain as measurement scaffolding. No feature is HARMFUL;
+  turning the mobility taper off is 70 Elo worse than keeping it on, the only
+  comparison outside the 40-Elo indeterminate band.
+- Gates at the head: fmt clean, clippy `-D warnings` clean, the full release
+  test suite green (including 5 evaluation gates and 5 fast-legality tests),
+  all 23 fast-perft counts matching, CI green on Linux/Windows/Rust 1.80, and
+  anchor verification passing 13/13 with the corrected signature.

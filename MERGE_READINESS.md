@@ -102,3 +102,36 @@ The first CI run after adding engine-SHA isolation (44067364552) failed the new 
 ## 2026-11-17 — Windows newline portability issue
 
 The c564c5c exact-head CI was not green: Ubuntu and MSRV passed, but Windows failed the power-report smoke because of CRLF checkout conversion of committed raw evidence. A targeted cross-platform JSONL hash normalization and tamper test are prepared. Keep full CI unchecked until the follow-up commit is green on Linux and Windows.
+
+## 2026-11-18 — exact-head validation for the throughput / evaluation work
+
+CI at the branch head passed on Ubuntu, Windows and Rust 1.80 MSRV, including
+the corrected suite selector, all Python and Rust test suites, the release
+build, the UCI handshake and the perft checks. Anchor verification passed
+13/13 and recorded `bench_signature=b58979ca90492208` on the runner, which
+matches the tree exactly. The Windows x86-64 release artifact was produced.
+
+The `anchor-verify` workflow had pinned the pre-fix bench signature
+`03e46bba31f35591`, which is why run 44327388368 failed; the workflow is
+corrected in this branch.
+
+**Still not merge-ready, and deliberately so:**
+
+- **The evaluation upgrade is INCONCLUSIVE.** EVAL-ALL vs EVAL-NONE is
+  +13 Elo with CI [−57, +84]. Under the registered rule the change is not
+  merged as a strength improvement and the six feature flags stay in the tree
+  as measurement scaffolding only.
+- **Only one screening result is KEPT** (SPEED-1, +89 Elo CI [+13, +168]).
+  HIST-1 and the evaluation work are both inconclusive.
+- **No absolute rating.** The strict 2,000 Elo gate is not met; the rating is
+  UNKNOWN. `benches/rating-100-power-assessment.json` remains BLOCKED with
+  `eligible_for_confirmatory_dispatch=false`.
+- **The owner has not tested the Windows binary.** `OWNER_TEST_PENDING`
+  remains.
+- **PR #2 stays Draft.** No merge, tag or release has been performed, and
+  those require explicit user authorization separate from merge-readiness.
+
+The branch is in a coherent and honest state: the correctness defect is
+fixed and regression-tested, the cost work is verified value-identical, the
+withdrawn campaign is withdrawn in the record rather than quietly replaced,
+and the inconclusive results are labelled inconclusive.
