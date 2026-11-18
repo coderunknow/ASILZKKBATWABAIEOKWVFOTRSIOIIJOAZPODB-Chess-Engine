@@ -13,7 +13,7 @@ use crate::attack;
 use crate::eval::{
     ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_SCORE, PIECE_VALUE_MG,
 };
-use crate::movegen::{generate_legal, in_check};
+use crate::movegen::{generate_legal_fast, in_check};
 use crate::position::Position;
 use crate::tt::{TranspositionTable, BOUND_EXACT, BOUND_LOWER, BOUND_UPPER};
 use crate::types::*;
@@ -235,7 +235,7 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        let legal = generate_legal(pos);
+        let legal = generate_legal_fast(pos);
         let mut roots: Vec<Move> = legal.iter().copied().collect();
         if let Some(ref only) = root_moves {
             roots.retain(|m| only.contains(m));
@@ -431,7 +431,7 @@ impl<'a> Searcher<'a> {
             let key = pos.hash;
             match self.tt.probe_move(key) {
                 Some(m) => {
-                    let legal = generate_legal(&mut pos);
+                    let legal = generate_legal_fast(&mut pos);
                     if !legal.iter().any(|&x| x == m) {
                         break;
                     }
@@ -470,7 +470,7 @@ impl<'a> Searcher<'a> {
             return DRAW_SCORE;
         }
         if ply > 0 && pos.is_repetition() {
-            if in_chk && generate_legal(pos).len == 0 {
+            if in_chk && generate_legal_fast(pos).len == 0 {
                 return -MATE_SCORE + ply;
             }
             return DRAW_SCORE;
@@ -503,7 +503,7 @@ impl<'a> Searcher<'a> {
 
         // Terminal (no legal moves) BEFORE any pruning/fail-soft heuristic:
         // mate takes precedence over draw rules; stalemate is a draw.
-        let mut moves = generate_legal(pos);
+        let mut moves = generate_legal_fast(pos);
         if ply == 0 {
             if let Some(ref only) = self.root_moves {
                 let mut j = 0usize;
@@ -706,7 +706,7 @@ impl<'a> Searcher<'a> {
 
         // Terminal BEFORE the stand-pat cutoffs: stand-pat is only valid when the side
         // to move has at least one legal move. Stalemate is a draw; mate is scored.
-        let mut moves = generate_legal(pos);
+        let mut moves = generate_legal_fast(pos);
         if moves.len == 0 {
             return if in_chk {
                 -MATE_SCORE + ply
@@ -990,11 +990,11 @@ mod see_tests {
 #[cfg(test)]
 mod draw_rule_tests {
     use super::*;
-    use crate::movegen::generate_legal;
+    use crate::movegen::generate_legal_fast;
     use std::sync::atomic::AtomicBool;
 
     fn play(pos: &mut Position, uci: &str) {
-        let legal = generate_legal(pos);
+        let legal = generate_legal_fast(pos);
         let m = legal
             .iter()
             .copied()

@@ -17,6 +17,7 @@ fn main() {
             std::process::exit(2);
         }
         Some("perft") => cmd_perft(&args[2..]),
+        Some("perft-fast") => cmd_perft_fast(&args[2..]),
         Some("divide") => cmd_divide(&args[2..]),
         Some("bench") => cmd_bench(),
         Some("uci") => flawless::uci::run_uci(),
@@ -58,6 +59,39 @@ fn cmd_perft(args: &[String]) {
     let dt = t.elapsed();
     println!(
         "perft({depth}) = {nodes}  ({:.3}s, {:.2}M nodes/s)",
+        dt.as_secs_f64(),
+        nodes as f64 / dt.as_secs_f64() / 1e6
+    );
+}
+
+/// Perft through the FAST legality filter (analytic pins/checks) instead of the
+/// reference make/unmake test. Used to validate the filter against the published
+/// perft matrix.
+fn cmd_perft_fast(args: &[String]) {
+    let depth: u32 = match args.first().and_then(|s| s.parse().ok()) {
+        Some(d) => d,
+        None => {
+            eprintln!("usage: perft-fast <depth> [fen]");
+            std::process::exit(2);
+        }
+    };
+    let fen = args.get(1).map(|s| s.as_str());
+    let mut pos = match fen {
+        Some(f) => match Position::from_fen(f) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        },
+        None => Position::startpos(),
+    };
+    flawless::attack::init_attacks();
+    let t = Instant::now();
+    let nodes = movegen::perft_fast(&mut pos, depth);
+    let dt = t.elapsed();
+    println!(
+        "perft_fast({depth}) = {nodes}  ({:.3}s, {:.2}M nodes/s)",
         dt.as_secs_f64(),
         nodes as f64 / dt.as_secs_f64() / 1e6
     );

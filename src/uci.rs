@@ -9,7 +9,7 @@
 //! primitives (AtomicBool + Arc<Mutex<SearchLimits>>).
 
 use crate::eval::MATE_SCORE;
-use crate::movegen::generate_legal;
+use crate::movegen::generate_legal_fast;
 use crate::position::Position;
 use crate::search::{SearchLimits, SearchProgress, SearchResult, Searcher};
 use crate::tt::TranspositionTable;
@@ -190,7 +190,7 @@ impl UciEngine {
                 rejected(format!("malformed move {mv}"), &mut self.position_invalid);
                 return;
             };
-            let legal = generate_legal(&mut pos);
+            let legal = generate_legal_fast(&mut pos);
             match legal.iter().find(|&&x| x == m) {
                 Some(&legal_m) => {
                     pos.make_move(legal_m);
@@ -328,7 +328,7 @@ impl UciEngine {
 
         // Fallback legal move in case the search thread dies unexpectedly —
         // the GUI must always receive a bestmove.
-        let fallback_move = generate_legal(&mut self.pos).iter().next().copied();
+        let fallback_move = generate_legal_fast(&mut self.pos).iter().next().copied();
         // go infinite / go ponder / bare go: bestmove is held until stop/ponderhit.
         let hold = Arc::new(AtomicBool::new(limits.infinite));
         let printed = Arc::new(AtomicBool::new(false));
