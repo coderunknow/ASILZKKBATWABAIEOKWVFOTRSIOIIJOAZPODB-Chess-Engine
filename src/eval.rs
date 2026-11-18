@@ -420,8 +420,8 @@ impl Evaluator for ClassicalEvaluator {
         let phase = game_phase(pos);
         let white = SliderMasks::new(pos, WHITE);
         let black = SliderMasks::new(pos, BLACK);
-        let w = eval_color(pos, WHITE, true, &white, &black);
-        let b = eval_color(pos, BLACK, false, &black, &white);
+        let w = eval_color::<false>(pos, WHITE, true, &white, &black);
+        let b = eval_color::<false>(pos, BLACK, false, &black, &white);
         let mg = w.mg - b.mg;
         let eg = w.eg - b.eg;
         let tapered = (mg * phase + eg * (TOTAL_PHASE - phase)) / TOTAL_PHASE;
@@ -520,7 +520,7 @@ impl SliderMasks {
     }
 }
 
-fn eval_color(
+fn eval_color<const FULL: bool>(
     pos: &Position,
     color: usize,
     is_white: bool,
@@ -561,10 +561,12 @@ fn eval_color(
             let sq = lsb(bits);
             bits &= bits - 1;
             let tsq = if is_white { sq } else { mirror_sq(sq) } as usize;
-            out.material_mg += PIECE_VALUE_MG[piece];
-            out.material_eg += PIECE_VALUE_EG[piece];
-            out.pst_mg += PST_MG[piece][tsq];
-            out.pst_eg += PST_EG[piece][tsq];
+            if FULL {
+                out.material_mg += PIECE_VALUE_MG[piece];
+                out.material_eg += PIECE_VALUE_EG[piece];
+                out.pst_mg += PST_MG[piece][tsq];
+                out.pst_eg += PST_EG[piece][tsq];
+            }
             out.mg += PIECE_VALUE_MG[piece] + PST_MG[piece][tsq];
             out.eg += PIECE_VALUE_EG[piece] + PST_EG[piece][tsq];
             if piece == BISHOP {
@@ -617,8 +619,10 @@ fn eval_color(
             mobility_piece(combined, 1, 1, 9);
         }
     }
-    out.mobility_mg = mob_mg;
-    out.mobility_eg = mob_eg;
+    if FULL {
+        out.mobility_mg = mob_mg;
+        out.mobility_eg = mob_eg;
+    }
     out.mg += mob_mg;
     out.eg += mob_eg;
 
@@ -749,10 +753,12 @@ fn eval_color(
             pscore_eg += eg;
         }
     }
-    out.pawns_mg = pscore_mg;
-    out.pawns_eg = pscore_eg;
-    out.space_mg = space;
-    out.space_eg = space / 4;
+    if FULL {
+        out.pawns_mg = pscore_mg;
+        out.pawns_eg = pscore_eg;
+        out.space_mg = space;
+        out.space_eg = space / 4;
+    }
     out.mg += pscore_mg + space;
     out.eg += pscore_eg + space / 4;
 
@@ -783,8 +789,10 @@ fn eval_color(
             rfile_eg += 22;
         }
     }
-    out.rook_file_mg = rfile_mg;
-    out.rook_file_eg = rfile_eg;
+    if FULL {
+        out.rook_file_mg = rfile_mg;
+        out.rook_file_eg = rfile_eg;
+    }
     out.mg += rfile_mg;
     out.eg += rfile_eg;
 
@@ -836,8 +844,10 @@ fn eval_color(
             }
         }
     }
-    out.outposts_mg = outpost_mg;
-    out.outposts_eg = outpost_eg;
+    if FULL {
+        out.outposts_mg = outpost_mg;
+        out.outposts_eg = outpost_eg;
+    }
     out.mg += outpost_mg;
     out.eg += outpost_eg;
 
@@ -950,8 +960,10 @@ fn eval_color(
         // shelter terms no longer apply.
         kscore -= units * units / 28 + units;
     }
-    out.king_safety_mg = kscore;
-    out.king_safety_eg = kscore / 4;
+    if FULL {
+        out.king_safety_mg = kscore;
+        out.king_safety_eg = kscore / 4;
+    }
     out.mg += kscore;
     out.eg += kscore / 4;
 
@@ -974,8 +986,8 @@ pub fn breakdown(pos: &Position) -> EvalBreakdown {
 
     let white = SliderMasks::new(pos, WHITE);
     let black = SliderMasks::new(pos, BLACK);
-    let w = eval_color(pos, WHITE, true, &white, &black);
-    let b = eval_color(pos, BLACK, false, &black, &white);
+    let w = eval_color::<true>(pos, WHITE, true, &white, &black);
+    let b = eval_color::<true>(pos, BLACK, false, &black, &white);
 
     let mg = w.mg - b.mg;
     let eg = w.eg - b.eg;
