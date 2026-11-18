@@ -412,3 +412,42 @@
 - CI 44067826990: Ubuntu passed; Windows failed during power-report smoke because the raw SCREEN-2 games file was checked out as CRLF while its manifest merged_sha256 was generated from LF on Ubuntu.
 - The game records were unchanged; this was cross-platform Git newline conversion. Added a logical-JSONL SHA helper that canonicalizes line endings only, preserving every record, order and content. Added exact LF attributes for the two SCREEN-2 evidence files, plus regression tests simulating CRLF checkout and record tampering.
 - No evidence was changed and no rating games launched. Power report remains ENGINE-1-specific and BLOCKED. Rerun exact-head CI.
+
+## 2026-11-18 — throughput work, STRENGTH-1 screening, evaluation rewrite
+
+- Verified the remote state first: `origin/main` is at `5e36b06`, PR #1 is
+  merged, no open PRs, and the branch `arena/8259ce1c-flawlesschess` was
+  created from that exact commit. Nothing was merged, tagged or released.
+- Rebuilt the Rust toolchain (1.99.0) and the Python environment from the npm
+  and PyPI mirrors after the sandbox was restored; recorded the toolchain
+  hashes and the reason in `docs/ENVIRONMENT.md`.
+- Established a pre-change baseline: source identity, binary SHA-256, fmt,
+  clippy `-D warnings`, the full release test suite, the release build, the
+  23-count fast-perft matrix, and a fixed-depth-10 bench signature with node
+  count and NPS.
+- Landed the analytic fast legality filter (`cd17da0`): identical searched
+  tree, +78 % throughput. Added `tests/fast_legality.rs` as a differential
+  suite against the reference generator, covering random playouts, tactical
+  positions, en-passant discovered checks and perft.
+- Ran the STRENGTH-1 screening campaign (80 counted games per pair, exact
+  AB/BA colour reversal, opening-clustered bootstrap). SPEED-1 is **KEPT**
+  (+89 Elo, CI [+13, +168]); HIST-1 is **INCONCLUSIVE** (−66 Elo, CI
+  [−142, +9]). Neither result is reported as an absolute rating.
+- Found and corrected a reporting defect in the campaign runner (it analysed
+  the baseline's perspective where the registration specified the candidate's).
+  The raw game records were never modified; the registered estimator was
+  re-run on them with the correct focus.
+- Rewrote the evaluation with six independently measurable features behind
+  `const` flags, made the breakdown an exact decomposition of the tapered
+  score, and added `tests/eval_quality.rs` (antisymmetry under the board flip,
+  positional sanity, finiteness).
+- Verified the ablation control BEFORE dispatch: EVAL-NONE reproduces the
+  parent tree's bench signature and node count exactly. Two defects found in
+  the process (mobility "off" weights, and a space term that was never applied)
+  are recorded in `FAILURE_LEDGER.md`.
+- Registered EVAL-1 (seven matched pairs against one control) with fixed
+  decision rules before dispatching it.
+- Split the working tree into a reviewable commit series (throughput, history
+  tables, preregistration, evaluation, tests, results) and verified fmt,
+  clippy `-D warnings`, the full release test suite and the perft matrix at the
+  head.

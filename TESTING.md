@@ -128,3 +128,35 @@ CI run 44067364552 on 29b627e: test_make_batch_dispatch passed (7/7); test_power
 ## 2026-11-17 — Windows CRLF regression
 
 CI run 44067826990: Ubuntu success; Windows failed power smoke on a raw SCREEN-2 games.jsonl merged hash due CRLF checkout. A unit test now simulates CRLF while preserving the manifest hash, and another confirms modifying a record still fails the hash check. Exact LF attributes are added for both SCREEN-2 games files. Full CI rerun is required.
+
+## 2026-11-18 — analytic fast legality filter (reference-vs-fast differential)
+
+`tests/fast_legality.rs` compares the analytic legality filter against the reference
+make/unmake generator on the same positions, so the optimisation that produced the
++78 % throughput is covered by a differential test rather than by assertion:
+
+| Test | What it covers |
+|---|---|
+| `fast_legality_matches_reference_on_random_playouts` | seeded random playouts; the legal move sets must be identical at every ply |
+| `fast_legality_matches_reference_on_tactical_positions` | hand-picked tactical positions (pins, checks, evasions) |
+| `fast_legality_handles_en_passant_discovered_checks` | en-passant captures that uncover a rook or bishop line |
+| `fast_legality_perft_matches_reference_counts` | perft through the fast filter must match the published reference counts |
+
+The 23-count fast-perft matrix is run separately (see below); all 23 counts match
+exactly, including startpos depth 6 = 119,060,324, Kiwipete depth 5 = 193,690,690,
+CPW pos3 depth 6 = 11,030,083 and CPW pos4 depth 6 = 706,045,033.
+
+## 2026-11-18 — evaluation correctness gates
+
+`tests/eval_quality.rs` adds three gates that are independent of any search or match
+result, so the evaluation can be trusted before it is measured in games:
+
+| Test | What it covers |
+|---|---|
+| `evaluation_is_antisymmetric_under_board_flip` | mirror the position across the horizontal midline and swap colours; the score must be negated up to the tempo constant. This catches a sign error or a colour-specific term anywhere in the evaluator. |
+| `evaluation_scores_obvious_positions_correctly` | a rook up scores above +300 and below −300; a passed pawn on the 7th is worth more than on the 2nd; the bishop pair is worth something; an exposed king is worse than a safe one |
+| `evaluation_is_finite_and_bounded` | the score stays in range and the breakdown components add up to the total (the breakdown is an exact tapered decomposition) |
+
+The antisymmetry gate is the important one: it is what would have caught the
+candidate-pawn gap being colour-asymmetric, and it now guards every future change to
+the evaluator.

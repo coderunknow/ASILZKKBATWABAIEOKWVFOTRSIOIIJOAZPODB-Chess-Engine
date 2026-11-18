@@ -10,10 +10,42 @@ Facts here are verified state, not plans. Historical records: AGENTS_LOG.md, DES
 
 ## Identity
 
-- PR: https://github.com/coderunknow/FlawLessChess/pull/1 (open, **draft**, not merged)
-- Branch: `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij`
-- Base: `main` @ `98b1a00203183d9c7ccb175f7d6eb8f5ef5eb429`
-- Current verified PR head before this implementation commit: `dcd00605d728f0ee02aa887a144cecd866edef18` (API-checked 2026-11-17; PR remains open/draft/unmerged).
+- PR: PR #1 (https://github.com/coderunknow/FlawLessChess/pull/1) was **merged** on
+  2026-11-14 by the repository owner; it is closed and is not the vehicle for this work.
+  A new **Draft** PR is required for the 2026-11-18 branch and is not yet open.
+- Branch: `arena/8259ce1c-flawlesschess`
+- Base: `main` @ `5e36b06a7b0d7417d57205e52010ea98529b2a4f` (re-verified against the
+  remote on 2026-11-18)
+- Local head at this checkpoint: `6078322` (the commit series is rewritten locally; the
+  exact head must be re-verified after pushing).
+- **The Windows artifact has not been produced and the owner has not tested a binary:
+  `OWNER_TEST_PENDING` remains in force.**
+
+## 2026-11-18 work item (supersedes the 2026-11-17 item above)
+
+- Current work item: finish the EVAL-1 ablation campaign, apply the registered
+  decision rules per evaluation feature, push the resulting series, open the Draft PR,
+  run CI at the exact head SHA, and produce the Windows x86-64 delivery ZIP.
+- STRENGTH-1 screening is COMPLETE and its result is recorded:
+  SPEED-1 **KEPT** (+89 Elo, CI [+13, +168]); HIST-1 **INCONCLUSIVE**
+  (−66 Elo, CI [−142, +9]).
+- EVAL-1 (evaluation ablation, seven matched pairs against one control) is
+  **RUNNING**; the decision rules were registered before dispatch.
+
+## 2026-11-18 frozen identities
+
+- BASE binary (`5e36b06`): SHA-256 `a5d9aa980b624ce958b3fc399513a5029c99187f16d673a5490a615d184eff99`;
+  bench signature `141943aa23b3fc68`; 2,530,885 nodes.
+- SPEED-1 binary (`cd17da0`): SHA-256 `d99756b13b640b8142eff2fa5c1b2dbfd39caf0dfc17ea01845dbf0193ed18c3`;
+  identical signature and node count to BASE.
+- HIST-1 binary: SHA-256 `9302fb61810adc10f4833a0278d860089467de2a88e37f0a4b140ba038f606a6`;
+  signature `8370f143c3b76fb4`; 2,697,573 nodes.
+- EVAL-1 control (EVAL-NONE, all flags off): SHA-256
+  `1fa874d230537b311b12b730417e2faaae033640663a7d8b1bec9a3d216a5a0c`; reproduces the
+  HIST-1 signature and node count exactly (control validity verified before dispatch).
+- EVAL-1 candidate (EVAL-ALL): SHA-256
+  `7fddfc05e3d60d681dcdf1422c1ba5e79a2e56a52fe596b3fb82ceffbbab3dc3`;
+  signature `03e46bba31f35591`; 3,445,466 nodes.
 
 ## Workflow state (API-verified 2026-11-17)
 

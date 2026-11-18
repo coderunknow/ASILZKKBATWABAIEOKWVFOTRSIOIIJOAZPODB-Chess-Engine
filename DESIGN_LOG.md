@@ -408,3 +408,99 @@ DRAFT ONLY — no code changes under this entry.
 - CI run 44067826990 passed Ubuntu but failed Windows in the power-analysis smoke when checking the committed SCREEN-2 games.jsonl against merged_sha256. Git for Windows checked out LF JSONL as CRLF, while the evidence aggregator computed manifest hashes on Linux LF bytes.
 - The power analyzer now hashes logical UTF-8 JSONL content after canonicalizing only line endings to LF. Record content, ordering, whitespace and record boundaries remain covered by SHA-256. Exact LF attributes were added for the two source evidence files, plus tests for CRLF portability and actual record tampering.
 - No evidence was modified or rewritten; no confirmatory game ran. The power report remains ENGINE-1-specific and BLOCKED. Full exact-head CI is required.
+
+## 2026-11-18 — Throughput work, STRENGTH-1 screening, and the evaluation rewrite
+
+### Analytic fast legality filter (already on `main` as `cd17da0`)
+
+The search used to make each move, scan the resulting position for legality, and
+unmake it if illegal. The new filter computes pins and check evasion directly
+from the current occupancy, so illegal moves are never generated in the first
+place. The searched tree is provably unchanged — the fixed-depth-10 bench
+signature and node count are identical to the previous build — while throughput
+rose from ~441 k nps to ~785 k nps (+78 %).
+
+### One static evaluation per node
+
+The classical evaluator is a full board scan, and the search performed it up to
+three times for the same node: once for futility pruning, once for reverse
+futility pruning, and once more for the quiescence stand-pat. The static
+evaluation is now computed once and threaded into quiescence through
+`quiesce_with_eval`. This is a pure throughput change with an unchanged tree.
+
+### Precomputed file and ahead-rank masks
+
+`file_mask` and `ahead_ranks_mask` rebuilt bitboards with a loop on every call,
+and `ahead_ranks_mask` was called once per pawn. Both are now compile-time
+tables with inline lookups.
+
+### History tables, counter moves, capture history, full-window LMR re-search
+
+Move ordering gained first- and second-order continuation history, a
+counter-move table and capture history. All history tables use gravity-damped
+updates and are aged between searches, and the search path is tracked so the
+previous two moves are known at each node.
+
+Separately, a reduced search that failed high was re-searched with a **null
+window**. A null-window re-search returns a fail-low bound, which is a
+pessimistic estimate of the move's true value, so a move that had just proved
+itself could still be discarded. The re-search now uses the full window.
+
+### STRENGTH-1 screening outcome (registered before dispatch)
+
+| Pair | Candidate score | 95 % CI (score) | Elo diff | 95 % CI (Elo) | Decision |
+|---|---|---|---|---|---|
+| BASE vs SPEED-1 | 0.625 (50.0/80) | [0.519, 0.725] | +89 | [+13, +168] | **KEPT** |
+| BASE vs HIST-1 | 0.406 (32.5/80) | [0.306, 0.512] | −66 | [−142, +9] | **INCONCLUSIVE** |
+
+Both pairs used 20 openings × 2 repetitions × exact AB/BA colour reversal
+(80 counted games each), fixed 100 ms/move, 16 MiB hash, single-threaded, and
+an opening-clustered bootstrap with 10,000 resamples at seed 20261118. All 160
+games were counted, with zero engine errors and balanced colour pairs.
+
+SPEED-1 is kept because the tree is identical and the CI excludes zero. HIST-1
+is inconclusive because the interval straddles zero; it is retained only as a
+candidate and is **not** described as a strength improvement.
+
+### Reporting defect in the campaign runner
+
+The runner passed `--focus base` to the statistics script where the
+registration specifies "score from the candidate's perspective", so the first
+log line reported the sign of the effect inverted. The raw JSONL was never
+modified. The registered estimator was re-run on the same records with the
+correct focus, and the runner now takes the candidate name explicitly.
+
+### Evaluation rewrite
+
+The evaluation gained six separable concerns, each behind a `const` flag in
+`src/eval.rs` so that its contribution is measured rather than assumed:
+tapered mobility, pawn structure (chained/phalanx, backward, candidate),
+passer refinement (defended, enemy-king distance), space, outposts and revised
+king safety.
+
+The breakdown is now an exact decomposition of the tapered score: every
+component is tapered with the same phase, so the parts add up to the total.
+Previously the breakdown mixed midgame values with the total and could not be
+used for diagnosis.
+
+The rewrite also corrected two defects found while reviewing it:
+
+  * the candidate-pawn gap was computed by scanning every pawn ahead on the
+    file; it now uses the nearest one directly, which is O(1) per pawn;
+  * the "space" term was computed but never added to the score, so it was
+    dead weight in the evaluation.
+
+### Evaluation correctness gates
+
+`tests/eval_quality.rs` adds three gates that do not depend on any search or
+match result: antisymmetry under the board flip (up to the tempo constant),
+positional sanity checks, and finiteness plus exact decomposition of the
+breakdown. The antisymmetry gate is what would catch a sign error or a
+colour-specific term in any new evaluation code.
+
+### Ablation control validity
+
+The EVAL-NONE build (all six flags off) reproduces the parent tree's bench
+signature `8370f143c3b76fb4` and node count 2,697,573 exactly. This was
+checked before any EVAL-1 game was played, so that a measured difference can
+be attributed to the flags and not to incidental refactoring.

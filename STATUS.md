@@ -2,8 +2,10 @@
 
 **Project state: `ACTIVE / INCOMPLETE`** (V1 NOT complete; absolute rating is UNKNOWN / NOT MEASURED and the strict 2,000 Elo gate is NOT MET. SCREEN-3 run 43820645420 ended with resolver + 60/60 shard jobs successful, but its aggregate-and-commit-evidence job was skipped. CTRL-2-R run 43820392119 ended with resolver + 120/120 shard jobs successful, but its aggregate-and-commit-evidence job was also skipped. These shard artifacts are not canonical committed gate evidence. The RATING-100 amendment is implemented as a candidate design but its prospective power report remains BLOCKED; no confirmatory batch or gate plan has been dispatched. The SEE ordering candidate and new tooling await CI and fresh review.)
 
-**Current branch:** `arena/b756c5f1-asilzkkbatwabaieokwvfotrsioiij`
-**Starting commit (verified 2026-11-14):** `98b1a00203183d9c7ccb175f7d6eb8f5ef5eb429` (only an Apache-2.0 `LICENSE` present)
+**Current branch:** `arena/8259ce1c-flawlesschess`
+**Starting commit (re-verified 2026-11-18):** `5e36b06a7b0d7417d57205e52010ea98529b2a4f`
+(`origin/main`; PR #1 merged 2026-11-14. The 2026-11-14 start `98b1a002…` is retained
+above in the historical record.)
 **Engine identity (UCI):** `Flawless`
 **License:** Apache-2.0 (preserved)
 
@@ -41,6 +43,38 @@
 - No static.rust-lang.org access: toolchain installed from npm packages `@toolchain-bin/{rustc,cargo,rust-std,rustfmt,clippy}-1.99.0-x86_64-unknown-linux-gnu` into `/home/user/.toolchain/sysroot`.
 - Reference machine (target): Windows 10 LTSC 2021, i5-7300U (4 threads), 8 GB RAM. This dev sandbox: 2 vCPU, ~4 GB RAM, Linux.
 - Opponent binaries for anchored rating testing are limited; see BENCHMARKING.md for the honest state of rating evidence.
+
+## 2026-11-18 session — strength work in progress
+
+**Project state: `ACTIVE / INCOMPLETE`.** The strict 2,000 Elo gate is still NOT MET and the
+absolute rating remains UNKNOWN. No confirmatory rating batch has been dispatched.
+
+### Completed and measured
+
+- **Analytic fast legality filter** (on `main` as `cd17da0`): the searched tree is provably
+  identical (bench signature `141943aa23b3fc68`, 2,530,885 nodes) while throughput rose from
+  ~441 k nps to ~785 k nps (+78 %).
+- **STRENGTH-1 screening** (80 counted games per pair, exact AB/BA colour reversal, fixed
+  100 ms/move, 16 MiB hash, opening-clustered 95 % bootstrap, seed 20261118):
+
+  | Pair | Candidate score | 95 % CI (score) | Elo diff | 95 % CI (Elo) | Decision |
+  |---|---|---|---|---|---|
+  | BASE vs SPEED-1 | 0.625 | [0.519, 0.725] | +89 | [+13, +168] | **KEPT** |
+  | BASE vs HIST-1 | 0.406 | [0.306, 0.512] | −66 | [−142, +9] | **INCONCLUSIVE** |
+
+  All 160 games counted; zero engine errors; balanced colours in every opening.
+  These are *screening* results at a fixed clock, not ratings and not absolute Elo.
+- **Evaluation rewrite** with six independently measurable features, an exact tapered
+  breakdown, and `tests/eval_quality.rs` (antisymmetry, sanity, finiteness).
+- **EVAL-1 ablation** registered with fixed decision rules; the control (all flags off)
+  reproduces the parent tree's bench signature and node count exactly.
+
+### Explicitly NOT claimed
+
+- No playing-strength claim for HIST-1 (its interval straddles zero).
+- No absolute rating, no CCRL/CEGT result, no rating above 2,000 Elo.
+- No merged PR, no tag, no release, no Windows artifact delivered yet.
+- `OWNER_TEST_PENDING`: the owner has not yet tested a delivered binary.
 
 ## Measured strength probes (internal, in-sandbox; NOT a CCRL/CEGT rating)
 

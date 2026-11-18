@@ -421,3 +421,58 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - MSRV 1.80 build NOT VERIFIED: no 1.80 toolchain available (npm mirror has none; rustup blocked). Open blocker.
 - Binary-identity blocker: R-02/R-03/R-07/R-08/R-10 change the engine binary. The ENGINE-1 hash frozen in PREREGISTRATION.md no longer identifies this code. Any gate or confirmatory evidence for the new behaviour needs a new candidate hash registered before dispatch. Not done; requires a decision.
 - rating-gate (failed at 3ebf617 and at 071f875): cause not yet investigated; left as fail-closed.
+
+## 2026-11-18 — campaign runner analysed the wrong perspective
+
+- **Observed:** the STRENGTH-1 campaign log reported SPEED-1 at 0.375 and
+  HIST-1 at 0.594. Recomputing from the raw JSONL gave the opposite signs for
+  the candidates (SPEED-1 0.625, HIST-1 0.406).
+- **Root cause:** `/home/user/tc/run_campaign.sh` called
+  `scripts/stats.py --focus "$wname"`, where `wname` was the *white* engine
+  name (`base`). The registration specifies "score from the candidate's
+  perspective", so the sign of the reported effect was inverted.
+- **Correction:** the raw game records were never modified. The registered
+  estimator (same script, same seed 20261118, same 10,000 opening-clustered
+  bootstrap resamples) was re-run with `--focus <candidate>` on the same
+  records. The runner now takes the candidate name as an explicit argument.
+- **Guard added:** the analysis focus is a required, explicit parameter of the
+  runner rather than a positional one, and the result record states which
+  perspective was used.
+
+## 2026-11-18 — evaluation ablation "off" branches did not match the base
+
+- **Observed:** the first EVAL-NONE build produced a different bench signature
+  (`e581eaf7b92b50e9`, 2,512,920 nodes) from the parent tree
+  (`8370f143c3b76fb4`, 2,697,573 nodes), so the ablation control was not a
+  faithful reproduction of the base evaluation.
+- **Root cause:** when the feature flags were introduced, the rook and queen
+  "off" branches were written with the *endgame* weight in both the midgame and
+  endgame slots (`2,5` and `1,9` instead of `2,2` and `1,1`). The base
+  evaluation used one weight for both phases.
+- **Correction:** the off branches now reproduce the base weights exactly. The
+  control was rebuilt and re-verified: EVAL-NONE reproduces the parent
+  signature `8370f143c3b76fb4` and node count 2,697,573 exactly.
+- **Lesson applied:** the control-validity check (all flags off must reproduce
+  the parent tree bit for bit) is now performed *before* dispatch and is
+  recorded in the registration. It is part of the EVAL-1 preconditions.
+
+## 2026-11-18 — "space" evaluation term was computed but never applied
+
+- **Observed:** the evaluation rewrite introduced a space term, but the score
+  did not change when it was enabled.
+- **Root cause:** `space` was accumulated into a local variable and then folded
+  into the `pawns` display field only; it was never added to the midgame or
+  endgame totals.
+- **Correction:** `space` now has its own component and is added to both
+  phase totals. The evaluation breakdown remains an exact decomposition of the
+  tapered score.
+
+## 2026-11-18 — candidate-pawn gap was O(pawns on file)
+
+- **Observed:** the candidate-pawn term scanned every friendly pawn ahead on the
+  file for each pawn on that file, making the term quadratic in the worst case.
+- **Root cause:** the gap was computed by iterating the pawns ahead instead of
+  taking the nearest one.
+- **Correction:** the nearest friendly pawn ahead is found directly from the
+  bitboard (lowest set bit for White, highest for Black). The term is now O(1)
+  per pawn and is colour-symmetric, which the new antisymmetry test confirms.
