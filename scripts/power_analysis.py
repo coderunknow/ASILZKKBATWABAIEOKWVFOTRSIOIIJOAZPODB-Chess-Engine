@@ -444,7 +444,8 @@ def read_candidate_screening_cell(
         candidate_sha256, "candidate-screening", batch=batch, anchor=anchor
     )
     normalized = os.path.normpath(games_path)
-    if not normalized.endswith(os.path.join(expected_relative, "games.jsonl")):
+    expected_suffix = os.path.normpath(os.path.join(expected_relative, "games.jsonl"))
+    if normalized != expected_suffix and not normalized.endswith(os.sep + expected_suffix):
         raise ValueError(f"{games_path}: not at its candidate-qualified screening path")
     manifest_path = os.path.join(os.path.dirname(games_path), "manifest.json")
     with open(manifest_path, encoding="utf-8") as handle:

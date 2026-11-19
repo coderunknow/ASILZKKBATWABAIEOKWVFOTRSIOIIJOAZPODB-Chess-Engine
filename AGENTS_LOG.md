@@ -857,3 +857,9 @@
 - Pushed commit `ec4a89e2840501a324b6c6427c607bf1a352b827` as requested. On that exact head, Ubuntu CI and MSRV passed, but Windows CI failed in `test_candidate_qualification.py`; the Windows release package verification step also failed before artifact upload. GitHub's run-log download returned EOF, so the package-step cause is not yet verified.
 - Root cause for the Python failure: `benches/rating-openings-batchA.txt`, the candidate self-control suite, had a preregistered raw-byte SHA-256 but no LF checkout rule. Added the missing `.gitattributes` rule and made candidate preregistration validation require LF rules for all three registered suite files. Added a regression for missing self-control-suite LF configuration; focused suite passes 10/10.
 - No Windows ZIP artifact was uploaded by the failed package step; continue diagnosing the package verification failure before claiming delivery.
+
+## 2026-11-19 — Windows CI path portability and owner EXE artifact
+
+- The follow-up Windows CI exposed another host-specific issue: candidate evidence path suffixes were compared with POSIX separators on a Windows path. Normalized both expected and actual suffixes in the self-control certifier and candidate power reader. The Windows package-verification failure remains distinct and is being diagnosed.
+- Added a dedicated `flawless-windows-x86_64-exe` Actions artifact upload after the Windows executable acceptance checks, before ZIP verification. This delivers the `.exe` plus its checksum/manifest without adding any binary to Git. Package-verifier exceptions now emit a concise GitHub error annotation so the failed ZIP check is diagnosable without downloading the Actions log archive.
+- After these local changes: all 17 Python suites passed; seven workflow YAMLs parsed; 18 embedded Python blocks compiled; `git diff --check` passed. No rating games or benchmarks were launched.

@@ -146,6 +146,17 @@ jobs:
           echo "== bench signature =="
           "$EXE" bench | tail -3
 
+      - name: Upload Windows EXE for owner testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-windows-x86_64-exe
+          path: |
+            dist/flawless.exe
+            dist/SHA256SUMS.txt
+            dist/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Write TEST_README.md
         shell: bash
         run: |

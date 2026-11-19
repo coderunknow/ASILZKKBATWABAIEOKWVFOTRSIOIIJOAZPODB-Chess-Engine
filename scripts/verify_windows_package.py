@@ -138,10 +138,14 @@ def main() -> int:
     parser.add_argument("--staged-dir")
     parser.add_argument("--extract-dir")
     args = parser.parse_args()
-    result = verify_package(
-        args.zip, source_commit=args.source_commit,
-        staged_dir=args.staged_dir, extract_dir=args.extract_dir,
-    )
+    try:
+        result = verify_package(
+            args.zip, source_commit=args.source_commit,
+            staged_dir=args.staged_dir, extract_dir=args.extract_dir,
+        )
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        print(f"::error title=Windows package verification failed::{exc}")
+        parser.error(str(exc))
     print(json.dumps(result, indent=2))
     return 0
 

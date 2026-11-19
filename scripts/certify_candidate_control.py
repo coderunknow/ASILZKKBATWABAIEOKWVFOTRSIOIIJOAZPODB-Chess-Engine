@@ -34,7 +34,8 @@ def load_candidate_control(games_path: str, *, design: dict[str, Any], target_co
     expected_sha = design["candidate"]["engine_sha256"]
     expected_relative = cq.candidate_evidence_path(expected_sha, "candidate-self-control")
     normalized_path = os.path.normpath(games_path)
-    if not normalized_path.endswith(os.path.join(expected_relative, "games.jsonl")):
+    expected_suffix = os.path.normpath(os.path.join(expected_relative, "games.jsonl"))
+    if normalized_path != expected_suffix and not normalized_path.endswith(os.sep + expected_suffix):
         raise ValueError("candidate self-control evidence is not in its candidate-qualified immutable path")
     manifest_path = os.path.join(os.path.dirname(games_path), "manifest.json")
     with open(manifest_path, encoding="utf-8") as handle:
