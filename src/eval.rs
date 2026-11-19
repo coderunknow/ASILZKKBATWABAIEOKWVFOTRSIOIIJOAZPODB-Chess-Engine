@@ -14,6 +14,25 @@ pub const MATE_SCORE: i32 = 30_000;
 pub const INF_SCORE: i32 = 31_000;
 pub const DRAW_SCORE: i32 = 0;
 
+/// Maximum search ply. The search returns a static evaluation at `ply >= MAX_PLY`
+/// before it looks for mate, so the deepest checkmate node the search can reach is
+/// at `MAX_PLY - 1` and the longest mate it can report is `MAX_PLY` plies from the root.
+pub const MAX_PLY: i32 = 128;
+
+/// Lower edge of the mate-score band.
+///
+/// A mate score is `MATE_SCORE - d`, where `d` is the number of plies to mate
+/// measured from the root. Because `d <= MAX_PLY`, every reachable mate score is
+/// at or above `MATE_SCORE - MAX_PLY`, so this is the widest band that still
+/// classifies every reachable mate score as a mate score.
+///
+/// A narrower band is a correctness bug, not a tuning choice: a mate score that
+/// falls outside the band is not recognised as a mate score, so the transposition
+/// table does not normalise it to a ply-independent form, and the UCI layer
+/// reports it as a centipawn score instead of a mate. The band must therefore be
+/// tied to `MAX_PLY`, not to an arbitrary constant.
+pub const MATE_BOUND: i32 = MATE_SCORE - MAX_PLY;
+
 pub const PIECE_VALUE_MG: [i32; 6] = [100, 320, 330, 500, 900, 0];
 pub const PIECE_VALUE_EG: [i32; 6] = [100, 300, 340, 500, 900, 0];
 

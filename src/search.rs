@@ -11,7 +11,7 @@
 
 use crate::attack;
 use crate::eval::{
-    ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_SCORE, PIECE_VALUE_MG,
+    ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_BOUND, MATE_SCORE, PIECE_VALUE_MG,
 };
 use crate::movegen::{generate_legal_fast, in_check};
 use crate::position::Position;
@@ -21,8 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-pub const MAX_PLY: i32 = 128;
-const MATE_BOUND: i32 = MATE_SCORE - 100;
+pub use crate::eval::MAX_PLY;
 /// Predicted duration of the next iteration = last iteration time * this factor (R-08).
 /// Measured overspend without prediction was ~1.7x the soft budget; iteration times grow
 /// roughly 2-4x per ply, so 3 is the conservative middle. Tunable.

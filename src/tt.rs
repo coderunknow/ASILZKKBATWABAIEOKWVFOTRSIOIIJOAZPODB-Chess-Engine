@@ -6,6 +6,7 @@
 //! - Scores from subtrees that can reach the fifty-move horizon are flagged CLOCK-UNSAFE
 //!   at store time and never reused as bounds; their best move remains usable for ordering.
 
+use crate::eval::MATE_BOUND;
 use crate::types::Move;
 
 pub const BOUND_NONE: u8 = 0;
@@ -74,8 +75,6 @@ pub struct TranspositionTable {
     pub probes: u64,
     pub hits: u64,
 }
-
-const MATE_BOUND: i32 = crate::eval::MATE_SCORE - 100;
 
 impl TranspositionTable {
     pub fn new(size_mb: usize) -> Self {
