@@ -234,7 +234,7 @@ regression test that was verified to fail against the pre-fix source.
     parser — failing the build if any C-runtime DLL is imported. The package note and
     `BUILD_MANIFEST.json` are corrected and the manifest now records the imported DLL list.
   - New regression suites: `scripts/test_collect_eval_results.py` (15 checks) and
-    `scripts/test_pe_imports.py` (12 checks); `scripts/test_audit_pair.py` grows from 22 to 30
+    `scripts/test_pe_imports.py` (12 checks); `scripts/test_audit_pair.py` grows from 22 to 34
     checks. CI runs all of them.
   The Windows artefact's bytes change with the static-CRT link, so the pending owner Windows
   acceptance must be redone against the new artefact. The Linux candidate binary is unaffected:

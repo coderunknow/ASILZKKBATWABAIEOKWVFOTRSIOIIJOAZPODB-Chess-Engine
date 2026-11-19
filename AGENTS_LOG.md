@@ -723,7 +723,8 @@
     `(opening, repetition, color_pair)` slots with the registered schedule and additionally requires
     every opening to carry the same repetition set. The real EVAL-3 evidence (20 openings x 2
     repetitions x 2 colours, every slot reversed, score 60.5/80 = 0.7562) still passes.
-    `scripts/test_audit_pair.py` grows from 22 to 30 checks, including the exact bypass scenario.
+    `scripts/test_audit_pair.py` grows from 22 to 34 checks, including the exact bypass scenario, a
+    relabelled repetition set, and the registered 20 x 2 x 2 schedule that must still be accepted.
   - **`scripts/collect_eval_results.py` — a failed audit could still produce a registered decision.**
     The aggregate path printed `KEPT` whenever the Elo lower bound was positive, even when
     `audit=FAIL`, and a failed ablation still participated in the per-feature decision. Both decision

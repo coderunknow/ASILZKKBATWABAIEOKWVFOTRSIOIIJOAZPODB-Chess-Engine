@@ -163,6 +163,23 @@ def main() -> int:
     check("repetition sets : 2 distinct across 20 openings" in out, "the mixed repetition sets must be reported")
     check("verdict         : INCOMPLETE/FAIL" in out, "mixed repetition sets must fail")
 
+    # --- relabelled repetition indices are detected -----------------------
+    # The same slots with the repetition indices shifted by one: every
+    # opening is still colour-reversed and the totals still balance, but the
+    # schedule is not the registered 0..n-1 one.
+    relabelled = [
+        make_game(g["opening"], g["repetition"] + 1, g["color_pair"], "1/2-1/2")
+        for g in build_full_set()
+    ]
+    out = run_audit(relabelled)
+    check("contiguous reps : no" in out, "the relabelled repetitions must be reported")
+    check("verdict         : INCOMPLETE/FAIL" in out, "relabelled repetitions must fail")
+
+    # --- the registered 20 x 2 x 2 schedule is still accepted -------------
+    out = run_audit(build_full_set())
+    check("contiguous reps : yes" in out, "the registered schedule has contiguous repetitions")
+    check("verdict         : PASS" in out, "the registered schedule must still pass")
+
     # --- the score is computed from the candidate's perspective -----------
     scored = build_full_set()
     for i, g in enumerate(scored):

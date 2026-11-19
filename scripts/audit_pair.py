@@ -55,6 +55,13 @@ def main() -> int:
     unreversed = {k: v for k, v in slot_colours.items() if v != {"AB", "BA"}}
     rep_sets = {frozenset(v) for v in opening_reps.values()}
 
+    # The registered schedule numbers the repetitions 0..n-1. Every opening
+    # must carry the same contiguous repetition set, so the actual slots are
+    # exactly {opening} x {0..n-1} x {AB, BA} and not a relabelled variant.
+    contiguous_reps = bool(rep_sets) and all(
+        reps == frozenset(range(len(reps))) for reps in rep_sets
+    )
+
     colours = collections.Counter(g.get("color_pair") for g in counted)
     openings = collections.Counter(g.get("opening") for g in counted)
 
@@ -79,6 +86,7 @@ def main() -> int:
     print(f"colour balance  : {dict(colours)}")
     print(f"openings        : {len(openings)} distinct, counts {sorted(set(openings.values()))}")
     print(f"repetition sets : {len(rep_sets)} distinct across {len(openings)} openings")
+    print(f"contiguous reps : {'yes' if contiguous_reps else 'no'}")
     print(f"score ({focus}) : {score}/{len(counted)} = {score / len(counted):.4f}")
 
     # The registered schedule requires an exact AB/BA colour reversal, so a
@@ -94,6 +102,7 @@ def main() -> int:
         and balanced
         and not unreversed
         and len(rep_sets) == 1
+        and contiguous_reps
         and len(openings) == 20
         and set(openings.values()) == {expected // 20}
     )
