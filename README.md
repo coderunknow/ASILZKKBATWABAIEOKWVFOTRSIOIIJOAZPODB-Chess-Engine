@@ -15,12 +15,17 @@ An independent, from-scratch chess engine written in Rust. **Not a Stockfish der
 ```bash
 cargo build --release   # Rust ≥ 1.80 (MSRV); rust-toolchain.toml pins 1.99.0
 cargo +1.80 build --release   # force the MSRV toolchain instead of the pinned one
-./target/release/flawless uci              # UCI mode on stdin/stdout
+./target/release/flawless                  # no arguments: UCI mode on stdin/stdout (for GUIs)
+./target/release/flawless uci              # same as above, explicit
 ./target/release/flawless perft 6          # perft from startpos
 ./target/release/flawless bench            # fixed-depth-10 search benchmark + signature
+./target/release/flawless --help           # list the commands
 ```
 
-Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `bench_eval` · `eval [fen]` · `moves` · `hash` · `uci`.
+Launching the executable **without arguments starts UCI mode** — the form conventional UCI GUIs use
+when they start a custom engine. Explicit subcommands remain available and unchanged.
+
+Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `bench_eval` · `eval [fen]` · `moves` · `hash` · `uci` · `--version` · `--help` / `-h`.
 
 ## What works (V1 scope)
 
@@ -45,4 +50,8 @@ opponents; do not present them as official ratings).
 ## Building on Windows
 
 Install VS Build Tools (C++ workload) or MinGW-w64, plus Rust via rustup, then `cargo build --release`.
-Windows builds are exercised by CI (fmt, clippy, tests, release build, UCI handshake, perft sanity); CI does not publish binaries (see `.github/workflows/ci.yml`).
+Windows builds are exercised by CI (fmt, clippy, tests, release build, UCI handshake, perft sanity).
+CI also builds a Windows x64 executable (`x86_64-pc-windows-msvc`) and uploads it as a workflow
+artifact named `flawless-windows-x64-<commit-sha>` containing `flawless.exe`, `SHA256SUMS.txt` and
+`BUILD-MANIFEST.txt`. These are CI build artifacts, not a GitHub Release; the repository does not
+publish binaries (see `.github/workflows/ci.yml`).

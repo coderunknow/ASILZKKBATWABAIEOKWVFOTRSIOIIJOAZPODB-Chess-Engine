@@ -2,6 +2,30 @@
 
 All notable changes are documented here. SemVer 2.0.0. Versions before the V1 release gate are `0.x`.
 
+## [Unreleased] — UCI no-argument startup compatibility + Windows x64 artifact (2026-11-19)
+
+- **Fixed: launching `flawless` with no command-line arguments now starts UCI mode** (stdin/stdout).
+  Previously it printed usage to stderr and exited with code 2, so conventional UCI GUIs that start
+  a custom engine as `Process.start(path, [])` and then send `uci` failed with
+  `Engine "…exe" exited while searching (exit code 2)` (reproduced from a user diagnostic bundle).
+  `flawless uci` behaves exactly as before; the handshake bytes are identical in both modes.
+- **CLI**: `-h` / `--help` are now explicit (stdout, exit 0) and list the subcommands. Unknown
+  commands still exit 2 with the message on stderr, now with a pointer to `--help`. `perft`,
+  `divide`, `bench`, `eval`, `bench_eval`, `moves`, `hash` and `version` / `--version` are unchanged.
+- **Tests**: `tests/uci_smoke.rs` now runs the real executable with zero arguments through the
+  full lifecycle (uci → uciok, isready → readyok, position startpos, go depth 2 → legal bestmove,
+  quit → exit 0), checks no unsolicited stdout and no usage banner, checks no-arg/explicit-`uci`
+  handshake parity, EOF exit, and CLI regressions. The new no-argument tests fail on the previous
+  binary and pass on this one.
+- **CI**: new job `windows-x64-artifact` (windows-latest, `x86_64-pc-windows-msvc`, Rust 1.99.0)
+  builds `flawless.exe`, verifies the PE machine type is x86-64 (0x8664), smoke-tests the exact file,
+  and uploads `flawless.exe`, `SHA256SUMS.txt` and `BUILD-MANIFEST.txt` as the workflow artifact
+  `flawless-windows-x64-<commit-sha>`. The upload is mandatory (no `continue-on-error`).
+- **Engine binary identity changed** by this release (source change in `src/main.rs`). Search,
+  evaluation and the bench signature (`141943aa23b3fc68`) are unchanged. Previously registered
+  ENGINE-2 binary hashes in the rating documents no longer identify this build; no rating evidence
+  is reused or re-authorized by this change.
+
 ## [Unreleased] — Flawless identity migration + correctness audit (2026-11-14)
 
 - **Identity migration** (ADR-0002): engine, package, library and binary renamed to **Flawless**;

@@ -421,3 +421,15 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - MSRV 1.80 build NOT VERIFIED: no 1.80 toolchain available (npm mirror has none; rustup blocked). Open blocker.
 - Binary-identity blocker: R-02/R-03/R-07/R-08/R-10 change the engine binary. The ENGINE-1 hash frozen in PREREGISTRATION.md no longer identifies this code. Any gate or confirmatory evidence for the new behaviour needs a new candidate hash registered before dispatch. Not done; requires a decision.
 - rating-gate (failed at 3ebf617 and at 071f875): cause not yet investigated; left as fail-closed.
+
+
+## 2026-11-19 — GUI launch with no arguments exits 2 (UCI startup incompatibility)
+
+- **Attempted:** CrispChess Extended (2.3.2-dev6+23, Windows 10 LTSC 2021) registered a custom engine `flawlessv1 patch2.exe`. The generic UCI launcher starts it with `Process.start(path, [])` and then sends `uci`.
+- **Observed (raw evidence: user bundle `diagnostic-report.zip`, `application.log` and `errors.json`, 2026-11-19T21:12:56 local):** `engine.process.started` followed about 40 ms later by `engine.process.lost`, then `initialize.failed` with `Engine "flawlessv1 patch2.exe" exited while searching (exit code 2)` and stderr `usage: Flawless [uci|perft …]`.
+- **Conditions:** the user's Windows binary's commit is not recorded in the bundle; its stderr reports `Flawless 0.1.0-dev.1`. The startup code of `main` at `5e36b06` has the same behaviour (verified locally). Local reproduction: Linux, Rust 1.99.0, release build, same commit: `flawless` with no arguments → exit 2 with usage on stderr; `flawless uci` → full handshake.
+- **Root cause (verified from source and behaviour):** `src/main.rs`, the `None =>` arm of the argument match printed usage and called `std::process::exit(2)`. The engine's default startup was therefore not UCI.
+- **Why the existing tests missed it:** `tests/uci_smoke.rs` always started the binary with the `uci` argument, so no test launched the engine the way GUIs do.
+- **Result:** fixed in the session branch. Regression tests (no-argument lifecycle and handshake parity) fail on the old `src/main.rs` and pass on the fix. Exact-head CI and the Windows artifact are recorded in the audit report.
+- **Learned:** a UCI engine must treat "no arguments" as UCI mode. Tests that only exercise the explicit subcommand cannot cover GUI launch behaviour.
+- **Next experiment:** run the Windows artifact `flawless.exe` under a real UCI GUI launcher (CrispChess Extended) to confirm the engine is added without the exit-2 error. Not done in this session: no GUI is available here.

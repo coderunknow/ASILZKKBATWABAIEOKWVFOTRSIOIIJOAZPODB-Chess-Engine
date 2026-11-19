@@ -412,3 +412,15 @@
 - CI 44067826990: Ubuntu passed; Windows failed during power-report smoke because the raw SCREEN-2 games file was checked out as CRLF while its manifest merged_sha256 was generated from LF on Ubuntu.
 - The game records were unchanged; this was cross-platform Git newline conversion. Added a logical-JSONL SHA helper that canonicalizes line endings only, preserving every record, order and content. Added exact LF attributes for the two SCREEN-2 evidence files, plus regression tests simulating CRLF checkout and record tampering.
 - No evidence was changed and no rating games launched. Power report remains ENGINE-1-specific and BLOCKED. Rerun exact-head CI.
+
+
+## 2026-11-19 — UCI no-argument startup compatibility (arena session)
+
+- **Scope:** fix the UCI startup failure reported in `diagnostic-report.zip` and deliver a verified Windows x64 executable as a CI artifact. No rating, search or engine-strength work.
+- **Branch and base:** `arena/2d2d30b4-flawlesschess` from `main` at `5e36b06` (PR #1 merge). PR #2 belongs to another branch and was not touched. The mission's "prefer main" instruction was not applied because the session branch is fixed by Arena.
+- **Toolchain:** Rust 1.99.0 installed from npm `@toolchain-bin/*` into `/home/user/.toolchain/sysroot`. Rust 1.80 is not published under that scope and rustup is blocked, so the MSRV compile is delegated to CI.
+- **Reproduction:** before changes, no arguments → exit 2 with usage; `uci` → handshake. Baseline gates: fmt, clippy, `cargo test --release --locked` green; perft(3)=8902; bench signature `141943aa23b3fc68`.
+- **Changes:** `src/main.rs` (no-argument UCI mode; `-h`/`--help`); `tests/uci_smoke.rs` (real-process no-argument lifecycle, handshake parity, EOF exit, CLI regressions; `Engine` guard kills children on drop); `scripts/windows_artifact.py` (PE x86-64 check, smoke tests on the exact exe, SHA256SUMS and BUILD-MANIFEST); `.github/workflows/ci.yml` (`windows-x64-artifact` job, no `continue-on-error`); README, CHANGELOG, STATUS, DESIGN_LOG, FAILURE_LEDGER, `docs/audit/2026-11-19-uci-no-args-compatibility.md`.
+- **Negative control:** the three new no-argument tests fail against the pre-change `src/main.rs` ("engine exited before receiving any command") and pass after the fix.
+- **Tooling check:** the artifact script rejects a Linux ELF, and on a stubbed-PE local run it passes the smoke tests, writes checksums, and `sha256sum -c` verifies them. The real PE check runs only in CI.
+- **Push policy:** only the session branch is pushed. No tags, releases, merges, force-pushes, or PR creation without authorization. Exact-head CI is dispatched with `gh workflow run ci.yml --ref <branch>`, because the CI push trigger is limited to `main`.

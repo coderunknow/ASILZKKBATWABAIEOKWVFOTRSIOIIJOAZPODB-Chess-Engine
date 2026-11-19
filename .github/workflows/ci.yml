@@ -145,3 +145,66 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: "1.80.0"
           CARGO_NET_OFFLINE: "false"
+
+  # Mandatory Windows x64 deliverable: builds the real flawless.exe on the MSVC host,
+  # proves it is an x86-64 PE, smoke-tests the exact file (zero-argument UCI startup,
+  # explicit `uci`, perft, CLI), writes SHA256SUMS.txt + BUILD-MANIFEST.txt, and uploads
+  # all three as the workflow artifact flawless-windows-x64-<commit-sha>.
+  # No continue-on-error anywhere in this job: a missing or mis-built executable fails CI.
+  windows-x64-artifact:
+    name: windows x64 release artifact
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (pinned, x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+          targets: x86_64-pc-windows-msvc
+
+      - name: Set up Python 3.12 (artifact checker)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-artifact-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-artifact-
+
+      - name: Verify host target and build release executable
+        shell: bash
+        run: |
+          rustc -vV | tee rustc-version.txt
+          grep -qx 'host: x86_64-pc-windows-msvc' rustc-version.txt \
+            || { echo "::error::rustc host is not x86_64-pc-windows-msvc"; exit 1; }
+          cargo build --release --locked
+          test -s target/release/flawless.exe || { echo "::error::target/release/flawless.exe missing or empty"; exit 1; }
+
+      - name: Verify PE architecture, smoke-test the exact exe, write checksums and manifest
+        shell: bash
+        run: |
+          python scripts/windows_artifact.py \
+            --exe target/release/flawless.exe \
+            --out-dir dist \
+            --commit "${GITHUB_SHA}" \
+            --rustc-version-file rustc-version.txt \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}"
+
+      - name: Upload Windows x64 artifact (mandatory)
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-windows-x64-${{ github.sha }}
+          path: |
+            dist/flawless.exe
+            dist/SHA256SUMS.txt
+            dist/BUILD-MANIFEST.txt
+          if-no-files-found: error
+          retention-days: 90

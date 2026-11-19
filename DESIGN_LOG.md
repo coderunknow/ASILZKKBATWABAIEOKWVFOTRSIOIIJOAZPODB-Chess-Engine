@@ -408,3 +408,14 @@ DRAFT ONLY — no code changes under this entry.
 - CI run 44067826990 passed Ubuntu but failed Windows in the power-analysis smoke when checking the committed SCREEN-2 games.jsonl against merged_sha256. Git for Windows checked out LF JSONL as CRLF, while the evidence aggregator computed manifest hashes on Linux LF bytes.
 - The power analyzer now hashes logical UTF-8 JSONL content after canonicalizing only line endings to LF. Record content, ordering, whitespace and record boundaries remain covered by SHA-256. Exact LF attributes were added for the two source evidence files, plus tests for CRLF portability and actual record tampering.
 - No evidence was modified or rewritten; no confirmatory game ran. The power report remains ENGINE-1-specific and BLOCKED. Full exact-head CI is required.
+
+
+## 2026-11-19 — UCI startup contract: no arguments means UCI mode
+
+- **Decision:** the engine's default startup is the UCI protocol loop. Conventional UCI GUIs (for example CrispChess Extended's generic launcher, `Process.start(profile.path, [])`) start the executable with no arguments and then send `uci` on stdin. A missing argument is therefore a valid launch, not a usage error.
+- **Evidence:** user diagnostic bundle `diagnostic-report.zip` (Google Drive, 2026-11-19): `engine.process.lost` 41 ms after start, then `initialize.failed` with `Engine "flawlessv1 patch2.exe" exited while searching (exit code 2)` and the usage text on stderr. Reproduced locally on the pre-change binary: no arguments → exit 2; `uci` → full handshake.
+- **Implementation:** `src/main.rs` dispatches `None` and `Some("uci")` to `flawless::uci::run_uci()`. `-h`/`--help` print help to stdout (exit 0). Unknown commands keep exit 2 with the diagnostic on stderr. No banner or other text is written to stdout in UCI mode; diagnostics stay on stderr.
+- **Rejected alternative:** matching the executable filename or special-casing the GUI. The contract is the engine's own default, so the fix applies to every launcher that follows the UCI convention.
+- **Dependency and search impact:** none. Zero external dependencies; no search, evaluation or move-generation code changed. Bench signature `141943aa23b3fc68` is unchanged.
+- **Identity impact:** the release binary changes, so ENGINE-2 hash pins in the rating documents do not describe this build. No rating evidence is reused.
+- **Verification boundary:** local Linux results and exact-head CI (Linux, Windows, MSRV, Windows x64 artifact) are recorded in `docs/audit/2026-11-19-uci-no-args-compatibility.md`.
