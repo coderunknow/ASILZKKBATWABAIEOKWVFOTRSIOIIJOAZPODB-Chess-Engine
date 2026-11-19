@@ -484,3 +484,45 @@ clock, and it does not substitute for the >2,000 Elo gate.
 bench signature and node count, and a depth-10 search cannot reach a mate 100 plies away), so the
 EVAL-3 result carries over to the current tree unchanged. `benches/rating-100-power-assessment.json`
 remains BLOCKED, PR #2 remains Draft, and `OWNER_TEST_PENDING` remains in force.
+
+## 2026-11-19 — confirmatory campaign compute-cost estimate (planning only)
+
+The compute cost of the RATING-100 confirmatory campaign is now estimated from committed evidence
+rather than left as a guess. `scripts/estimate_campaign_cost.py` reads the per-game wall-clock
+records of SCREEN-2 (`topple-0.1.1`, `topple-0.2.1`) and SCREEN-3 (`akimbo-0.1.1`) — 120 counted
+games each at the 40/15 repeating wall-clock time control — and verifies the frozen engine binary
+SHA-256, the frozen anchor binary SHA-256, the opening-suite SHA-256, the attempt/count totals and
+the merged raw-game digest before computing; any drift fails closed. The report is committed at
+`benches/confirmatory-cost-estimate.json` and is pinned by `scripts/test_estimate_campaign_cost.py`
+(26 checks, including that the report is non-authorizing and that it does not perturb the power
+report or the dispatch marker).
+
+| Quantity | Value |
+|---|---|
+| Campaign design | 600 counted games, 300 shard jobs, 6 dispatches |
+| Game time | 571.1 runner-hours |
+| Per-shard job overhead (measured, 35 s/job) | 2.9 runner-hours |
+| **Total campaign runner-hours** | **574.0** (bootstrap p05 536.4, p95 614.0) |
+| Wall-clock span, 40-way concurrency (observed) | 14.9 h |
+| Wall-clock span, one dispatch wave at a time | 21.9 h |
+| Probability a 2-game shard exceeds the 350-min timeout | 3.06 % |
+| Notional standard-runner valuation | USD 206.6 (**USD 0 actual**: public repo, standard runners) |
+| Candidate-specific screening (3 anchors × Batch A + Batch B, 600 games) | 571.1 runner-hours |
+| Candidate-specific self-match null control (240 games) | 228.4 runner-hours |
+| Anchor-vs-anchor null control | 0 — seats no candidate engine, committed evidence reused |
+| **Gate-path prerequisites** | **799.5 runner-hours / 840 games** |
+| **Grand total** | **1,373.5 runner-hours / 1,440 counted games** |
+
+Two transfers behind these numbers are unmeasured and are recorded as assumptions, not facts: every
+wall-clock measurement comes from the ENGINE-1 binary while the confirmatory campaign would run a
+different candidate binary (no candidate-specific 40/15 timing evidence exists yet), and Batch B
+has never been timed, so its durations are modelled as exchangeable with the anchor's observed
+Batch A population. The 40-way concurrency figure is measured, not assumed: the account-wide peak
+was exactly 40 concurrent jobs across the two overlapping screening/control runs.
+
+**No gate changed.** `benches/rating-100-power-assessment.json` is still `BLOCKED` and still
+guarded to the ENGINE-1 binary; no gate plan and no confirmatory dispatch exist. The fail-closed
+requirements stand unchanged: candidate-specific controls and a reviewed candidate-specific power
+PASS must exist before dispatch, exact identity and suite hashes are enforced by the dispatcher and
+the resolver, exactly 600 counted games on 50 opening clusters are required, all three unrounded
+Elo lower bounds must exceed 2,000, and PR #2 remains Draft and is never merged automatically.

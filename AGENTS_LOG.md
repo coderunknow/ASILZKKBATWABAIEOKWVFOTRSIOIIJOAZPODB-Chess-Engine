@@ -678,3 +678,36 @@
   100 ms/move time control. It is not a rating, it is not comparable to a campaign run on an idle
   machine or under the 40/15 clock, and it does not substitute for the >2,000 Elo gate in
   `docs/RATING_PROTOCOL.md`.
+- **Confirmatory campaign compute-cost estimate (planning diagnostic only).** Added
+  `scripts/estimate_campaign_cost.py` and `scripts/test_estimate_campaign_cost.py`, and committed the
+  generated report at `benches/confirmatory-cost-estimate.json`. The estimator derives the cost from
+  the committed per-game wall-clock evidence (SCREEN-2 `topple-0.1.1`/`topple-0.2.1` and SCREEN-3
+  `akimbo-0.1.1`, 120 counted games each, 40/15 wall clock) after verifying the frozen engine
+  binary SHA-256, the frozen anchor binary SHA-256 from `benches/anchor-pool.json`, the opening-suite
+  SHA-256, the attempt/count totals and the merged raw-game digest; it fails closed on any drift.
+  Batch A is a direct measurement over the 50 registered clusters; Batch B has never been timed and
+  is modelled as exchangeable with the anchor's observed population.
+  Result for the 600-game / 300-shard-job campaign: **574.0 runner-hours** (p05 536.4, p95 614.0),
+  of which 571.1 h is game time and 2.9 h is measured per-shard job overhead (35 s/job, matched
+  against 60 hosted shard jobs). Wall-clock span by greedy list scheduling: 14.9 h at the observed
+  40-way account concurrency and 21.9 h if the six dispatches are run one wave at a time. The
+  bootstrap probability that a two-game shard exceeds the 350-minute job timeout is **3.06 %**.
+  The notional standard-runner valuation is USD 206.6, but the repository is public and the
+  campaign uses standard GitHub-hosted runners, so the metered minutes cost **USD 0**; runner-hours
+  and wall-clock span are the meaningful quantities.
+  The report also costs the candidate-specific evidence that must exist first: 600 games of
+  screening across all three anchors on both the Batch A and the disjoint Batch B subsets
+  (571.1 runner-hours) plus a candidate-specific self-match null control (228.4 runner-hours). The
+  anchor-vs-anchor null control seats no candidate engine, so the committed evidence is reused and
+  no new games are needed. Gate-path total **799.5 runner-hours**; grand total **1,373.5
+  runner-hours / 1,440 counted games**, a notional USD 494.5 on a private repository but USD 0 on
+  this public one.
+  This is **planning only**: it does not change `benches/rating-100-power-assessment.json`
+  (still `BLOCKED`, still guarded to the ENGINE-1 binary), it does not create a gate plan or a
+  dispatch, and it authorizes nothing. The fail-closed requirements are unchanged — candidate-
+  specific controls and a reviewed candidate-specific power PASS must exist before dispatch, exact
+  identity and suite hashes are enforced, exactly 600 counted games are required, all three
+  unrounded Elo lower bounds must exceed 2,000, and no pull request is merged automatically.
+  Caveats recorded in the report: all timings come from the ENGINE-1 binary and the confirmatory
+  campaign runs a different candidate binary, and no candidate-specific 40/15 wall-clock timing
+  evidence exists yet.

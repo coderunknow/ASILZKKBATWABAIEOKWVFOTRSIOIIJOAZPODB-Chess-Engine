@@ -89,7 +89,7 @@ jobs:
             exit $status
           fi
           "$PY" -c "import chess; print('::notice::chess', chess.__version__)"
-          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py scripts/test_audit_pair.py; do
+          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py scripts/test_audit_pair.py scripts/test_estimate_campaign_cost.py; do
             if ! "$PY" "$suite" > suite-out.txt 2>&1; then
               echo "::error::$suite FAILED"
               # Surface the REAL diagnostic through annotations (logs are unreadable
@@ -108,6 +108,17 @@ jobs:
           "$PY" scripts/power_analysis.py --replicates 1000 --out power-smoke.json
           "$PY" -c "import json; r=json.load(open('power-smoke.json')); assert r['status']=='BLOCKED' and r['eligible_for_confirmatory_dispatch'] is False; assert r['engine_sha256']=='9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428'; assert r['screening_inputs']['selected_batch_a_opening_clusters']==50; assert len(r['scenarios'])==36; assert r['opening_suites']['batch_a_sha256']=='5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df'; assert r['opening_suites']['batch_b_sha256']=='ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253'"
           rm -f power-smoke.json
+
+      # The compute-cost estimate is a PLANNING diagnostic. It must stay
+      # reproducible, must never claim dispatch authority, and must not
+      # disturb the fail-closed power report or the dispatch marker.
+      - name: Verify the confirmatory cost estimate is reproducible and non-authorizing
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/estimate_campaign_cost.py --replicates 2000 --out cost-smoke.json
+          "$PY" -c "import json; c=json.load(open('cost-smoke.json')); p=json.load(open('benches/rating-100-power-assessment.json')); assert c['status']=='PLANNING_ONLY'; assert c['authorizes_dispatch'] is False; assert c['design']['expected_total_counted_games']==600; assert c['confirmatory_campaign']['counted_games']==600; assert c['confirmatory_campaign']['shard_jobs']==300; assert p['status']=='BLOCKED' and p['eligible_for_confirmatory_dispatch'] is False"
+          rm -f cost-smoke.json
 
       - name: Release build
         run: cargo build --release --locked

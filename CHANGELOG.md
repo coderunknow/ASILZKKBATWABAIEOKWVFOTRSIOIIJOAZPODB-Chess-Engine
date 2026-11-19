@@ -186,3 +186,24 @@ regression test that was verified to fail against the pre-fix source.
   2-vCPU sandbox at a fixed 100 ms/move time control; it is not a rating and does
   not substitute for the >2,000 Elo gate. Raw evidence:
   `benches/evidence/screening-eval3/`.
+- **Compute-cost estimate for the RATING-100 confirmatory campaign (planning only).**
+  `scripts/estimate_campaign_cost.py` derives the campaign cost from the committed per-game
+  wall-clock evidence (SCREEN-2 and SCREEN-3, 120 counted games per anchor at 40/15), after
+  verifying the frozen engine binary, the frozen anchor binary, the opening-suite hash, the
+  attempt/count totals and the merged raw-game digest; it fails closed on any drift. The generated
+  report is committed at `benches/confirmatory-cost-estimate.json`.
+  The 600-game, 300-shard-job campaign is estimated at **574.0 runner-hours**
+  (p05 536.4, p95 614.0): 571.1 h of game time plus 2.9 h of measured per-shard job overhead.
+  Wall-clock span is 14.9 h at the observed 40-way account concurrency and 21.9 h if the six
+  dispatches run one wave at a time. A two-game shard exceeds the 350-minute job timeout with
+  probability 3.06 %. On a public repository with standard hosted runners the metered minutes cost
+  USD 0; the notional standard-runner valuation is USD 206.6.
+  The candidate-specific evidence that must exist *before* dispatch is costed separately at
+  **799.5 runner-hours / 840 games** (600 screening games across all three anchors on both the
+  Batch A and the disjoint Batch B subsets, plus a candidate-specific self-match null control);
+  the anchor-vs-anchor null control seats no candidate engine and is reused. Grand total
+  **1,373.5 runner-hours / 1,440 counted games**.
+  This changes no gate: the prospective power report stays `BLOCKED` and guarded to the ENGINE-1
+  binary, no gate plan or dispatch is created, and candidate-specific controls, a reviewed
+  candidate-specific power PASS, exact identity and suite hashes, exactly 600 counted games and
+  three unrounded Elo lower bounds above 2,000 all remain required before dispatch.

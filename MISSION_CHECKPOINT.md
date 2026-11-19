@@ -387,3 +387,18 @@ It is not a rating, it is not comparable to a campaign run on an idle machine or
    candidate-SHA guarded), and Batch A/B.
 5. All three unrounded Elo lower-bound gates above 2,000 Elo.
 6. **PR #2 must never be merged automatically.** It stays Draft until the owner decides.
+
+## 2026-11-19 — compute-cost estimate added (planning only)
+
+`scripts/estimate_campaign_cost.py` + `scripts/test_estimate_campaign_cost.py` (26 checks) added and
+the report committed at `benches/confirmatory-cost-estimate.json`; CI runs the suite and pins the
+report as reproducible and non-authorizing. Estimates: campaign **574.0 runner-hours** (p05 536.4,
+p95 614.0) over 600 counted games / 300 shards; wall-clock span 14.9 h at the measured 40-way
+concurrency, 21.9 h in sequential waves; 3.06 % shard-timeout risk; USD 0 actual (public repo,
+standard runners), notional USD 206.6. Gate-path prerequisites **799.5 runner-hours / 840 games**;
+grand total **1,373.5 runner-hours / 1,440 counted games**. Batch B durations are modelled, not
+measured, and all timings come from the ENGINE-1 binary — both recorded as assumptions.
+
+No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
+exists, PR #2 stays Draft, and the candidate-specific controls + candidate-specific power PASS +
+three unrounded Elo lower bounds > 2,000 remain required before any dispatch.

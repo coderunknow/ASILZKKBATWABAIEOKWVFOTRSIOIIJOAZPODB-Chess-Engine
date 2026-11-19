@@ -253,3 +253,58 @@ CI run 44062359630 rejected the initially generated reduced suite files because 
 The committed RATING-100 sensitivity report is derived from SCREEN-2 / ENGINE-1, whose frozen binary SHA-256 is 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. The power-analysis script verifies both screening manifests, their merged raw-game hashes, the registered suite hash, the 120/120 attempt/count totals, the same binary hash and the two registered anchor identities before producing the report. The report records that engine SHA.
 
 Both make_batch_dispatch.py and the confirmatory resolver in rating-run.yml require the report's engine SHA-256 to equal the binary SHA requested for dispatch. Reusing this report for ENGINE-2 or any different binary fails closed. ENGINE-2's binary identity is now measured, but its candidate-specific screening, controls and prospective power assessment have not been run; no games are authorized by this note.
+
+
+### Confirmatory campaign compute-cost estimate — 2026-11-19 (append-only, planning only)
+
+`scripts/estimate_campaign_cost.py` estimates the compute cost of the RATING-100 confirmatory
+campaign from the committed per-game wall-clock evidence. It reads the SCREEN-2 (`topple-0.1.1`,
+`topple-0.2.1`) and SCREEN-3 (`akimbo-0.1.1`) records, each 120 counted games at the 40/15
+repeating wall-clock time control, and verifies the frozen engine binary SHA-256, the frozen
+anchor binary SHA-256 from `benches/anchor-pool.json`, the opening-suite SHA-256, the
+attempt/count totals and the merged raw-game digest before it computes anything; any drift fails
+closed. The generated report is committed at `benches/confirmatory-cost-estimate.json` and is
+reproduced by `scripts/test_estimate_campaign_cost.py`.
+
+For the registered design — exactly 100 counted games per anchor per batch, 50 opening clusters,
+one AB and one BA leg per cluster, three anchors, two batches, therefore 600 counted games in 300
+shard jobs — the estimate is:
+
+- **574.0 runner-hours** in total (bootstrap p05 536.4, p95 614.0): 571.1 h of game time and 2.9 h
+  of per-shard job overhead, measured at 35 s per job by matching 60 hosted shard jobs against
+  their recorded per-game wall time.
+- **Wall-clock span** 14.9 h at the 40-way account concurrency observed across the completed
+  screening and control runs, and 21.9 h if the six dispatches are executed one wave at a time.
+  Concurrency was measured, not assumed: the account-wide peak was exactly 40 concurrent jobs
+  across two overlapping runs.
+- **Shard-timeout risk**: the bootstrap probability that a two-game shard exceeds the
+  350-minute job timeout is 3.06 %. An exceeded shard fails and is re-run into a fresh output
+  directory, costing a further pair of games.
+- **Money**: the repository is public and the campaign runs on standard GitHub-hosted runners
+  (`ubuntu-24.04`), so the metered runner-minutes carry no charge. The notional valuation at the
+  published standard-runner rate is USD 206.6 for the campaign and USD 494.5 for the full
+  gate-path program; runner-hours and wall-clock span are the meaningful cost quantities.
+
+The candidate-specific evidence that must exist before any dispatch is costed separately at
+**799.5 runner-hours over 840 games**: 600 screening games covering all three anchors on both the
+Batch A 50-opening subset and the disjoint Batch B 50-opening subset, which is what turns the
+currently-assumed Batch B distribution into a measurement, plus a candidate-specific self-match
+null control. The anchor-vs-anchor null control seats no candidate engine, so its committed
+evidence remains valid and is reused; no new games are needed for it. The full gate-path program
+is therefore 1,373.5 runner-hours over 1,440 counted games.
+
+This estimate is a **planning diagnostic and authorizes nothing**. It does not change the status
+of `benches/rating-100-power-assessment.json`, which remains `BLOCKED` and remains guarded to the
+ENGINE-1 binary SHA-256; it creates no gate plan and no dispatch marker. The fail-closed
+requirements of this protocol are unchanged: candidate-specific controls and a reviewed
+candidate-specific power assessment marked eligible must exist before any confirmatory dispatch;
+exact binary identity and opening-suite hashes are enforced by the dispatcher and the resolver;
+exactly 600 counted games on 50 opening clusters with one AB plus one BA leg per cluster are
+required; and the strict, unrounded two-sided 95% calibrated CI lower bound requirement for
+Batch A, Batch B and the combined estimate, each strictly greater than 2,000 Elo, is untouched.
+
+Two transfers behind the estimate are unmeasured and are recorded as assumptions rather than
+facts: every wall-clock measurement comes from the ENGINE-1 binary while the confirmatory campaign
+runs a different candidate binary, and no candidate-specific 40/15 wall-clock timing evidence
+exists yet; and Batch B has never been timed at all, so its durations are modelled as exchangeable
+with the anchor's observed Batch A population.
