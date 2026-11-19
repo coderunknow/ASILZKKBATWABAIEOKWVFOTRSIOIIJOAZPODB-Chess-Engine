@@ -110,6 +110,35 @@ pub struct Searcher<'a> {
 /// below the killer band.
 const HISTORY_MAX: i32 = 8_192;
 
+// ---------------------------------------------------------------------------
+// Move-ordering bands.
+//
+// Every move is placed in exactly one band, and the bands are disjoint and
+// strictly ordered. A band is chosen first; the refinements inside a band
+// (capture history, promotion bonus) are bounded so that they can never move a
+// move into a neighbouring band.
+//
+//   band              base      range after the refinements
+//   ---------------   -------   --------------------------------------------
+//   TT move           1_000_000  1_000_000
+//   sound capture     110_000    107_952 .. 142_273
+//   quiet promotion   100_000    100_000 .. 100_225
+//   counter move       95_000    95_000
+//   killer 0           90_000    90_000
+//   killer 1           80_000    80_000
+//   quiet move         50_000    25_424 .. 74_576
+//   losing capture     10_000   -2_048 .. 12_048
+//
+// The capture-history refinement is at most HISTORY_MAX / 4 = 2_048 in either
+// direction and the promotion bonus is at most 20_000 + 900 / 4 = 20_225.
+// The quiet band spans 3 * HISTORY_MAX = 24_576 of history, so it is the widest
+// band and the two capture bands are placed clear of it: a losing capture is
+// always demoted below every quiet move, and a sound capture is always ranked
+// above every quiet move.
+const SOUND_CAPTURE_BASE: i32 = 110_000;
+const LOSING_CAPTURE_BASE: i32 = 10_000;
+const QUIET_BASE: i32 = 50_000;
+
 /// Apply a history bonus/penalty with gravity (the damping term stops old entries
 /// from dominating and bounds the value without an explicit cap).
 #[inline]
@@ -227,16 +256,23 @@ impl<'a> Searcher<'a> {
         let is_cap = is_capture(pos, m);
         if is_cap {
             let see = static_exchange_eval(pos, m);
-            // Sound captures outrank killers; losing captures are deliberately
-            // demoted below ordinary quiet moves. Promotions retain a bonus.
+            // Sound captures outrank every quiet move; losing captures are
+            // deliberately demoted below every quiet move. The two bands are
+            // disjoint and the refinements below stay inside the band.
             let mut score = if see >= 0 {
-                110_000 + see.min(10_000)
+                let mut s = SOUND_CAPTURE_BASE + see.min(10_000);
+                if m.promo != PROMO_NONE {
+                    // SEE already includes the promoted piece, so this bonus only
+                    // orders a sound promotion ahead of the other sound captures.
+                    s += 20_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
+                }
+                s
             } else {
-                40_000 + see.max(-10_000)
+                // A losing capture keeps no promotion bonus: SEE already accounts
+                // for the promoted piece, and the bonus would push the move back
+                // into the quiet band, which is exactly what the demotion avoids.
+                LOSING_CAPTURE_BASE + see.max(-10_000)
             };
-            if m.promo != PROMO_NONE {
-                score += 20_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
-            }
             // Capture history refines the order inside the capture band.
             if let Some(p) = captured_piece(pos, m) {
                 score += self.capture_history[p][(m.from as usize) * 64 + m.to as usize] / 4;
@@ -273,7 +309,7 @@ impl<'a> Searcher<'a> {
         if prev2 != Move::NULL {
             h += self.cont_history2[us][(prev2.to as usize) * 64 + m.to as usize];
         }
-        50_000 + h
+        QUIET_BASE + h
     }
 
     fn order_and_score(
@@ -1343,5 +1379,124 @@ mod pvs_tests {
                 root.best_move, best_move
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    use super::*;
+    use crate::movegen::generate_legal_fast;
+    use std::sync::atomic::AtomicBool;
+
+    /// Positions taken from the Batch A rating opening list (after the listed moves).
+    const POSITIONS: [&str; 8] = [
+        "r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "r1bqkbnr/pppp1ppp/2n5/8/3NP3/8/PPP2PPP/RNBQKB1R b KQkq - 0 4",
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+        "rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 2 3",
+        "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
+        "4k3/8/8/8/8/8/4P3/4K2R w K - 0 1",
+    ];
+
+    fn searcher() -> Searcher<'static> {
+        // The tables live for the whole test; the borrow is discharged by the caller
+        // through `Box::leak`, which keeps the helper free of lifetimes.
+        let tt: &'static mut TranspositionTable = Box::leak(Box::new(TranspositionTable::new(4)));
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let limits = Arc::new(Mutex::new(SearchLimits::default()));
+        Searcher::new(tt, stop, limits)
+    }
+
+    /// The ordering bands must be disjoint: a sound capture is always ranked above
+    /// every quiet move and a losing capture always below every quiet move, no
+    /// matter what the history tables hold.
+    #[test]
+    fn ordering_bands_are_disjoint() {
+        for fen in POSITIONS {
+            let mut pos = Position::from_fen(fen).expect("test FEN");
+            for hist_fill in [HISTORY_MAX, -HISTORY_MAX] {
+                for cap_fill in [HISTORY_MAX, -HISTORY_MAX] {
+                    let mut s = searcher();
+                    for side in 0..2 {
+                        for i in 0..64 * 64 {
+                            s.history[side][i] = hist_fill;
+                            s.cont_history[side][i] = hist_fill;
+                            s.cont_history2[side][i] = hist_fill;
+                        }
+                    }
+                    for p in 0..6 {
+                        for i in 0..64 * 64 {
+                            s.capture_history[p][i] = cap_fill;
+                        }
+                    }
+                    let legal = generate_legal_fast(&mut pos)
+                        .iter()
+                        .copied()
+                        .collect::<Vec<_>>();
+                    // At ply 0 the continuation-history tables do not contribute, so
+                    // the quiet band is at its narrowest. At ply 2 they do, and the
+                    // quiet band is at its widest. Both are checked.
+                    if legal.len() >= 2 {
+                        s.path[0] = legal[0];
+                        s.path[1] = legal[1];
+                    }
+                    for ply in [0usize, 2] {
+                        let mut quiet_min = i32::MAX;
+                        let mut quiet_max = i32::MIN;
+                        let mut sound_min = i32::MAX;
+                        let mut losing_max = i32::MIN;
+                        for m in &legal {
+                            let sc = s.move_order_score(&pos, *m, None, ply);
+                            if is_capture(&pos, *m) {
+                                if static_exchange_eval(&pos, *m) >= 0 {
+                                    sound_min = sound_min.min(sc);
+                                } else {
+                                    losing_max = losing_max.max(sc);
+                                }
+                            } else if m.promo == PROMO_NONE {
+                                quiet_min = quiet_min.min(sc);
+                                quiet_max = quiet_max.max(sc);
+                            }
+                        }
+                        if quiet_min == i32::MAX {
+                            continue; // no quiet move in this position
+                        }
+                        assert!(
+                            losing_max < quiet_min,
+                            "{fen}: losing capture band reaches {losing_max}, \
+                         quiet band starts at {quiet_min}"
+                        );
+                        assert!(
+                            sound_min > quiet_max,
+                            "{fen}: sound capture band starts at {sound_min}, \
+                         quiet band ends at {quiet_max}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// The quiet band must not reach into the capture bands either: a quiet move
+    /// with the worst possible history still outranks a losing capture and still
+    /// loses to a sound capture.
+    #[test]
+    fn quiet_band_stays_between_the_capture_bands() {
+        let pos = Position::from_fen(POSITIONS[0]).expect("test FEN");
+        let mut s = searcher();
+        for side in 0..2 {
+            for i in 0..64 * 64 {
+                s.history[side][i] = -HISTORY_MAX;
+                s.cont_history[side][i] = -HISTORY_MAX;
+                s.cont_history2[side][i] = -HISTORY_MAX;
+            }
+        }
+        let quiet = s.move_order_score(&pos, Move::new(4, 12), None, 0);
+        assert!(
+            quiet >= QUIET_BASE - 3 * HISTORY_MAX,
+            "quiet score {quiet} is below the quiet band floor"
+        );
     }
 }
