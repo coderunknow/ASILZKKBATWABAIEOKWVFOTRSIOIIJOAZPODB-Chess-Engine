@@ -308,3 +308,45 @@ facts: every wall-clock measurement comes from the ENGINE-1 binary while the con
 runs a different candidate binary, and no candidate-specific 40/15 wall-clock timing evidence
 exists yet; and Batch B has never been timed at all, so its durations are modelled as exchangeable
 with the anchor's observed Batch A population.
+
+
+### Null-control seed-robustness amendment — 2026-11-19 (append-only, prospective)
+
+The §5 null controls do not have the same robustness properties, and the
+difference was not previously stated.
+
+- The **anchor-vs-anchor** control is decided by comparing the *measured point
+  estimate* against the published difference under the ±75 Elo tolerance. It
+  uses no bootstrap interval, so its verdict is independent of the bootstrap
+  seed. Verified: CTRL-1 returns `d_measured = -125.3211`, `error = -10.3211`,
+  `pass = true` identically for 40 different bootstrap seeds. The committed
+  CTRL-1 evidence seats no candidate engine and remains reusable.
+- The **self-match** control is decided by whether a percentile cluster-bootstrap
+  95 % CI contains 0.5. With *n* clusters of four games the resampled mean
+  takes values on a grid of 1/(8n). When the bootstrap's 97.5 % percentile falls
+  between two adjacent grid points, the discrete rank index lands on one or the
+  other depending on the seed, and the verdict flips — which happens exactly at
+  the rejection boundary. Measured on the committed CTRL-2-R evidence (240
+  games, 60 clusters, seat-A score 0.460417): the verdict flips on 45–58 % of
+  bootstrap seeds across 1,000 / 10,000 / 50,000 replicates, and the interval's
+  upper endpoint takes only the two adjacent grid values 0.4979167 and 0.5. The
+  recorded CTRL-2-R FAIL (registered seed 20261114, CI
+  [0.4208333333, 0.4979166667]) reproduces byte-identically and **stands
+  unchanged**; the analysis only adds that the same evidence yields PASS under
+  41 % of seeds, so it is a borderline outcome of a knife-edge test.
+
+**Amendment (applies to any null control dispatched after 2026-11-19).** The
+self-match verdict is certified across the registered seed set `20261114 …
+20261129`. A verdict that is not unanimous across that set is reported as
+**NOT ROBUST**, and the gate treats the control as **unavailable** — never as
+PASS and never as FAIL. The amendment is a strengthening only: it can turn an
+ambiguous PASS into "unavailable" but can never turn a FAIL into a PASS, so it
+cannot rescue any recorded verdict. The registered control sizes are unchanged
+(240 games for each control); the flip band is ≈ ±0.027 SE independently of the
+control size, so the certification — not a larger control — is what makes the
+rare ambiguous case safe. The candidate's own control must additionally report
+`seed_robust: true`.
+
+This changes no dispatch authorization. The prospective power assessment is
+still `BLOCKED` and still guarded to the ENGINE-1 binary, and no gate plan and
+no confirmatory dispatch exist.

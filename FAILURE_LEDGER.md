@@ -782,3 +782,79 @@ confirmatory dispatch.
 - Classification: not a failure. The registered decision rule (95% CI lower bound > 0 Elo) is met with a wide margin, and the result was reproduced by two independent code paths (`scripts/stats.py` and a separate recomputation against the raw JSONL).
 - Result: recorded in `PREREGISTRATION.md` (EVAL-3 result record) and the raw evidence is preserved under `benches/evidence/screening-eval3/`. The result is screening evidence on a shared 2-vCPU sandbox at a fixed 100 ms/move time control; it is not a rating and it does not substitute for the >2,000 Elo gate.
 - Lesson: the mechanical root-consistency measurements of the audit (root score below the value of the chosen move in 5/12 and 8/12 positions; MultiPV best understated in 7/12) predicted a real strength gap. A correctness audit that measures the *symptom* it fixed gives a falsifiable strength prediction, which the screening campaign then tested.
+
+## 2026-11-19 — the self-match null-control verdict is seed-dependent at the boundary
+
+### What was found
+
+While reviewing the minimum candidate-specific control set, the committed
+CTRL-2-R self-match evidence was re-aggregated with the registered tool
+(`scripts/rating_estimator.py control --mode self-match`, unchanged) to check
+that the committed control evidence still reproduces. It does — but only for the
+exact seed the verdict was recorded with.
+
+| Seed | Seat-A score | 95 % CI | Verdict |
+|---|---|---|---|
+| 20261114 (registered) | 0.46041666666666664 | [0.42083333333333334, **0.4979166666666667**] | **FAIL** — CI does not contain 0.5 |
+| 20261125 (the dispatch seed) | 0.46041666666666664 | [0.42083333333333334, **0.5**] | PASS — CI contains 0.5 |
+
+Across 300 consecutive seeds the recorded evidence gives **177 PASS and 123
+FAIL**. The point estimate is seed-independent (0.46041666666666664 = 110.5/240);
+only the interval's endpoint moves, and it takes only two values, 0.4979167 and
+0.5 — adjacent points on the grid the bootstrap mean lives on.
+
+### Root cause
+
+The self-match criterion is "the 95 % CI contains 0.5", and the CI is a
+percentile cluster bootstrap. With *n* clusters of four games the resampled
+mean is a multiple of 1/(8n), so the bootstrap distribution is a coarse grid.
+The 97.5 % percentile for this evidence falls at ≈ 0.4992 — *between* the grid
+points 0.4979167 and 0.5. The discrete rank index `int(0.975 * n_boot)`
+therefore lands on one or the other depending on the seed. The number of
+bootstrap resamples at or above 0.5 has mean `n_boot * Φ(z)` and standard
+deviation ≈ 16 at `n_boot = 10,000`, so the verdict flips whenever that count
+straddles the rank threshold — a band of roughly ±0.027 SE in z.
+
+This is not a Monte-Carlo artifact and more replicates do not remove it:
+
+| Bootstrap replicates | Seeds tried | FAIL | PASS | Flip rate | Upper bound values seen |
+|---|---|---|---|---|---|
+| 1,000 | 60 | 35 | 25 | 58.3 % | 0.4958333, 0.4979167, 0.5, 0.5020833 |
+| 10,000 | 60 | 27 | 33 | 45.0 % | 0.4979167, 0.5 |
+| 50,000 | 24 | 13 | 11 | 54.2 % | 0.4979167, 0.5 |
+
+The flip band in z is ≈ ±0.027 SE **independently of the control size**, so a
+larger control would not reduce how often a genuinely fair candidate lands in
+it (≈ 0.3 % of fair candidates); what makes the rare ambiguous case safe is
+certifying the verdict across a registered seed set, not collecting more games.
+
+The **anchor-vs-anchor** control does not have this problem: it is decided by
+comparing the measured point estimate with the published difference under the
+±75 Elo tolerance and uses no bootstrap interval, so its verdict is identical
+for 40 different seeds (`d_measured = -125.3211`, `error = -10.3211`, PASS).
+
+### Impact on the recorded verdicts
+
+**None — every recorded verdict stands unchanged.** The CTRL-2-R FAIL was
+recorded with the registered seed 20261114 and reproduces byte-identically. The
+pre-ENGINE-1 self-match PASS reproduces byte-identically at its recorded seed
+and is unanimous across all 16 registered seeds (16/16 PASS), so it is not
+affected. CTRL-1 reproduces byte-identically and is seed-independent by
+construction.
+
+What the analysis adds is the *characterisation* of the ENGINE-1 outcome: it is
+a borderline result (clustered z ≈ −2.00 against a 1.96 threshold) reported by
+a knife-edge test, not evidence that the ENGINE-1 binary is biased in colour.
+The disqualification of ENGINE-1 as a rated candidate is a conservative
+consequence of the registered criterion and is **not** reversed.
+
+### Fix
+
+Registered prospectively (before any candidate control is dispatched) in
+`PREREGISTRATION.md` § "RATING-100 control-robustness amendment" and
+`docs/RATING_PROTOCOL.md`: the self-match verdict is certified across the
+registered seed set `20261114 … 20261129`, and a verdict that is not unanimous
+is reported as **NOT ROBUST** and treated by the gate as **unavailable** —
+never as PASS and never as FAIL. The amendment is a strengthening only, so it
+cannot rescue a failing control. `scripts/rating_estimator.py` now reports
+`seed_robust` for both null controls, and the gate requires it.

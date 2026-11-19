@@ -1377,3 +1377,75 @@ Elo gain.
   gain from this campaign: the three fixes were applied and measured as one
   bundle.
 
+
+---
+
+## RATING-100 control-robustness amendment (registered 2026-11-19, BEFORE any candidate control is dispatched)
+
+### What was found
+
+The two null controls of `docs/RATING_PROTOCOL.md` §5 do not have the same
+robustness properties, and the difference was not previously stated.
+
+- The **anchor-vs-anchor** control is decided by comparing the *measured point
+  estimate* with the published difference under a ±75 Elo tolerance. It does not
+  use a bootstrap interval, so its verdict does not depend on the bootstrap seed
+  at all. Verified: CTRL-1 returns `d_measured = -125.3211`, `error = -10.3211`
+  and `pass = true` identically for 40 different bootstrap seeds.
+- The **self-match** control is decided by whether a percentile cluster-bootstrap
+  95 % CI contains 0.5. That CI is evaluated on a coarse grid: with *n* clusters
+  of four games the resampled mean takes values on a grid of 1/(8n). When the
+  bootstrap's 97.5 % percentile falls between two adjacent grid points, the
+  discrete rank index lands on one or the other depending on the seed, and the
+  verdict flips. This happens exactly at the rejection boundary, where the
+  criterion is meant to be 50/50.
+
+Measured on the committed CTRL-2-R evidence (ENGINE-1 self-match, 240 counted
+games, 60 clusters, seat-A score 0.460417):
+
+| Bootstrap replicates | Seeds tried | FAIL | PASS | Flip rate | Upper bound values seen |
+|---|---|---|---|---|---|
+| 1,000 | 60 | 35 | 25 | 58.3 % | 0.4958333, 0.4979167, 0.5, 0.5020833 |
+| 10,000 | 60 | 27 | 33 | 45.0 % | 0.4979167, 0.5 |
+| 50,000 | 24 | 13 | 11 | 54.2 % | 0.4979167, 0.5 |
+
+The flip is structural, not a Monte-Carlo artifact: more replicates do not
+remove it, and the interval's upper endpoint takes only the two adjacent grid
+values. The recorded CTRL-2-R verdict (FAIL with the registered seed 20261114,
+CI [0.4208333333, 0.4979166667]) reproduces **byte-identically** with the
+registered tool and seed and **stands unchanged**. What the analysis adds is
+that the same evidence yields PASS under 41 % of bootstrap seeds, so the
+verdict is a borderline outcome reported by a knife-edge test, not a property
+of the binary. The pre-ENGINE-1 self-match is not affected: it passes
+unanimously across all 16 registered seeds (16/16 PASS).
+
+### The amendment
+
+For any null control dispatched **after** this amendment:
+
+1. The self-match verdict is certified across the **registered seed set**
+   `20261114 … 20261129` (16 seeds) in `scripts/rating_estimator.py`
+   (`CONTROL_ROBUSTNESS_SEEDS`).
+2. A control whose verdict is **not unanimous** across that set is reported as
+   **NOT ROBUST** and the gate treats it as **unavailable** — never as PASS
+   and never as FAIL.
+3. The amendment is a **strengthening only**. It can turn an ambiguous PASS
+   into "unavailable"; it can never turn a FAIL into a PASS. It therefore
+   cannot rescue the recorded ENGINE-1 disqualification, and it does not
+   change any already-recorded verdict.
+4. The registered control sizes are unchanged: the anchor-vs-anchor control is
+   240 games and the candidate self-match control is 240 games (120 shards × 2).
+   The analysis shows the flip band in z is ≈ ±0.027 SE **independently of the
+   control size**, so a larger control would not reduce the frequency of an
+   ambiguous verdict (≈ 0.3 % for a genuinely fair candidate); the robustness
+   certification is what makes the rare ambiguous case safe. The estimator
+   records the certificate alongside the verdict, and the candidate's own
+   control must additionally report `seed_robust: true`.
+
+### Status
+
+This amendment changes **no** dispatch authorization. The prospective power
+assessment is still `BLOCKED` and still guarded to the ENGINE-1 binary; no gate
+plan and no confirmatory dispatch exist. The candidate's own screening,
+controls and power assessment have still not been run, so this is a
+*prospective* registration made before the evidence it governs exists.

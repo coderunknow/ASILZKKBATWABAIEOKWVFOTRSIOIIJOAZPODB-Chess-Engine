@@ -427,3 +427,31 @@ and bench signature `c64d148d39181140` still identify the same program.
 No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
 exists, PR #2 stays Draft, and candidate-specific controls + a reviewed candidate-specific power
 PASS + three unrounded Elo lower bounds > 2,000 all remain required before any dispatch.
+
+## 2026-11-19 — minimum candidate-specific control set reviewed
+
+Re-aggregating the committed control evidence with the registered tool showed the two §5 null
+controls have different robustness properties. The **anchor-vs-anchor** control uses no bootstrap
+interval, so its verdict is seed-independent (CTRL-1 reproduces for 40 seeds) and its committed
+evidence is reused — **0 new games**. The **self-match** control reads a percentile
+cluster-bootstrap CI, whose verdict flips on 45–58 % of seeds near the rejection boundary; the
+committed CTRL-2-R evidence is exactly such a case (FAIL at the registered seed 20261114,
+PASS at the dispatch seed 20261125). Every recorded verdict stands unchanged — ENGINE-1 remains
+disqualified, the pre-ENGINE-1 self-match still passes unanimously, CTRL-1 still passes.
+
+Registered **prospectively** (before any candidate control is dispatched): the self-match verdict
+is certified across the registered seed set `20261114 … 20261129`; a non-unanimous verdict is
+reported as NOT ROBUST and the gate treats the control as unavailable — never as PASS and never as
+FAIL, so the amendment is a strengthening only. Control sizes are unchanged (240 games each);
+the flip band is ≈ ±0.027 SE independently of the control size. `scripts/rating_estimator.py`
+reports `seed_robust` for both controls and the gate requires it; `scripts/test_rating_estimator.py`
+grows from 65 to 83 checks.
+
+**Minimum candidate-specific control set (final):** 600 candidate-specific screening games (all
+three anchors, Batch A + the disjoint Batch B) + a 240-game candidate-specific self-match control
+that must report `seed_robust: true`; the anchor-vs-anchor control is reused at 0 games. Gate-path
+total 799.5 runner-hours; grand total 1,373.5 runner-hours / 1,440 counted games.
+
+No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
+exists, PR #2 stays Draft, and the candidate-specific controls + a reviewed candidate-specific
+power PASS + three unrounded Elo lower bounds > 2,000 all remain required before any dispatch.

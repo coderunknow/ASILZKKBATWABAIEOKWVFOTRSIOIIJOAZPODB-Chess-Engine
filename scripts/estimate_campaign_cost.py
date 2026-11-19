@@ -639,10 +639,23 @@ def estimate(
                 "shard_jobs": CONTROL_SHARDS,
                 "runner_hours": control_hours,
                 "candidate_dependent": True,
+                "seed_robustness_required": True,
                 "rationale": (
                     "The registered self-match null control seats the candidate against itself, "
                     "so it must be re-run for the candidate binary. The committed "
                     "flawless-self-r evidence carries the ENGINE-1 binary and does not transfer."
+                ),
+                "verification": (
+                    "The verdict must additionally be certified across the registered bootstrap "
+                    "seed set (PREREGISTRATION.md, control-robustness amendment, 2026-11-19). "
+                    "The self-match criterion reads a percentile cluster-bootstrap CI, which is "
+                    "evaluated on a coarse grid, so a verdict near the rejection boundary can "
+                    "depend on the bootstrap seed: the committed CTRL-2-R evidence flips on "
+                    "45-58% of seeds. An ambiguous control is reported as unavailable, never as "
+                    "PASS. The registered 240-game size is unchanged because the flip band is "
+                    "approximately +/-0.027 SE independently of the control size, so the "
+                    "certification, not a larger control, is what makes the rare ambiguous case "
+                    "safe."
                 ),
             },
             "anchor_vs_anchor_control": {
@@ -650,9 +663,13 @@ def estimate(
                 "shard_jobs": 0,
                 "runner_hours": 0.0,
                 "candidate_dependent": False,
+                "seed_robustness_required": False,
                 "rationale": (
                     "Neither seated engine is the candidate, so the committed anchor-vs-anchor "
-                    "control evidence remains valid and is reused; no new games are needed."
+                    "control evidence remains valid and is reused; no new games are needed. "
+                    "Its verdict compares the measured point estimate with the published "
+                    "difference under the +/-75 Elo tolerance and uses no bootstrap interval, so "
+                    "it is seed-independent: CTRL-1 reproduces identically for 40 bootstrap seeds."
                 ),
             },
             "total_prerequisite_runner_hours": screening_hours + control_hours,

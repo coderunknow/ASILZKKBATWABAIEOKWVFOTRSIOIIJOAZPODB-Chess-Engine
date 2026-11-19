@@ -243,3 +243,28 @@ regression test that was verified to fail against the pre-fix source.
   changed: the power report stays `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch exists,
   PR #2 stays Draft, and the candidate-specific controls, the candidate-specific power PASS and the
   three unrounded Elo lower bounds above 2,000 all remain required before any dispatch.
+- **The self-match null-control verdict was found to be seed-dependent at the rejection boundary,
+  and the criterion was strengthened prospectively.** Re-aggregating the committed control evidence
+  with the registered tool showed that the two §5 null controls do not have the same robustness
+  properties. The **anchor-vs-anchor** control compares the measured point estimate with the
+  published difference under the ±75 Elo tolerance and uses no bootstrap interval, so its verdict is
+  seed-independent — CTRL-1 reproduces identically for 40 bootstrap seeds and remains reusable
+  because it seats no candidate engine. The **self-match** control reads a percentile
+  cluster-bootstrap CI, and with *n* clusters of four games that CI is evaluated on a grid of
+  1/(8n): the committed CTRL-2-R evidence yields FAIL with the registered seed 20261114 (reproduced
+  byte-identically) and PASS with the dispatch seed 20261125, and flips on 45–58 % of bootstrap
+  seeds across 1,000 / 10,000 / 50,000 replicates. More replicates do not remove it; the flip band
+  is ≈ ±0.027 SE independently of the control size.
+  **Every recorded verdict stands unchanged** — CTRL-2-R is still FAIL, ENGINE-1 is still
+  disqualified, the pre-ENGINE-1 self-match still passes (unanimously, 16/16 seeds), CTRL-1 still
+  passes. The finding only characterises the ENGINE-1 result as a borderline outcome (z ≈ −2.00)
+  of a knife-edge test rather than evidence of colour bias.
+  For any control dispatched after this amendment the self-match verdict is certified across the
+  registered seed set `20261114 … 20261129`; a verdict that is not unanimous is reported as **NOT
+  ROBUST** and the gate treats the control as **unavailable** — never as PASS and never as FAIL, so
+  the amendment is a strengthening that can never rescue a failing control. The registered control
+  sizes are unchanged. `scripts/rating_estimator.py` reports `seed_robust` for both null controls and
+  the gate requires it; `scripts/test_rating_estimator.py` grows from 65 to 83 checks and pins the
+  committed CTRL-1 and CTRL-2-R numbers against silent drift.
+  The gate-path budget is unchanged at 799.5 runner-hours. No gate changed: the power report stays
+  `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch exists, PR #2 stays Draft.

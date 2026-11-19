@@ -626,6 +626,105 @@ def test_self_match_seat_perspective():
     check(close(sm2["score"], 0.0), "BA-only: seat A scores the black side exactly")
 
 
+def test_control_seed_robustness():
+    """A self-match verdict must be certified across the registered seed set.
+
+    The criterion "the 95% CI contains 0.5" is a percentile cluster bootstrap
+    evaluated on a coarse grid, so a verdict near the rejection boundary can
+    depend on the bootstrap seed. An ambiguous verdict must be reported as NOT
+    ROBUST, and the gate must treat it as unavailable -- never as PASS.
+    """
+    check(len(re.CONTROL_ROBUSTNESS_SEEDS) >= 8,
+          "the registered robustness seed set must be large enough to detect a flip")
+    check(len(set(re.CONTROL_ROBUSTNESS_SEEDS)) == len(re.CONTROL_ROBUSTNESS_SEEDS),
+          "the registered robustness seed set must contain no duplicates")
+
+    # A clearly fair control: decisive seat symmetry, so every seed agrees.
+    fair = []
+    for oname, w, l, d in uniform_openings(20, 6, 6, 8):
+        for i, r_ in enumerate(["1-0"] * w + ["0-1"] * l + ["1/2-1/2"] * d):
+            fair.append({"opening": oname, "white": "Flawless", "black": "Flawless",
+                         "result": r_, "counted": True, "engine_error": False,
+                         "color_pair": "AB" if i % 2 == 0 else "BA"})
+    r = re.control_self_match(fair, "flawless", 500, 11)
+    check("seed_robust" in r, "the self-match result must report seed_robust")
+    check(r["seed_robustness"]["n_seeds"] == len(re.CONTROL_ROBUSTNESS_SEEDS),
+          "every registered seed must be certified")
+    check(r["seed_robustness"]["n_pass"] + (r["seed_robustness"]["n_seeds"]
+                                             - r["seed_robustness"]["n_pass"]) ==
+          r["seed_robustness"]["n_seeds"], "the per-seed verdicts must be counted")
+    check(r["seed_robustness"]["unanimous"] is True,
+          "a clearly fair control must be unanimous across the registered seeds")
+    check(r["seed_robust"] is True, "a clearly fair control must be seed-robust")
+
+    # A strongly biased control: seat A wins every game. In an AB game seat A
+    # is White, so White must win ("1-0"); in a BA game seat A is Black, so
+    # White must lose ("0-1"). The seat perspective is then systematically in
+    # seat A's favour, which is exactly what the control must detect.
+    biased = []
+    for oname, w, l, d in uniform_openings(20, 6, 6, 8):
+        for i in range(w + l + d):
+            pair = "AB" if i % 2 == 0 else "BA"
+            white_result = "1-0" if pair == "AB" else "0-1"
+            biased.append({"opening": oname, "white": "Flawless", "black": "Flawless",
+                           "result": white_result, "counted": True, "engine_error": False,
+                           "color_pair": pair})
+    rb = re.control_self_match(biased, "flawless", 500, 11)
+    check(close(rb["score"], 1.0),
+          f"a seat-biased control must score 1.0 for seat A (got {rb['score']!r})")
+    check(rb["pass"] is False, "a biased control must fail")
+    check(rb["seed_robust"] is True,
+          "a clearly biased control is unanimous and therefore seed-robust")
+    check(rb["pass"] is False and rb["seed_robust"] is True,
+          "a robust FAIL stays FAIL; robustness never upgrades a verdict")
+
+    # The anchor-vs-anchor control uses no bootstrap interval, so its verdict
+    # is seed-independent by construction.
+    e1 = pool_entry("alpha", 2000, 20)
+    e2 = pool_entry("beta", 1900, 20)
+    games = make_games("alpha", uniform_openings(20, 5, 5, 2))
+    cr = re.control_anchor_vs_anchor(games, e1, e2, 500, 5)
+    check(cr["seed_robust"] is True,
+          "the anchor-vs-anchor verdict is seed-independent by construction")
+
+
+def test_committed_controls_reproduce():
+    """The committed control evidence must reproduce with the registered tool.
+
+    These are the exact numbers recorded in FAILURE_LEDGER.md and
+    PREREGISTRATION.md. A change to the estimator must not silently move them.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    ctrl = os.path.join(root, "benches", "evidence", "control")
+    if not os.path.isdir(ctrl):
+        return  # evidence not present in this checkout
+
+    pool = json.load(open(os.path.join(root, "benches", "anchor-pool.json")))
+    entries = pool["engines"]
+
+    a_vs_a = os.path.join(ctrl, "topple-0.1.1-vs-topple-0.2.1", "games.jsonl")
+    if os.path.exists(a_vs_a):
+        e_a = next(e for e in entries if e["key"] == "topple-0.1.1")
+        e_b = next(e for e in entries if e["key"] == "topple-0.2.1")
+        res = re.control_anchor_vs_anchor(re.load_games(a_vs_a, None), e_a, e_b, 1000, 5)
+        check(res["pass"] is True, "CTRL-1 anchor-vs-anchor must still PASS")
+        check(close(res["d_measured"], -125.32114796874765, 1e-6),
+              f"CTRL-1 d_measured must reproduce (got {res['d_measured']!r})")
+        check(close(res["error"], -10.321147968747653, 1e-6),
+              f"CTRL-1 error must reproduce (got {res['error']!r})")
+
+    self_r = os.path.join(ctrl, "flawless-self-r", "games.jsonl")
+    if os.path.exists(self_r):
+        res = re.control_self_match(re.load_games(self_r, "flawless"), "flawless", 1000, 20261114)
+        check(res["pass"] is False,
+              "the recorded CTRL-2-R FAIL must still be FAIL")
+        check(close(res["score"], 0.46041666666666664, 1e-9),
+              f"CTRL-2-R seat-A score must reproduce (got {res['score']!r})")
+        check(res["seed_robust"] is False,
+              "the CTRL-2-R verdict is seed-dependent and must be reported as not robust")
+
+
 def main():
     test_eps_conversion()
     test_gls_math()
@@ -639,6 +738,8 @@ def main():
     test_anchor_label_key_matching()
     test_focus_label_case_insensitive()
     test_self_match_seat_perspective()
+    test_control_seed_robustness()
+    test_committed_controls_reproduce()
     test_verify_evidence_fail_closed()
     test_gate_uses_eligible_subset_of_pool()
     test_gate_full()

@@ -591,3 +591,59 @@ untouched. Candidate-specific controls, a reviewed candidate-specific power PASS
 suite hashes, exactly 600 counted games on 50 opening clusters, and three unrounded Elo lower bounds
 above 2,000 all remain required before any dispatch. PR #2 remains Draft and is never merged
 automatically.
+
+## 2026-11-19 — minimum candidate-specific control set reviewed; self-match criterion strengthened
+
+Reviewing which null controls the candidate actually needs required re-aggregating the committed
+control evidence with the **registered** tool (`scripts/rating_estimator.py control`), and the two
+§5 controls turned out to have very different robustness properties.
+
+| Control | Decision rule | Seed-dependent? | Committed verdict | Reuse for the candidate? |
+|---|---|---|---|---|
+| Anchor-vs-anchor (CTRL-1) | measured point estimate vs published difference, ±75 Elo | **No** — no bootstrap interval | PASS, error **−10.32** Elo | **Yes** — seats no candidate engine, 0 new games |
+| Self-match (candidate) | percentile cluster-bootstrap 95 % CI contains 0.5 | **Yes**, at the boundary | — | **Must be re-run** — seats the candidate |
+
+CTRL-1 reproduces identically for 40 bootstrap seeds (`d_measured = -125.3211`, `error = -10.3211`,
+PASS), so its committed evidence is valid and is reused.
+
+The self-match control's verdict is **not** seed-independent near the rejection boundary. The
+committed CTRL-2-R evidence (ENGINE-1, 240 games, 60 clusters, seat-A score 0.460417) gives:
+
+| Seed | 95 % CI | Verdict |
+|---|---|---|
+| 20261114 (registered) | [0.4208333333, **0.4979166667**] | **FAIL** — CI misses 0.5 |
+| 20261125 (dispatch seed) | [0.4208333333, **0.5**] | PASS — CI contains 0.5 |
+
+Across 300 consecutive seeds it gives 177 PASS / 123 FAIL. The cause is structural: with *n*
+clusters of four games the bootstrap mean lives on a grid of 1/(8n), and this data's 97.5 %
+percentile falls at ≈ 0.4992 — *between* the grid points 0.4979167 and 0.5 — so the discrete rank
+index lands on one or the other depending on the seed. More replicates do not help (flip rate
+58 % / 45 % / 54 % at 1,000 / 10,000 / 50,000 replicates), and the flip band is ≈ ±0.027 SE
+independently of the control size.
+
+**Every recorded verdict stands unchanged.** CTRL-2-R is still FAIL and ENGINE-1 is still
+disqualified as a rated candidate; the pre-ENGINE-1 self-match still passes and passes
+*unanimously* (16/16 registered seeds); CTRL-1 still passes. The finding characterises the
+ENGINE-1 result as a borderline outcome (clustered z ≈ −2.00 against a 1.96 threshold) of a
+knife-edge test, not as evidence that the binary is colour-biased.
+
+**Registered prospectively** (before any candidate control is dispatched): the self-match verdict is
+certified across the registered seed set `20261114 … 20261129`; a verdict that is not unanimous is
+reported as **NOT ROBUST** and the gate treats the control as **unavailable** — never as PASS and
+never as FAIL, so the amendment can never rescue a failing control. The registered control sizes are
+unchanged (240 games each); the certification, not a larger control, is what makes the rare
+ambiguous case safe. `scripts/rating_estimator.py` now reports `seed_robust` for both null
+controls and the gate requires it; `scripts/test_rating_estimator.py` grows from 65 to 83 checks,
+including a reproduction test pinning the committed CTRL-1 and CTRL-2-R numbers.
+
+**Minimum candidate-specific control set (final).** The candidate needs (1) 600 screening games
+covering all three anchors on both Batch A and the disjoint Batch B — 571.1 runner-hours, which is
+also what turns the currently-modelled Batch B distribution into a measurement — and (2) a
+240-game candidate-specific self-match control — 228.4 runner-hours — which must additionally
+report `seed_robust: true`. The anchor-vs-anchor control needs **0** new games. Gate-path total
+**799.5 runner-hours**; grand total **1,373.5 runner-hours / 1,440 counted games**.
+
+No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
+exists, PR #2 remains Draft, and the candidate-specific controls, the reviewed candidate-specific
+power PASS and the three unrounded Elo lower bounds above 2,000 all remain required before any
+dispatch.

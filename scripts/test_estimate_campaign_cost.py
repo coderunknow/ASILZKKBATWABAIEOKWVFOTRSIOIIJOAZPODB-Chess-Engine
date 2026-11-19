@@ -439,6 +439,18 @@ class PrerequisiteTests(unittest.TestCase):
         self.assertEqual(screening["cells"], 6)
         self.assertEqual(screening["counted_games"], 600)
 
+    def test_self_match_control_requires_a_seed_robust_verdict(self):
+        report = run_estimate()
+        control = report["gate_path_prerequisites"]["candidate_self_match_control"]
+        self.assertTrue(control["seed_robustness_required"])
+        self.assertIn("unavailable", control["verification"])
+
+    def test_anchor_vs_anchor_control_is_seed_independent(self):
+        report = run_estimate()
+        control = report["gate_path_prerequisites"]["anchor_vs_anchor_control"]
+        self.assertFalse(control["seed_robustness_required"])
+        self.assertIn("seed-independent", control["rationale"])
+
 
 class DeterminismTests(unittest.TestCase):
     def test_same_inputs_give_the_same_report(self):
