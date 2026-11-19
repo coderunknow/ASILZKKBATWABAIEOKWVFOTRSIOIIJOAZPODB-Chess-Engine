@@ -536,3 +536,67 @@
   `STATUS.md`, `CHANGELOG.md` and `DESIGN_LOG.md`, and left SPEED-1 as the
   only KEPT screening result. PR #2 remains Draft; `OWNER_TEST_PENDING`
   remains; the rating power assessment remains BLOCKED.
+
+## 2026-11-19 — historical evidence recovery, control failure, and the PR #2 audit
+
+### Recovery of the skipped aggregates
+
+- The sandbox was restored mid-session: the working tree came back byte-identical to
+  the pushed head, but `/home/user/tc`, `/home/user/matches`, `/home/user/bins`,
+  `/home/user/.toolchain`, `/home/user/.venv` and `/home/user/opponents` were gone.
+  The toolchain, venv and opponents were rebuilt from the documented pins
+  (Rust 1.99.0 via `@toolchain-bin`, python-chess 1.11.2, Stockfish 19.0.1).
+- **The raw STRENGTH-1 / EVAL-1 / EVAL-2 campaign records in `/home/user/matches`
+  were never committed to the repository and are therefore permanently lost.**
+  Their recorded numbers remain in the append-only logs, but the underlying
+  per-game records can no longer be re-audited. This is recorded here so that no
+  later agent treats the EVAL-2 table as independently re-verifiable. Every
+  campaign from now on commits its raw evidence under `benches/`.
+- The two historical rating runs whose evidence jobs were skipped were recovered
+  through the `evidence-bridge` workflow (the artifact blob host is unreachable
+  from the sandbox): CTRL-2-R (240 games, candidate self-match) and SCREEN-3
+  (120 games vs akimbo-0.1.1). Both pass the strict fail-closed aggregator.
+
+### The self-match null control FAILED
+
+- CTRL-2-R: seat-A score 0.460417, cluster-bootstrap CI [0.420833, 0.497917] —
+  does not contain 0.5. **ENGINE-1 is disqualified as a rated candidate.**
+- The anchor-vs-anchor control passes (error -10.32 Elo against a ±75 tolerance),
+  and the earlier pre-ENGINE-1 self-match passes.
+- Root cause: the estimator is unbiased (the seat score is exactly 0.5 in
+  expectation under the implemented convention) and the observed z is -2.00, so
+  this is a marginal statistical failure rather than a harness defect. The
+  alternative hypothesis — that the suite line should be mirrored in the BA half
+  — was investigated and **rejected by arithmetic**: mirroring would make the
+  registered control's expectation `w + d/2` instead of exactly 0.5, so it would
+  break the control rather than fix it. The harness was left unchanged.
+- Full analysis in `FAILURE_LEDGER.md` (2026-11-19).
+
+### PR #2 source audit
+
+- The evaluator was re-read term by term against the pawn-attack direction
+  convention. Every directional lookup is correct: the outpost fix is right, the
+  mobility/pawn/space/passer/rook-file/king-safety terms all read the right
+  side's pieces and the right king. The feature-flag semantics are coherent
+  (each flag isolates a refinement on top of the historical baseline, so
+  EVAL-NONE reproduces HIST-1 exactly).
+- A suspected Rust precedence bug in `breakdown` (`if c { a } else { b } + TEMPO`)
+  was checked empirically and **is not a bug**: Rust parses the expression as
+  `(if c { a } else { b }) + TEMPO`, so `breakdown().total` does include the
+  tempo term and agrees with `evaluate()`.
+- The fast legality filter was audited against the reference generator: the pin
+  table removes our own pieces from the occupancy so that a pinner behind a
+  pinned piece is still discovered, which is what makes the "capture the checker
+  while uncovering a second attack" case correct. The single-check evasion
+  squares, the double-check rule, the king-move occupancy and the en-passant
+  delegation are all correct.
+- **One real defect found and fixed**: the post-castling occupancy used the
+  kingside rook squares for a queenside castling, so a1 was left occupied and
+  the king's own rook on d1 was invisible. The legality outcome happens to be
+  identical in every reachable position (proved in the commit message and the
+  test), but the computation was wrong. It is now computed per side in
+  `post_castling_occupancy`, with a unit test that fails against the old logic.
+  The bench signature and node count are unchanged.
+- Added `evaluation_total_matches_the_trait_for_both_sides_to_move` and
+  `evaluation_is_antisymmetric_over_random_playouts` to the evaluation gate
+  suite (7/7 pass).

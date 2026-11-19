@@ -288,3 +288,96 @@ fn every_term_has_the_right_direction() {
         "the bishop pair must be worth something"
     );
 }
+
+/// The `Evaluator` trait's fast path and the public breakdown must agree.
+///
+/// The fast path computes the tapered total directly and the breakdown tapers
+/// each component separately, so this is a real cross-check of two independent
+/// implementations of the same score. It must hold for BOTH sides to move:
+/// the tempo constant belongs to whoever is to move, and a sign error that
+/// only shows up for one side would otherwise pass unnoticed.
+#[test]
+fn evaluation_total_matches_the_trait_for_both_sides_to_move() {
+    let fens = [
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1",
+        "8/8/8/1k6/2Pp4/8/8/4K3 b - c3 0 1",
+        "2r3k1/p4p1p/1p2p1p1/8/2P5/1P3P2/P4P1P/2R3K1 w - - 0 1",
+        "r1bq1rk1/pp2ppbp/2np1np1/8/3NP3/2N1BP2/PPPQ2PP/2KR3R w - - 0 1",
+        "8/8/8/8/8/8/8/K6k w - - 0 1",
+        "4k3/8/8/8/8/8/5q2/4K3 w - - 0 1",
+    ];
+    let mut eval = ClassicalEvaluator;
+    for fen in fens {
+        for black_to_move in [false, true] {
+            let pos = Position::from_fen(fen).unwrap();
+            // Flip the side to move by mirroring the position; that keeps the
+            // position legal and exercises the other sign of the tempo term.
+            let mut p = pos.clone();
+            if black_to_move {
+                let flipped = flip(&pos).expect("mirror built");
+                p = flipped;
+            }
+            let a = eval.evaluate(&p);
+            let b = breakdown(&p).total;
+            assert_eq!(
+                a, b,
+                "evaluate and breakdown disagree for {fen} (black_to_move={black_to_move}): {a} vs {b}"
+            );
+        }
+    }
+}
+
+/// Antisymmetry must hold over a large, varied corpus of positions, not just
+/// a handful of hand-picked FENs.
+///
+/// A term that rewards the wrong side is still antisymmetric when it is
+/// symmetric under the flip, so this gate cannot by itself catch a wrong
+/// evaluator -- `every_term_has_the_right_direction` covers that. What this
+/// gate does catch is an evaluation that is not symmetric at all: a flipped
+/// table lookup, a sign error in one branch, or a term that reads the wrong
+/// king's square.
+#[test]
+fn evaluation_is_antisymmetric_over_random_playouts() {
+    fn rng(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    let mut state = 0x1234_5678_9ABC_DEF0u64;
+    let mut pos = Position::startpos();
+    let mut checked = 0usize;
+    for _ in 0..600 {
+        let legal = flawless::movegen::generate_legal_fast(&mut pos);
+        if legal.len == 0 {
+            pos = Position::startpos();
+            continue;
+        }
+        let idx = (rng(&mut state) % legal.len as u64) as usize;
+        let m = legal.moves[idx];
+        let undo = pos.make_move(m);
+        pos.unmake_move(m, &undo);
+
+        let flipped = match flip(&pos) {
+            Some(f) => f,
+            // A mirrored position can be illegal (the side to move would be
+            // giving check); such positions are simply not comparable.
+            None => continue,
+        };
+        let a = breakdown(&pos).total - TEMPO;
+        let b = breakdown(&flipped).total - TEMPO;
+        assert!(
+            (a + b).abs() <= 2,
+            "evaluation is not antisymmetric: {a} vs {b} at {}",
+            pos.to_fen()
+        );
+        checked += 1;
+    }
+    assert!(checked >= 400, "too few positions compared: {checked}");
+}

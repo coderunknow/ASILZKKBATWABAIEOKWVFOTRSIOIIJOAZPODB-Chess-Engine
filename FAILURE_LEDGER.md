@@ -548,3 +548,141 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **Lesson applied:** a performance change that alters no value can be
   verified exactly, by comparing the bench signature and node count. That
   check was used instead of a hand-written equivalence test.
+
+---
+
+## 2026-11-19 — CTRL-2-R self-match null control FAILED (ENGINE-1 identity)
+
+### Hypothesis / what was expected
+
+`docs/RATING_PROTOCOL.md` §5 requires the candidate self-match control to be
+"consistent with a score of 0.5 under the registered binomial confidence
+criterion". The recovered CTRL-2-R evidence (240 counted games, 60 opening
+clusters, 40 AB / 40 BA, zero engine errors) was expected to satisfy it, and
+it does not.
+
+### Exact implementation and identity
+
+- Run: GitHub Actions `rating-run` run **43820392119**, dispatch revision 13,
+  commit `8e21435`, completed/successful, all 120 shard jobs green, the
+  aggregate-and-commit-evidence job skipped.
+- Engine: ENGINE-1, binary SHA-256
+  `9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428`
+  (frozen in the dispatch and verified by the strict aggregator).
+- Opening suite: `benches/rating-openings-batchA.txt`, SHA-256
+  `2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96`.
+- Time control: 40 moves / 900 s repeating. Seed 20261125.
+- Recovered to `benches/evidence/control/flawless-self-r/` (games.jsonl 240
+  records, manifest with 120 shard ids, `merged_sha256`
+  `8b643304e20433cd0a8b1c7ec96c114b097a459fff70012c28b997020a8bbf79`).
+- Aggregation was performed on a GitHub runner by `evidence-bridge` run
+  **44465050400** (the sandbox cannot reach the artifact blob host), with the
+  strict fail-closed `scripts/aggregate_shards.py`.
+
+### Methodology
+
+`scripts/rating_estimator.py control --mode self-match` — the registered
+tool, unchanged — with the registered 10,000-resample opening-cluster
+bootstrap and seed 20261114.
+
+### Raw evidence and outcome
+
+| Quantity | Value |
+|---|---|
+| Counted games | 240 (60 openings x 4 games: 2 AB + 2 BA each) |
+| Engine errors | 0 |
+| Unadjudicated | 0 |
+| Schedule indices | 0–239, each exactly once |
+| Seat-A perspective score | **0.4604166667** |
+| 95 % cluster-bootstrap CI | **[0.4208333333, 0.4979166667]** |
+| White-perspective score | 0.5229166667 |
+| **Verdict** | **FAIL — the CI does not contain 0.5** |
+
+### Root-cause analysis (verified, not assumed)
+
+The deficit is **entirely in the decisive games**: every draw contributes
+exactly 0.5 from either seat, and the 125 drawn games sit exactly at 0.5. Among
+the 115 checkmate games the seat-A score is 0.4174 (47/115).
+
+At the cluster level the seat score has mean 0.4604 with a cluster SD of
+0.1535 over 60 clusters, i.e. SE 0.0198 and **z = -2.00** (two-sided
+p ≈ 0.046). The registered percentile bootstrap CI misses 0.5 by 0.0021 at the
+upper end.
+
+Two candidate causes were investigated:
+
+1. **A harness asymmetry in the AB/BA opening handling — REJECTED.** The
+   opening suite header says "Colors reversed (AB/BA) for every line" and the
+   manifest claims "exact color reversal", which reads as if the suite line
+   were replayed with the colours swapped. It is not: `apply_opening` replays
+   the line White-first in both halves and only the *engine commands* are
+   swapped. This was checked directly against the raw records — the first
+   `len(line)` moves of every BA game are byte-identical to the AB game of the
+   same opening, in all four recovered evidence sets.
+   It was then shown that the harness is **correct** and the suite header is
+   ambiguous: from the post-opening position P, let `w` = P(the side to move
+   wins) and `d` = P(draw) for two identical engines. The standard
+   convention gives seat-A score
+   `(w + d/2 + (1-w-d) + d/2)/2 = 1/2` **exactly**, for any `w` and `d`,
+   while a *mirrored* opening convention gives `w + d/2`, which is above 0.5
+   whenever White has the advantage. The registered control's 0.5 expectation
+   is therefore only meaningful under the convention the harness implements.
+   Mirroring the line would have *broken* the control. **No harness change is
+   warranted, and none was made.**
+2. **Sampling fluctuation — CONSISTENT WITH THE DATA.** With an unbiased
+   estimator, a z of -2.00 at a 5 % two-sided level is an unlucky but ordinary
+   outcome for a single control.
+
+The other recovered control does not fail: the anchor-vs-anchor control
+(CTRL-1, topple-0.1.1 vs topple-0.2.1, 240 games) recovers the published
+difference of -115 Elo as -125.3 Elo, an error of **-10.3 Elo** against the
+registered ±75 tolerance, and the earlier pre-ENGINE-1 self-match (120 games)
+passes at 0.5146 with CI [0.4813, 0.5500].
+
+### Consequence
+
+- **ENGINE-1 is disqualified as a rated candidate.** Its self-match null
+  control failed, and §5 requires that any result failing a null control
+  invalidates the affected batch. ENGINE-1 was never aggregated into a
+  canonical batch in any case (its evidence job was skipped), so no ENGINE-1
+  number is reported anywhere.
+- **No Flawless rating may be reported from the ENGINE-1 evidence.** The
+  recovered SCREEN-3 and CTRL-2-R records remain valid *historical* evidence
+  and are used only for the variance/selection model of a prospective power
+  assessment, never as gate evidence.
+- **The V1 candidate requires its own controls.** The candidate-specific
+  self-match and anchor-vs-anchor controls must be run against the exact
+  frozen V1 binary before any confirmatory dispatch. The control's 5 %
+  false-positive rate is a known cost and is handled by running the control
+  on the candidate, not by relaxing it.
+
+### Uncertainty
+
+The z = -2.00 is a point reading on a 240-game, 60-cluster sample; the true
+effect could be anywhere in the CI [-0.079, -0.002]. The analysis does not
+distinguish "a real 0.04 seat deficit" from "an unlucky draw", and it does
+not need to: either way the registered control fails for this identity and
+the identity is not used for rating.
+
+### What was learned
+
+- A null control can fail for the right reason and still be the correct
+  instrument. The temptation was to "fix" the harness; the arithmetic showed
+  the harness was right and the mirrored convention would have been wrong.
+- The `fen` field in a match record is the **final** position, not the start
+  position. Replaying a game's `moves` from its own `fen` fails on every
+  record and means nothing; the games start from the standard position with
+  the suite line applied.
+- The opening suite's "Colors reversed (AB/BA) for every line" header is
+  ambiguous and reads as if the line were mirrored. It should be reworded to
+  say that the line is replayed as written and only the engine seats are
+  swapped. **Not yet done — the suite files are frozen evidence and must not
+  be edited in place; the wording is corrected in the append-only protocol
+  notes instead.**
+
+### Next experiment
+
+Run candidate-specific self-match and anchor-vs-anchor controls against the
+exact frozen V1 candidate binary, on the registered 40/15 control, with the
+registered AB/BA schedule and the registered bootstrap seed, before any
+confirmatory dispatch.

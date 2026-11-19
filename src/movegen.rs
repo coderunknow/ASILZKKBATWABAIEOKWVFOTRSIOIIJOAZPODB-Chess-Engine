@@ -324,6 +324,44 @@ fn is_castling(pos: &Position, m: Move) -> bool {
         && (m.from == E1 || m.from == E8)
 }
 
+/// The occupancy of the board after a castling move has been played.
+///
+/// Castling moves two pieces at once: the king leaves its origin square and the
+/// rook leaves its corner for the square next to the king's destination. Both
+/// sides must be modelled, and the rook's squares differ between the kingside
+/// and the queenside move — using the kingside squares for a queenside castling
+/// would vacate the wrong corner and leave the king's own rook invisible on
+/// the d-file, which is exactly the square that blocks a rank-1 attack on the
+/// king's destination.
+///
+/// Returns `None` when `m` is not a castling move.
+fn post_castling_occupancy(pos: &Position, m: Move) -> Option<u64> {
+    if !is_castling(pos, m) {
+        return None;
+    }
+    // The king always castles towards g-file (kingside) or c-file (queenside).
+    let (rook_from, rook_to) = if file_of(m.to) == 6 {
+        // Kingside: h-file rook -> f-file.
+        if m.from == E1 {
+            (H1, F1)
+        } else {
+            (H8, F8)
+        }
+    } else {
+        // Queenside: a-file rook -> d-file.
+        if m.from == E1 {
+            (A1, D1)
+        } else {
+            (A8, D8)
+        }
+    };
+    Some(
+        (pos.occ_all & !(1u64 << m.from) & !(1u64 << rook_from))
+            | (1u64 << m.to)
+            | (1u64 << rook_to),
+    )
+}
+
 /// Generate legal moves with an analytic legality filter (no make/unmake per move).
 ///
 /// The returned move set is identical to [`generate_legal`]; the differential test in
@@ -358,12 +396,10 @@ pub fn generate_legal_fast(pos: &mut Position) -> MoveList {
         if is_castling(pos, m) {
             // The generator already checked: the king is not in check, the path squares
             // are empty and the pass-through square is not attacked. What remains is the
-            // king's destination square, evaluated with the POST-castling occupancy (the
-            // rook has left its corner and may itself block or expose the square).
-            let (rook_from, rook_to) = if m.from == E1 { (H1, F1) } else { (H8, F8) };
-            let occ_after = (pos.occ_all & !(1u64 << m.from) & !(1u64 << rook_from))
-                | (1u64 << m.to)
-                | (1u64 << rook_to);
+            // king's destination square, evaluated with the POST-castling occupancy (both
+            // the king's origin and the rook's origin are vacated, and the rook's
+            // destination is occupied).
+            let occ_after = post_castling_occupancy(pos, m).expect("castling move");
             if !pos.is_attacked_with_occ(m.to, them, occ_after) {
                 legal.push(m);
             }
@@ -485,4 +521,71 @@ pub fn perft_divide(pos: &mut Position, depth: u32) -> Vec<(Move, u64)> {
 pub fn in_check(pos: &Position) -> bool {
     let us = pos.side;
     pos.is_attacked(pos.king_sq(us), 1 - us)
+}
+
+#[cfg(test)]
+mod castling_occupancy_tests {
+    use super::*;
+
+    /// The post-castling occupancy must model BOTH pieces: the king's origin and
+    /// the rook's origin are vacated, and the rook's destination is occupied.
+    ///
+    /// The rook's squares differ between the kingside and the queenside move.
+    /// Using the kingside squares for a queenside castling would leave the white
+    /// rook invisible on d1 (the square that blocks a rank-1 attack on the king's
+    /// destination) and would keep a1 occupied even though the rook has left it.
+    #[test]
+    fn post_castling_occupancy_models_both_pieces_per_side() {
+        // White: Ke1, Ra1, Rh1, kingside+queenside rights. Black: Ke8, pawns.
+        let pos = Position::from_fen("4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1").unwrap();
+        let before = pos.occ_all;
+        assert!(before & bb(A1) != 0 && before & bb(H1) != 0);
+        assert!(before & bb(D1) == 0 && before & bb(F1) == 0);
+
+        // --- White kingside: king E1->G1, rook H1->F1 ---
+        let kside = Move::new(E1, G1);
+        let occ = post_castling_occupancy(&pos, kside).expect("kingside");
+        assert!(occ & bb(E1) == 0, "king origin must be vacated");
+        assert!(occ & bb(H1) == 0, "rook origin must be vacated");
+        assert!(occ & bb(G1) != 0, "king destination must be occupied");
+        assert!(occ & bb(F1) != 0, "rook destination must be occupied");
+        assert!(occ & bb(A1) != 0, "the a-file rook did not move");
+
+        // --- White queenside: king E1->C1, rook A1->D1 ---
+        let qside = Move::new(E1, C1);
+        let occ = post_castling_occupancy(&pos, qside).expect("queenside");
+        assert!(occ & bb(E1) == 0, "king origin must be vacated");
+        assert!(occ & bb(A1) == 0, "rook origin must be vacated");
+        assert!(occ & bb(C1) != 0, "king destination must be occupied");
+        assert!(
+            occ & bb(D1) != 0,
+            "the rook stands on d1 after a queenside castling and must block the rank"
+        );
+        assert!(occ & bb(H1) != 0, "the h-file rook did not move");
+        assert!(
+            occ & bb(F1) == 0,
+            "the f-file square is empty and must stay empty"
+        );
+
+        // --- Black kingside: king E8->G8, rook H8->F8 ---
+        let pos8 = Position::from_fen("r3k2r/8/8/8/8/8/4K3/8 b kq - 0 1").unwrap();
+        let occ = post_castling_occupancy(&pos8, Move::new(E8, G8)).expect("kingside");
+        assert!(occ & bb(E8) == 0 && occ & bb(H8) == 0);
+        assert!(occ & bb(G8) != 0 && occ & bb(F8) != 0);
+        assert!(occ & bb(A8) != 0);
+
+        // --- Black queenside: king E8->C8, rook A8->D8 ---
+        let occ = post_castling_occupancy(&pos8, Move::new(E8, C8)).expect("queenside");
+        assert!(occ & bb(E8) == 0 && occ & bb(A8) == 0);
+        assert!(occ & bb(C8) != 0 && occ & bb(D8) != 0);
+        assert!(occ & bb(H8) != 0 && occ & bb(F8) == 0);
+    }
+
+    /// A non-castling move has no post-castling occupancy.
+    #[test]
+    fn post_castling_occupancy_rejects_non_castling_moves() {
+        let pos = Position::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 0 1").unwrap();
+        assert!(post_castling_occupancy(&pos, Move::new(E1, 12)).is_none());
+        assert!(post_castling_occupancy(&pos, Move::new(A1, 8)).is_none());
+    }
 }

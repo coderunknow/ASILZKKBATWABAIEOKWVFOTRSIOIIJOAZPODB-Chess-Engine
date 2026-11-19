@@ -1087,3 +1087,94 @@ evaluation value (see the note above). The current tree's binaries are:
 
 Every bench signature and node count is identical to the campaign's
 registration, which is the verification that the searched trees are the same.
+
+---
+
+## Historical evidence recovery — CTRL-2-R and SCREEN-3 (2026-11-19)
+
+### Why this was recovered
+
+Two `rating-run` executions completed with every shard job green but skipped
+their aggregate-and-commit-evidence job, so no canonical committed evidence
+existed for them:
+
+| Run | Dispatch rev | Commit | Purpose | Shape |
+|---|---|---|---|---|
+| 43820392119 | 13 | `8e21435` | CTRL-2-R, `flawless-self-r` — candidate **self-match** null control | 120 shards x 2 games = 240 games, TC 40/15, seed 20261125 |
+| 43820645420 | 14 | `9890407` | SCREEN-3 vs `akimbo-0.1.1` — third-anchor screening | 60 shards x 2 games = 120 games, TC 40/15, seed 20261126 |
+
+All 120 + 60 shard artifacts were present and unexpired. The sandbox cannot
+reach the artifact blob host (`productionresultssa15.blob.core.windows.net`,
+TLS failure — the same failure mode as crates.io), so the download and the
+strict fail-closed aggregation were run on a GitHub runner by the
+`evidence-bridge` workflow (run **44465050400**, request revision 4).
+
+### Integrity verification performed
+
+- The strict aggregator `scripts/aggregate_shards.py` was used unchanged; it
+  rejects a wrong engine hash, a wrong anchor hash, a wrong opening-suite
+  hash, an unexpected time control, duplicate shard ids, duplicate games, a
+  missing shard, a shard whose game count differs from its manifest, or an
+  incomplete shard. It accepted both runs.
+- Every game record was independently re-read: schedule indices are 0–239
+  (CTRL-2-R) and 0–119 (SCREEN-3), each appearing exactly once; every record
+  has `counted = true`, `engine_error = false`, `adjudicated != false`; the
+  per-opening counts are exactly 4 and 2 respectively.
+- Color balance: CTRL-2-R has 120 AB + 120 BA over 60 openings (2 AB + 2 BA
+  per opening); SCREEN-3 has 60 AB + 60 BA over 60 openings (1 AB + 1 BA per
+  opening).
+- The four revision-3 entries in the request were re-aggregated as well; the
+  `games.jsonl` files are byte-identical and only the manifest gained the
+  `time_control` block that the aggregator records today. The recovery is
+  therefore reproducible.
+- Each game was additionally replayed independently with `python-chess` from
+  the standard position plus the registered suite line; every recorded move
+  sequence is legal and every recorded result agrees with the final position.
+
+### Recovered result
+
+| Evidence | Games | Counted | Engine errors | Terminal reasons |
+|---|---|---|---|---|
+| `benches/evidence/control/flawless-self-r/` | 240 | 240 | 0 | 115 checkmate, 99 threefold, 17 insufficient material, 8 fifty-move, 1 stalemate |
+| `benches/evidence/screening-3/akimbo-0.1.1/` | 120 | 120 | 0 | 99 checkmate, 11 fifty-move, 7 threefold, 3 insufficient material |
+
+Manifests: `merged_sha256`
+`8b643304e20433cd0a8b1c7ec96c114b097a459fff70012c28b997020a8bbf79` (CTRL-2-R)
+and the SCREEN-3 counterpart committed alongside.
+
+### The null controls computed from the recovered evidence
+
+| Control | Games | Statistic | 95 % CI | Verdict |
+|---|---|---|---|---|
+| CTRL-2-R candidate self-match (ENGINE-1) | 240 | seat-A score 0.460417 | [0.420833, 0.497917] | **FAIL** — does not contain 0.5 |
+| CTRL-1 anchor-vs-anchor (topple-0.1.1 vs topple-0.2.1) | 240 | measured -125.32 Elo vs published -115 Elo, error **-10.32** | tolerance ±75 | **PASS** |
+| Pre-ENGINE-1 self-match (`benches/evidence/control/flawless-self/`) | 240 | seat-A score 0.514583 | [0.481250, 0.550000] | **PASS** |
+
+The CTRL-2-R failure is recorded and analysed in `FAILURE_LEDGER.md`
+(2026-11-19). **ENGINE-1 is disqualified as a rated candidate.** Its evidence
+remains valid *historical* screening/control evidence for the variance model
+and is never used as gate evidence.
+
+### Clarification of the AB/BA opening convention (append-only note)
+
+The opening suite header reads "Colors reversed (AB/BA) for every line" and
+the runner manifest records "exact color reversal". The precise, implemented
+semantics are: **the suite line is replayed exactly as written (White moves
+first) in both halves; only the engine seats are swapped between the AB and
+BA halves.** This is the standard engine-testing convention and it is the
+convention under which the registered self-match control has its exact 0.5
+expectation (derivation in `FAILURE_LEDGER.md`, 2026-11-19). The suite files
+are frozen evidence and are **not** edited; this note fixes the wording for
+all future registrations.
+
+### What this recovery does and does not authorise
+
+- It **does** supply the third anchor's screening distribution
+  (`akimbo-0.1.1`) that the prospective power assessment previously had to
+  model rather than observe.
+- It **does not** authorise any confirmatory dispatch: the prospective power
+  assessment is still preregistered for the ENGINE-1 identity only, the
+  V1 candidate has not yet been frozen, and the V1 candidate's own null
+  controls have not been run.
+- It **does not** change any anchor's published rating, any suite hash, or
+  any registered decision rule.
