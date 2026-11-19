@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "experiment": "EVAL-3",
+  "purpose": "screening",
+  "registered_in": "PREREGISTRATION.md#EVAL-3",
+  "candidates": {
+    "EVAL-3-CANDIDATE": {
+      "source_commit": "b3dabc3",
+      "binary_sha256": "540a10df5f3617e156b289ec9c9475704b18596dd6ec3400c7a31c0f6f2f492f",
+      "bench_signature": "c64d148d39181140",
+      "depth10_nodes": 3413723
+    },
+    "EVAL-3-CONTROL": {
+      "source_commit": "adda48e",
+      "binary_sha256": "2b41a8e6b21294eac87bc21698d27dc354e2e60593613ff1715da85efd4a41e5",
+      "bench_signature": "b58979ca90492208",
+      "depth10_nodes": 3666233
+    }
+  },
+  "time_control": {
+    "type": "movetime",
+    "ms": 100,
+    "note": "screening only"
+  },
+  "hash_mb": 16,
+  "openings": {
+    "path": "benches/openings-20.txt",
+    "sha256": "97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d",
+    "count": 20
+  },
+  "schedule": {
+    "repetitions": 2,
+    "colour_pairs": "exact AB/BA",
+    "total_games": 80,
+    "shards": 2
+  },
+  "analysis": {
+    "script": "scripts/stats.py",
+    "focus": "EVAL-3-CANDIDATE",
+    "bootstrap": 10000,
+    "seed": 20261118,
+    "cluster": "opening"
+  },
+  "results": {
+    "counted": 80,
+    "engine_errors": 0,
+    "score": 0.75625,
+    "elo_diff": 197,
+    "elo_ci": [
+      117,
+      285
+    ],
+    "score_ci": [
+      0.662,
+      0.838
+    ]
+  },
+  "verdict": "KEPT \u2014 candidate CI lower bound > 0 Elo"
+}

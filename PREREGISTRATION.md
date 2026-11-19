@@ -1268,3 +1268,88 @@ reproduces the pre-audit bench signature `b58979ca90492208` and node count
 - This campaign is screening evidence on a shared 2-vCPU sandbox. It is not a
   rating and it is not gate evidence.
 
+
+---
+
+## EVAL-3 — RESULT RECORD (analysis run 2026-11-19, after the campaign)
+
+### Integrity
+
+The campaign ran as two shards of 40 games each and was re-audited from the
+raw records with `scripts/audit_pair.py`, independently of the analysis path:
+
+| Check | Result |
+|---|---|
+| Games in file | 80 |
+| Counted | 80 (expected 80) |
+| Engine errors | 0 |
+| Uncounted | 0 |
+| Duplicate schedule slots | 0 |
+| Colour balance | 40 AB / 40 BA |
+| Openings | 20 distinct, 4 games each |
+| Audit verdict | **PASS** |
+
+Terminal reasons: 61 checkmate, 9 threefold repetition, 5 insufficient
+material, 5 fifty-moves. Raw evidence:
+`benches/evidence/screening-eval3/games.jsonl` (SHA-256
+`a336d82543feccb741df6b0364d9511fb4667e4d2bfe2c9aa5cf273f211a47df`), with the
+manifest in `benches/evidence/screening-eval3/manifest.json`.
+
+### Results (candidate perspective, opening-clustered 95% bootstrap, seed 20261118)
+
+| Quantity | Value |
+|---|---|
+| Score | **60.5 / 80 = 0.756** |
+| 95% CI for the score | **[0.662, 0.838]** |
+| Elo difference (logistic) | **+197** |
+| 95% CI for the Elo difference | **[+117, +285]** |
+
+The numbers were reproduced twice, by two independent code paths: `scripts/stats.py`
+and a separate recomputation written directly against the raw JSONL (per-opening
+cluster bootstrap with the same seed and resample count). Both give 0.75625,
+[0.6625, 0.8375], +197, [+117, +285].
+
+### The decision
+
+The registered rule was: *the change is a strength improvement only if the
+candidate's 95% CI lower bound is > 0 Elo difference.* The lower bound is
+**+117**, which is above zero by a wide margin and nowhere near the
+inconclusive band.
+
+**EVAL-3-CANDIDATE is a strength improvement over EVAL-3-CONTROL.** The three
+search fixes (`708d53c` PVS full-window verification, `61dd642` disjoint
+ordering bands, `018e920` quiescence search-path capture) are not only
+correctness fixes: at a fixed 100 ms/move they are worth about **+197 Elo**
+(CI +117 to +285) against the pre-audit engine.
+
+This is the *opposite* direction to the null result of the recovered CTRL-2-R
+self-match (0.460, clustered z ≈ −2.00), and the difference is instructive:
+CTRL-2-R compared the pre-audit engine against *itself* over a different
+opening suite and time control, whereas EVAL-3 compares the audited engine
+against the pre-audit engine on the standard screening suite. The audit's
+mechanical root-consistency measurements (the pre-fix engine reported root
+scores below the value of the move it chose in 5/12 and 8/12 positions, and
+understated the MultiPV best in 7/12) are the direct explanation of the
+Elo gain.
+
+### What this does and does not say
+
+- This is **screening evidence on a shared 2-vCPU sandbox** with a fixed
+  100 ms/move time control. It is not a rating, and the absolute number
+  (+197 Elo) is not comparable to a campaign run on an idle machine or under
+  the 40/15 clock used for gate evidence.
+- It says the audited tree is **better than the pre-audit tree**. It does not
+  say anything about the audited tree's strength against any other engine, and
+  it does not substitute for the >2,000 Elo gate in `docs/RATING_PROTOCOL.md`.
+- The campaign ran against the tree at `b3dabc3`. The subsequent mate-distance
+  fix (`32ad8ab`) is **behaviour-neutral for this campaign**: it changes the
+  mate band from `MATE_SCORE - 100` to `MATE_SCORE - MAX_PLY`, which can only
+  alter a search that reaches a mate more than 100 plies from the root. A
+  depth-10 search cannot reach such a mate, and the depth-10 bench signature
+  and node count are byte-identical before and after the fix
+  (`c64d148d39181140` / 3,413,723). The result therefore carries over to the
+  current tree unchanged.
+- Per the registered rules, no individual fix may be credited with part of the
+  gain from this campaign: the three fixes were applied and measured as one
+  bundle.
+
