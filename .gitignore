@@ -9,3 +9,6 @@ clippy.log
 bench-signature-*.txt
 release-binary-*.sha256
 release-manifest-*.txt
+/dist/
+flawless-windows-*.zip
+flawless-windows-*.zip.sha256

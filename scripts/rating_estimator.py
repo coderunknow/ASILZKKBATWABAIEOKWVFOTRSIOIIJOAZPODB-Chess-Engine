@@ -50,6 +50,22 @@ from reduced_sample import SampleDesignError, validate_counted_sample
 ERROR_CONVENTION_TO_SD = {"sd": 1.0, "se": 1.0, "ci95": 1.96, "ci90": 1.645, "ci99": 2.576}
 Z95 = 1.959963984540054  # two-sided 95% normal quantile (unrounded)
 
+# Bootstrap seeds used to certify that a self-match verdict is not an
+# artifact of the bootstrap seed. The self-match criterion is "the 95% CI
+# contains 0.5", and a percentile cluster bootstrap evaluates that CI on a
+# coarse grid: with n clusters of four games the resampled mean takes values
+# on a grid of 1/(8n). When the bootstrap's 97.5% percentile falls between
+# two adjacent grid points, the discrete rank index lands on one or the other
+# depending on the seed, and the verdict flips. That happens exactly at the
+# rejection boundary, where the criterion is meant to be 50/50.
+#
+# A verdict that is not unanimous across this registered seed set is reported
+# as NOT ROBUST. It is never rounded away in either direction: an ambiguous
+# control is "unavailable", never PASS, so this can never rescue a failing
+# control. Registered by PREREGISTRATION.md (RATING-100 control-robustness
+# amendment, 2026-11-19); applies to controls dispatched after that amendment.
+CONTROL_ROBUSTNESS_SEEDS = tuple(range(20261114, 20261130))  # 16 registered seeds
+
 
 class EvidenceError(SystemExit):
     """Fail-closed: missing/invalid evidence never yields a number."""
@@ -434,6 +450,12 @@ def control_anchor_vs_anchor(games: list[dict], entry_a: dict, entry_b: dict,
         "score_a": s, "d_measured": d_meas, "d_published": d_pub,
         "error": err, "tolerance": 75.0,
         "pass": ok,
+        "seed_robust": True,
+        "seed_robustness": {
+            "note": ("this verdict compares the measured point estimate against the +/-75 Elo "
+                     "tolerance and does not use a bootstrap interval, so it does not depend on "
+                     "the bootstrap seed"),
+        },
     }
 
 
@@ -473,18 +495,39 @@ def control_self_match(games: list[dict], focus: str, n_boot: int, seed: int) ->
     sums = [sum(v) for v in clusters.values()]
     ns = [len(v) for v in clusters.values()]
     point = sum(sums) / sum(ns)
-    rng = random.Random(seed)
-    n = len(sums)
-    boot = []
-    for _ in range(n_boot):
-        idxs = [rng.randrange(n) for _ in range(n)]
-        ts = sum(sums[i] for i in idxs)
-        tn = sum(ns[i] for i in idxs)
-        boot.append(ts / tn if tn else 0.5)
-    boot.sort()
-    lo = boot[int(0.025 * n_boot)]
-    hi = boot[min(n_boot - 1, int(0.975 * n_boot))]
+
+    def ci_for(bootstrap_seed: int) -> tuple[float, float]:
+        rng = random.Random(bootstrap_seed)
+        n = len(sums)
+        boot = []
+        for _ in range(n_boot):
+            idxs = [rng.randrange(n) for _ in range(n)]
+            ts = sum(sums[i] for i in idxs)
+            tn = sum(ns[i] for i in idxs)
+            boot.append(ts / tn if tn else 0.5)
+        boot.sort()
+        lo = boot[int(0.025 * n_boot)]
+        hi = boot[min(n_boot - 1, int(0.975 * n_boot))]
+        return lo, hi
+
+    lo, hi = ci_for(seed)
     ok = lo <= 0.5 <= hi
+
+    # Seed-robustness certification. The primary verdict is reported exactly
+    # as before; this only records whether that verdict survives the whole
+    # registered seed set. An ambiguous control is NOT ROBUST and is reported
+    # as unavailable by the gate -- it is never upgraded to PASS.
+    seed_verdicts = []
+    for robustness_seed in CONTROL_ROBUSTNESS_SEEDS:
+        r_lo, r_hi = ci_for(robustness_seed)
+        seed_verdicts.append({
+            "seed": robustness_seed,
+            "ci95_score": [r_lo, r_hi],
+            "pass": bool(r_lo <= 0.5 <= r_hi),
+        })
+    n_pass = sum(1 for v in seed_verdicts if v["pass"])
+    seed_robust = (n_pass == len(seed_verdicts)) or (n_pass == 0)
+
     return {
         "mode": "self-match",
         "focus": focus, "score": point,
@@ -492,6 +535,17 @@ def control_self_match(games: list[dict], focus: str, n_boot: int, seed: int) ->
         "white_perspective_score": (sum(score_of(g["result"], "white") for g in games)
                                     / len(games)),
         "ci95_score": [lo, hi], "pass": ok,
+        "seed_robust": seed_robust,
+        "seed_robustness": {
+            "seeds": list(CONTROL_ROBUSTNESS_SEEDS),
+            "n_pass": n_pass,
+            "n_seeds": len(seed_verdicts),
+            "unanimous": seed_robust,
+            "per_seed": seed_verdicts,
+            "note": ("the verdict is a function of a percentile cluster-bootstrap CI, which is "
+                     "evaluated on a coarse grid; a control whose verdict is not unanimous across "
+                     "the registered seed set is reported as unavailable, never as PASS"),
+        },
     }
 
 
@@ -600,8 +654,9 @@ def run_gate(args) -> int:
              f"{batch}: GLS used (fallback would need explicit preregistered handling)")
     need(results["control_anchor_vs_anchor"]["pass"],
          f"null control anchor-vs-anchor within +/-75 (err={results['control_anchor_vs_anchor']['error']})")
-    need(results["control_self_match"]["pass"],
-         f"null control self-match consistent with 0.5 (CI={results['control_self_match']['ci95_score']})")
+    need(results["control_self_match"]["pass"] and results["control_self_match"]["seed_robust"],
+         f"null control self-match consistent with 0.5 (CI={results['control_self_match']['ci95_score']}, "
+         f"seed-robust={results['control_self_match']['seed_robust']})")
     need(len(used) >= 3, ">= 3 eligible anchors with evidence in both batches")
 
     ok = all(c["pass"] for c in checks)

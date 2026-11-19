@@ -40,7 +40,7 @@ def run_case(name, curl_impl, expect_ok):
     rec._curl_api = lambda path, out_path=None: (calls.append(out_path), curl_impl(path, out_path))[1]
     try:
         rec.download_run("12345", root)
-        got = sorted(os.path.relpath(os.path.join(dp, f), root)
+        got = sorted(os.path.relpath(os.path.join(dp, f), root).replace(os.sep, "/")
                      for dp, _, fs in os.walk(root) for f in fs)
         ok = expect_ok and got == ["shardA/benches/rating-A/anchor/games.jsonl",
                                    "shardA/benches/rating-A/anchor/meta.json",

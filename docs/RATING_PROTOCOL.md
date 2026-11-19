@@ -253,3 +253,100 @@ CI run 44062359630 rejected the initially generated reduced suite files because 
 The committed RATING-100 sensitivity report is derived from SCREEN-2 / ENGINE-1, whose frozen binary SHA-256 is 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. The power-analysis script verifies both screening manifests, their merged raw-game hashes, the registered suite hash, the 120/120 attempt/count totals, the same binary hash and the two registered anchor identities before producing the report. The report records that engine SHA.
 
 Both make_batch_dispatch.py and the confirmatory resolver in rating-run.yml require the report's engine SHA-256 to equal the binary SHA requested for dispatch. Reusing this report for ENGINE-2 or any different binary fails closed. ENGINE-2's binary identity is now measured, but its candidate-specific screening, controls and prospective power assessment have not been run; no games are authorized by this note.
+
+
+### Confirmatory campaign compute-cost estimate — 2026-11-19 (append-only, planning only)
+
+`scripts/estimate_campaign_cost.py` estimates the compute cost of the RATING-100 confirmatory
+campaign from the committed per-game wall-clock evidence. It reads the SCREEN-2 (`topple-0.1.1`,
+`topple-0.2.1`) and SCREEN-3 (`akimbo-0.1.1`) records, each 120 counted games at the 40/15
+repeating wall-clock time control, and verifies the frozen engine binary SHA-256, the frozen
+anchor binary SHA-256 from `benches/anchor-pool.json`, the opening-suite SHA-256, the
+attempt/count totals and the merged raw-game digest before it computes anything; any drift fails
+closed. The generated report is committed at `benches/confirmatory-cost-estimate.json` and is
+reproduced by `scripts/test_estimate_campaign_cost.py`.
+
+For the registered design — exactly 100 counted games per anchor per batch, 50 opening clusters,
+one AB and one BA leg per cluster, three anchors, two batches, therefore 600 counted games in 300
+shard jobs — the estimate is:
+
+- **574.0 runner-hours** in total (bootstrap p05 536.4, p95 614.0): 571.1 h of game time and 2.9 h
+  of per-shard job overhead, measured at 35 s per job by matching 60 hosted shard jobs against
+  their recorded per-game wall time.
+- **Wall-clock span** 14.9 h at the 40-way account concurrency observed across the completed
+  screening and control runs, and 21.9 h if the six dispatches are executed one wave at a time.
+  Concurrency was measured, not assumed: the account-wide peak was exactly 40 concurrent jobs
+  across two overlapping runs.
+- **Shard-timeout risk**: the bootstrap probability that a two-game shard exceeds the
+  350-minute job timeout is 3.06 %. An exceeded shard fails and is re-run into a fresh output
+  directory, costing a further pair of games.
+- **Money**: the repository is public and the campaign runs on standard GitHub-hosted runners
+  (`ubuntu-24.04`), so the metered runner-minutes carry no charge. The notional valuation at the
+  published standard-runner rate is USD 206.6 for the campaign and USD 494.5 for the full
+  gate-path program; runner-hours and wall-clock span are the meaningful cost quantities.
+
+The candidate-specific evidence that must exist before any dispatch is costed separately at
+**799.5 runner-hours over 840 games**: 600 screening games covering all three anchors on both the
+Batch A 50-opening subset and the disjoint Batch B 50-opening subset, which is what turns the
+currently-assumed Batch B distribution into a measurement, plus a candidate-specific self-match
+null control. The anchor-vs-anchor null control seats no candidate engine, so its committed
+evidence remains valid and is reused; no new games are needed for it. The full gate-path program
+is therefore 1,373.5 runner-hours over 1,440 counted games.
+
+This estimate is a **planning diagnostic and authorizes nothing**. It does not change the status
+of `benches/rating-100-power-assessment.json`, which remains `BLOCKED` and remains guarded to the
+ENGINE-1 binary SHA-256; it creates no gate plan and no dispatch marker. The fail-closed
+requirements of this protocol are unchanged: candidate-specific controls and a reviewed
+candidate-specific power assessment marked eligible must exist before any confirmatory dispatch;
+exact binary identity and opening-suite hashes are enforced by the dispatcher and the resolver;
+exactly 600 counted games on 50 opening clusters with one AB plus one BA leg per cluster are
+required; and the strict, unrounded two-sided 95% calibrated CI lower bound requirement for
+Batch A, Batch B and the combined estimate, each strictly greater than 2,000 Elo, is untouched.
+
+Two transfers behind the estimate are unmeasured and are recorded as assumptions rather than
+facts: every wall-clock measurement comes from the ENGINE-1 binary while the confirmatory campaign
+runs a different candidate binary, and no candidate-specific 40/15 wall-clock timing evidence
+exists yet; and Batch B has never been timed at all, so its durations are modelled as exchangeable
+with the anchor's observed Batch A population.
+
+
+### Null-control seed-robustness amendment — 2026-11-19 (append-only, prospective)
+
+The §5 null controls do not have the same robustness properties, and the
+difference was not previously stated.
+
+- The **anchor-vs-anchor** control is decided by comparing the *measured point
+  estimate* against the published difference under the ±75 Elo tolerance. It
+  uses no bootstrap interval, so its verdict is independent of the bootstrap
+  seed. Verified: CTRL-1 returns `d_measured = -125.3211`, `error = -10.3211`,
+  `pass = true` identically for 40 different bootstrap seeds. The committed
+  CTRL-1 evidence seats no candidate engine and remains reusable.
+- The **self-match** control is decided by whether a percentile cluster-bootstrap
+  95 % CI contains 0.5. With *n* clusters of four games the resampled mean
+  takes values on a grid of 1/(8n). When the bootstrap's 97.5 % percentile falls
+  between two adjacent grid points, the discrete rank index lands on one or the
+  other depending on the seed, and the verdict flips — which happens exactly at
+  the rejection boundary. Measured on the committed CTRL-2-R evidence (240
+  games, 60 clusters, seat-A score 0.460417): the verdict flips on 45–58 % of
+  bootstrap seeds across 1,000 / 10,000 / 50,000 replicates, and the interval's
+  upper endpoint takes only the two adjacent grid values 0.4979167 and 0.5. The
+  recorded CTRL-2-R FAIL (registered seed 20261114, CI
+  [0.4208333333, 0.4979166667]) reproduces byte-identically and **stands
+  unchanged**; the analysis only adds that the same evidence yields PASS under
+  41 % of seeds, so it is a borderline outcome of a knife-edge test.
+
+**Amendment (applies to any null control dispatched after 2026-11-19).** The
+self-match verdict is certified across the registered seed set `20261114 …
+20261129`. A verdict that is not unanimous across that set is reported as
+**NOT ROBUST**, and the gate treats the control as **unavailable** — never as
+PASS and never as FAIL. The amendment is a strengthening only: it can turn an
+ambiguous PASS into "unavailable" but can never turn a FAIL into a PASS, so it
+cannot rescue any recorded verdict. The registered control sizes are unchanged
+(240 games for each control); the flip band is ≈ ±0.027 SE independently of the
+control size, so the certification — not a larger control — is what makes the
+rare ambiguous case safe. The candidate's own control must additionally report
+`seed_robust: true`.
+
+This changes no dispatch authorization. The prospective power assessment is
+still `BLOCKED` and still guarded to the ENGINE-1 binary, and no gate plan and
+no confirmatory dispatch exist.

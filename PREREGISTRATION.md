@@ -539,3 +539,987 @@ The previously recorded ENGINE-2 entry's "NOT YET FROZEN" statement was accurate
 This freezes the binary identity for the ENGINE-2 source tree only. It is not an Elo estimate, playing-strength gain, NPS improvement, or authorization to run games. No ENGINE-2 screening or candidate-specific control has been run. ENGINE-1's CTRL-2-R / SCREEN-3 evidence does not transfer to ENGINE-2.
 
 The RATING-100 power assessment remains ENGINE-1-specific. Its screening inputs are SCREEN-2 manifests with engine SHA-256 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. New guards in power_analysis.py, make_batch_dispatch.py, and rating-run.yml require that exact power-report engine SHA to equal the proposed dispatch binary. A report computed from ENGINE-1 cannot authorize ENGINE-2. A fresh ENGINE-2 assessment must use its own preregistered screening evidence and still satisfy the prospective power requirement before any confirmatory dispatch.
+
+---
+
+## STRENGTH-1 — search-and-eval strength campaign (registered 2026-11-18, BEFORE any game)
+
+This registration supersedes nothing above. The historical RATING-100 / CCRL-40/15
+confirmatory gate remains BLOCKED and untouched; everything registered here is
+**screening** evidence with an explicitly different purpose and a different decision
+rule, and may never enter the CCRL gate.
+
+### Objective
+
+Establish, with reproducible evidence, whether the audited Flawless engine can be
+measurably improved in actual playing strength (not merely in nodes/second or in a
+benchmark signature), and produce an independently verified preliminary rating
+assessment against published CCRL 40/15 anchors.
+
+### Baseline identity
+
+- Baseline commit: `5e36b06a7b0d7417d57205e52010ea98529b2a4f` (main at registration).
+- Baseline binary SHA-256: `a5d9aa980b624ce958b3fc399513a5029c99187f16d673a5490a615d184eff99`.
+- Baseline fixed-depth-10 bench signature: `141943aa23b3fc68`; 2,530,885 nodes;
+  ~427-441 k nps on the sandbox (2 vCPU, Debian 12 userland, rustc 1.99.0).
+
+### Candidates under test
+
+| ID | Source | Binary SHA-256 | Bench signature |
+|---|---|---|---|
+| BASE | `5e36b06` (main) | `a5d9aa980b624ce958b3fc399513a5029c99187f16d673a5490a615d184eff99` | `141943aa23b3fc68` |
+| SPEED-1 | `cd17da0` (analytic fast legality filter) | `d99756b13b640b8142eff2fa5c1b2dbfd39caf0dfc17ea01845dbf0193ed18c3` | `141943aa23b3fc68` (identical tree) |
+| HIST-1 | working tree (SPEED-1 + single-eval-per-node + continuation/counter/capture history + LMR full-window re-search) | recorded in the run manifest | `8370f143c3b76fb4` |
+
+### Hypotheses
+
+- **H-SPEED-1**: replacing the make/unmake legality scan with an analytic pin/check
+  filter keeps the searched tree *identical* (bench signature and node count
+  unchanged) while raising throughput by ~78%. Because the tree is identical, any
+  strength difference at fixed *node* budget must be zero; at fixed *time* budget the
+  candidate searches deeper and should be stronger. Falsified if the bench signature
+  or node count changes, or if the A/B result is negative.
+- **H-HIST-1**: continuation history (2 orders), a counter-move table, capture
+  history, gravity-damped history updates and a full-window LMR re-search improve
+  move ordering and the accuracy of late-move re-searches, raising playing strength
+  at a fixed time control. Falsified if the A/B point estimate is <= 0 with a 95% CI
+  excluding a positive effect.
+
+### Match design (screening)
+
+- Harness: `scripts/match.py` (unchanged; the harness itself is not modified by
+  the candidates).
+- Time control: **fixed movetime 100 ms per move** (screening only — never gate
+  evidence; a fixed clock is not a CCRL-equivalent control).
+- Hash: 16 MiB for both engines. Threads: 1 (both builds are single-threaded).
+- Openings: `benches/openings-20.txt` (20 openings; SHA-256
+  `97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d`).
+- Schedule: opening-major, repetition-minor, **exact AB/BA color reversal** per
+  (opening, repetition) — so every opening contributes one game per engine per color.
+- Sample: 20 openings x 2 repetitions x 2 colors = **80 counted games per pair**.
+- Colour-balance control: the historical probes showed a strong first-move advantage
+  for these engines; the AB/BA pairing cancels it at the opening-cluster level, and
+  the per-opening paired score is the unit of analysis.
+- Analysis: `scripts/stats.py` — score from the candidate's perspective, Elo
+  difference via the logistic model, **95% bootstrap CI resampling over openings**
+  (not over games), which respects opening clustering.
+- Random seed: the harness is deterministic given the opening suite and the engine
+  binaries (no randomness in the engines themselves); the bootstrap uses the fixed
+  default seed in `scripts/stats.py`.
+
+### Compute budget (registered before dispatch)
+
+- Sandbox: 2 vCPU, ~3.9 GB RAM. Measured pilot: 4 games in 36 s wall (9.0 s/game) at
+  100 ms movetime, single match process.
+- 80 games ~= 12 min single-process; ~= 6 min with two shards on the two cores.
+- Registered budget for the STRENGTH-1 screening campaign: **<= 3 compute-hours of
+  sandbox match time** plus GitHub-hosted runner time for the Windows artifact and
+  anchor builds. If the budget is exhausted the campaign is reported ACTIVE /
+  INCOMPLETE, never as a pass.
+
+### Decision rules (registered before dispatch)
+
+- **SPEED-1**: KEPT as a pure performance change if the bench signature and node
+  count are unchanged (already verified) AND the A/B point estimate is not negative.
+  Rejected if the point estimate is negative with a 95% CI excluding zero.
+- **HIST-1**: KEPT if the candidate's 95% CI lower bound is > 0 Elo difference.
+  REJECTED if the 95% CI upper bound is <= 0. INCONCLUSIVE otherwise (the CI
+  straddles zero) — in which case the change is retained only as a *candidate* and a
+  larger sample is required before it can be described as a strength improvement.
+- No experiment may be described as a strength improvement from NPS, bench signature
+  or node counts alone.
+
+---
+
+## STRENGTH-1 — RESULT RECORD (analysis run 2026-11-18, after the campaign)
+
+### Reporting defect found and corrected
+
+The campaign runner (`/home/user/tc/run_campaign.sh`, original version) invoked
+`scripts/stats.py --focus base`, i.e. it analysed the **baseline's** perspective.
+`PREREGISTRATION.md` above registers the analysis as "score from the candidate's
+perspective", so the original log line reported the sign of the effect inverted.
+The **raw JSONL was never modified**; the registered analysis was re-run with
+`--focus <candidate>` on the same raw games. The runner script was corrected to
+take the candidate name as an explicit argument.
+
+This is a *reporting* correction, not a re-analysis of the data: one estimator,
+one seed (20261118), 10,000 opening-clustered bootstrap resamples, the same raw
+game records.
+
+### SPEED-1 — BASE vs SPEED-1 (analytic fast legality filter)
+
+- Pair: BASE `a5d9aa98…` (white in 40 games) vs SPEED-1 `d99756b1…`.
+- Raw evidence: `/home/user/matches/speed1/games.jsonl` (80 records),
+  `/home/user/matches/speed1/shard{0,1}/games.jsonl`, plus per-shard logs.
+- Integrity: 80/80 games counted, 0 engine errors, 40 AB + 40 BA colour pairs,
+  20 openings x 4 games each, every opening with exactly 2 games per colour.
+  Terminal reasons: 58 checkmate, 18 threefold repetition, 2 fifty-move,
+  2 insufficient material.
+- Candidate (SPEED-1) perspective: **score 50.0/80 = 0.625**,
+  opening-clustered 95% bootstrap CI for the score **[0.519, 0.725]**,
+  bootstrap SD 0.0535.
+- Logistic Elo difference: **+89**, 95% CI **[+13, +168]**.
+- Bench signature and node count identical to BASE (`141943aa23b3fc68`,
+  2,530,885 nodes) — the searched tree is unchanged; only throughput changed
+  (441 k nps -> 785 k nps at depth 10).
+- **DECISION: KEPT.** The point estimate is positive and its 95% CI excludes
+  zero; the tree is provably identical, so the gain is attributable to
+  searching deeper within the same fixed per-move time budget.
+- This is *screening* evidence at a fixed 100 ms/move clock. It is **not** a
+  rating, not a CCRL/CEGT result, and not an absolute Elo claim.
+
+### HIST-1 — BASE vs HIST-1 (history tables + full-window LMR re-search)
+
+- Pair: BASE `a5d9aa98…` vs HIST-1 `9302fb61…`.
+- Raw evidence: `/home/user/matches/hist1/games.jsonl` (80 records),
+  `/home/user/matches/hist1/shard{0,1}/games.jsonl`, plus per-shard logs.
+- Integrity: 80/80 games counted, 0 engine errors, 40 AB + 40 BA colour pairs,
+  20 openings x 4 games each, every opening with exactly 2 games per colour.
+  Terminal reasons: 69 checkmate, 9 threefold repetition, 2 insufficient material.
+- Candidate (HIST-1) perspective: **score 32.5/80 = 0.406**,
+  opening-clustered 95% bootstrap CI for the score **[0.306, 0.512]**,
+  bootstrap SD 0.0528.
+- Logistic Elo difference: **-66**, 95% CI **[-142, +9]**.
+- Bench signature changed to `8370f143c3b76fb4` (2,697,573 nodes) — the
+  searched tree differs from BASE, so the measured effect is a genuine
+  search-behaviour change, not a speed artefact.
+- **DECISION: INCONCLUSIVE.** The 95% CI straddles zero (upper bound +9 > 0),
+  so the registered rule neither keeps nor rejects the change. Under the
+  registered rule the change is retained **only as a candidate**; a larger
+  sample is required before it may be described as a strength improvement.
+- It is explicitly **not** described as a strength improvement anywhere.
+
+### Consequence for the next experiment
+
+The evaluation work (EVAL-1) is built on the **HIST-1** tree, because that
+tree is the current local development head and is the fastest verified local
+build. Because HIST-1 is inconclusive, EVAL-1 is compared against **HIST-1**
+(the direct parent), not against BASE, so that the evaluation change is
+measured independently of the unresolved history change.
+
+## EVAL-1 — evaluation upgrade ablation (registered 2026-11-18, before dispatch)
+
+### Purpose
+
+Measure the contribution of each independent evaluation change instead of
+assuming the aggregate is beneficial. The evaluation rewrite touches six
+separable concerns; each is isolated behind a `const` flag in `src/eval.rs`
+(`FEAT_MOBILITY_TAPER`, `FEAT_PAWN_STRUCTURE`, `FEAT_PASSER`, `FEAT_SPACE`,
+`FEAT_OUTPOSTS`, `FEAT_KING_SAFETY`) so that one-feature-at-a-time binaries
+can be built from the same source tree.
+
+### Identities (pinned before dispatch)
+
+| ID | Description | Binary SHA-256 | Bench signature | Depth-10 nodes |
+|---|---|---|---|---|
+| EVAL-NONE | all six flags **off** (control) | `1fa874d230537b311b12b730417e2faaae033640663a7d8b1bec9a3d216a5a0c` | `8370f143c3b76fb4` | 2,697,573 |
+| EVAL-ALL | all six flags **on** | `7fddfc05e3d60d681dcdf1422c1ba5e79a2e56a52fe596b3fb82ceffbbab3dc3` | `03e46bba31f35591` | 3,445,466 |
+| EVAL-NO-MOBILITY-TAPER | taper off | `08e188c31f3142dc7423c8ac62d7a252cf2c6dcfa4f53edebb0313d4a6c92dcc` | `1b2f3873f1f65bbc` | 4,190,833 |
+| EVAL-NO-PAWN-STRUCTURE | pawn structure off | `39c6d8d3528f68886e866b982fe03f79945ce0351f5da67f956ccd597d341f41` | `c164bbabc73cfc45` | 3,616,578 |
+| EVAL-NO-PASSER | passer refinement off | `0259980fde6ab9c127ddf0cc7500aee0c3f07b827352ab1a5ee14766436f6352` | `be5762f6d9461ed4` | 3,451,781 |
+| EVAL-NO-SPACE | space off | `95eee8089048634f14f8b5c0b6d3638ba39eca0e8535331ff6f18b24c6de8727` | `0b3852a75cde2015` | 3,234,182 |
+| EVAL-NO-OUTPOSTS | outposts off | `96b42843307dc19a8c4ebfaca991e451c2e13115f8193e02e7ee77176d44246e` | `906fe14c58ff639f` | 4,278,204 |
+| EVAL-NO-KING-SAFETY | king safety off | `07c5610ca0be6ecbd35c3256081613ad99f50ea4d8594dfa66ee2f6993079fe5` | `57f87ee72db1cc53` | 4,255,486 |
+
+**Control validity check (performed before dispatch):** EVAL-NONE reproduces
+the HIST-1 binary's bench signature (`8370f143c3b76fb4`) and node count
+(2,697,573) exactly. This confirms that with all flags off the evaluation code
+is behaviourally identical to the parent tree, so any measured difference is
+attributable to the flags and not to incidental refactoring.
+
+### Hypotheses
+
+- **H-EVAL-ALL**: the six changes together improve playing strength at a fixed
+  time control, because they add positional knowledge the base evaluation
+  lacked (pawn structure defects, defended passers, space, outposts) and
+  better king-safety and mobility weighting.
+- **H-EVAL-<X> (per feature)**: each individual feature contributes a
+  non-negative amount. A feature whose ablation (EVAL-NO-X) scores
+  *significantly higher* than EVAL-ALL is evidence that the feature is harmful
+  and must be removed.
+
+### Design
+
+- Harness: `scripts/match.py`, unchanged.
+- Time control: **fixed movetime 100 ms per move** (screening only).
+- Hash: 16 MiB; single-threaded for both engines.
+- Openings: `benches/openings-20.txt` (20 openings, SHA-256
+  `97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d`).
+- Schedule: opening-major, repetition-minor, exact AB/BA colour reversal;
+  20 openings x 2 repetitions x 2 colours = **80 counted games per pair**.
+- Analysis: `scripts/stats.py --focus <candidate>` — logistic Elo difference
+  and 95% bootstrap CI resampled over **openings** (clusters), seed 20261118,
+  10,000 resamples.
+- All seven pairs are played against the same control (EVAL-NONE / HIST-1
+  tree) so that the seven estimates are directly comparable.
+
+### Compute budget (registered before dispatch)
+
+- Sandbox: 2 vCPU. Measured: ~8.2 s wall per game per engine at 100 ms
+  movetime; 80 games with two shards ~= 6 min wall per pair.
+- Seven pairs ~= 45 min wall with two shards. Registered budget:
+  **<= 1.5 compute-hours** of sandbox match time for EVAL-1.
+- The campaign runs pairs sequentially, two shards per pair, so no pair is
+  affected by concurrent load from another pair.
+
+### Decision rules (registered before dispatch)
+
+- **EVAL-ALL vs EVAL-NONE**: KEPT if the candidate's 95% CI lower bound is
+  > 0 Elo difference. REJECTED if the 95% CI upper bound is <= 0.
+  INCONCLUSIVE otherwise.
+- **Per feature X**: the feature is KEPT only if EVAL-ALL scores at least as
+  well as EVAL-NO-X (i.e. its point estimate is >= the ablation's). A feature
+  whose ablation point estimate is *higher* by more than 40 Elo (roughly half
+  the screening bootstrap SD) is flagged HARMFUL and must be removed or
+  re-weighted before the change can be kept. Features whose comparison is
+  within 40 Elo are INDETERMINATE and are retained, but only the aggregate
+  result may be claimed.
+- **No individual feature may be claimed as a strength improvement from this
+  screening.** A feature-level strength claim requires a larger sample.
+- No experiment may be described as a strength improvement from NPS, bench
+  signature or node counts alone.
+- If EVAL-ALL is REJECTED or INCONCLUSIVE, the evaluation change is not
+  merged; the flags stay in the tree as measurement scaffolding only, or the
+  working tree is reverted.
+
+---
+
+## EVAL-2 — evaluation upgrade ablation, re-registered (2026-11-18, BEFORE any game)
+
+### Why EVAL-1 was withdrawn
+
+EVAL-1 was dispatched on 2026-11-18 with binaries built from commit `7542133`.
+While auditing the evaluation code afterwards, a **correctness defect** was
+found in the outpost term, and the fix changes the search tree:
+
+- **The defect.** The outpost test asked two questions with the same
+  pawn-attack table, and in both cases used the wrong colour. "Defended by one
+  of our own pawns" used `pawn_attacks_lookup(color, sq) & pawns`, which for a
+  White piece on d5 is `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — the squares a
+  White pawn *standing on d5* would attack. The pawns that actually *defend*
+  d5 stand on c4/e4, which is `PAWN_ATTACKS_BLACK[d5]`. "No enemy pawn
+  attacks it" used `pawn_attacks_lookup(them, sq) & enemy_pawns`, which for
+  the same piece is `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — the squares a Black
+  pawn *standing on d5* would attack, whereas the Black pawns that actually
+  *attack* d5 stand on c6/e6, which is `PAWN_ATTACKS_WHITE[d5]`.
+
+  The pawn-attack table is directional: the set of squares from which a pawn
+  of colour C attacks square X is `PAWN_ATTACKS_[other(C)][X]`. Both lookups
+  were reading that other table, so the test asked "is this square attacked by
+  a pawn of the same colour as the piece" in both places.
+
+- **Why it was not caught.** The defect is invisible to a symmetry test: it is
+  symmetric under the board flip, so the evaluator stayed antisymmetric while
+  being wrong. It is also invisible to the aggregate evaluation gates, which
+  check finiteness, bounds and antisymmetry. A dedicated test now pins the two
+  directions down explicitly with four positions.
+
+- **Correction.** Commit `c702066` fixes the two lookups and adds the
+  regression test `outpost_requires_defence_and_safety_in_the_right_direction`
+  in `tests/eval_quality.rs`. The test fails on the pre-fix source and passes
+  on the fixed source; this was verified by reverting the fix and re-running.
+
+- **Consequence for the evidence.** The fixed evaluation has different outpost
+  values, so the searched tree changes: the depth-10 bench signature moves
+  from `03e46bba31f35591` to `b58979ca90492208` and the node count from
+  3,445,466 to 3,666,233. Every EVAL-1 binary was built from the defective
+  source, so **every EVAL-1 game measures a different program from the one in
+  the tree**. The EVAL-1 evidence is therefore withdrawn.
+
+- **What is preserved.** The raw EVAL-1 game records are retained unmodified
+  on disk under `/home/user/matches/eval-*-invalidated-outpostbug/`, together
+  with the campaign log at
+  `/home/user/matches/eval_campaign_invalidated.log`. They are **not** deleted
+  and **not** rewritten; they are marked as measuring the defective build.
+  For the record, the withdrawn EVAL-1 results were: EVAL-ALL 37.5/80 =
+  0.469, CI [0.350, 0.588], Elo −22 CI [−108, +61] (INCONCLUSIVE);
+  EVAL-NO-MOBILITY-TAPER 38.0/80 = 0.475, CI [0.369, 0.588], Elo −17 CI
+  [−93, +61] (INCONCLUSIVE); EVAL-NO-PAWN-STRUCTURE reached 77 of 80 games
+  before the campaign was stopped (it was stopped at 72 when the withdrawal
+  was decided; the two in-flight shards finished the games they had already
+  started, so the retained record holds 77). **None of these numbers may be cited as a
+  result.** They describe the withdrawn binaries only.
+
+### Additional change between EVAL-1 and EVAL-2
+
+Commit `815ca47` reduces the evaluation cost by about 11% without changing a
+single evaluation value. It shares the slider attack masks between the
+mobility term and the king-safety term (they were computed twice per
+evaluation), replaces the per-pawn square-dependent recomputation in the
+pawn-structure section with lookup tables, and stops `evaluate` from routing
+through the ten-component `breakdown` taper. The depth-10 bench signature and
+node count are **unchanged** at `b58979ca90492208` / 3,666,233, which is the
+proof that the evaluation values did not change.
+
+### Identities (pinned before dispatch)
+
+| ID | Description | Binary SHA-256 | Bench signature | Depth-10 nodes |
+|---|---|---|---|---|
+| EVAL-NONE | all six flags **off** (control) | `a4695a7c34875c4bc88f7a9d8f75bebf56da7983ae2b125a51bd2ad58cd233ad` | `8370f143c3b76fb4` | 2,697,573 |
+| EVAL-ALL | all six flags **on** | `0ab1d0cb1b11d064f89700af1d82cbecdd5bfcdd1f80b2c51eed82ab1a8756c3` | `b58979ca90492208` | 3,666,233 |
+| EVAL-NO-MOBILITY-TAPER | taper off | `b4cb1dfd2c2be1f47948d427bd700e3036b31fd2e2665ad57a5d0a2b56f9fc5e` | `ef9410f8cce0da89` | 3,161,626 |
+| EVAL-NO-PAWN-STRUCTURE | pawn structure off | `2e3bfdd0f7a32267f554c487462e30fd2a55e2a5fed5450336aafb8e550ca62c` | `c164bbabc73cfc45` | 3,335,879 |
+| EVAL-NO-PASSER | passer refinement off | `511e6d65b5edc1ffc963f9727eff705b48585f1e17ba8686c3c058b1db890edb` | `ef9410f8cce0da89` | 3,590,574 |
+| EVAL-NO-SPACE | space off | `47e2e22f163617fbb971c1c5637a6751ceb4ee6672e86803251a1b2a93ef4d2b` | `e282fa6554c5cecd` | 4,547,011 |
+| EVAL-NO-OUTPOSTS | outposts off | `7eb2c79e863e0fe97423d6ed47eadb10f8cad4a0a58f08254f50562ffa44b1f2` | `906fe14c58ff639f` | 4,278,204 |
+| EVAL-NO-KING-SAFETY | king safety off | `8533195993427c5cc68eca5fd9946de38fcd702367e8d3ccab105fca91e777ab` | `acf066a921c1dde1` | 3,080,004 |
+
+**Control validity check (performed before dispatch):** EVAL-NONE reproduces
+the HIST-1 bench signature (`8370f143c3b76fb4`) and node count (2,697,573)
+exactly, exactly as in EVAL-1. The flag-off evaluation is therefore still
+behaviourally identical to the parent tree.
+
+### Hypotheses, design, compute budget and decision rules
+
+**Unchanged from EVAL-1** and restated here so that EVAL-2 stands on its own:
+
+- **H-EVAL-ALL:** the six changes together improve playing strength at a
+  fixed time control.
+- **H-EVAL-<X> (per feature):** each individual feature contributes a
+  non-negative amount. A feature whose ablation (EVAL-NO-X) scores
+  *significantly higher* than EVAL-ALL is evidence that the feature is harmful
+  and must be removed.
+- Harness: `scripts/match.py`, unchanged.
+- Time control: **fixed movetime 100 ms per move** (screening only).
+- Hash: 16 MiB; single-threaded for both engines.
+- Openings: `benches/openings-20.txt` (20 openings, SHA-256
+  `97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d`).
+- Schedule: opening-major, repetition-minor, exact AB/BA colour reversal;
+  20 openings x 2 repetitions x 2 colours = **80 counted games per pair**.
+- Analysis: `scripts/stats.py --focus <candidate>` — logistic Elo difference
+  and 95% bootstrap CI resampled over **openings** (clusters), seed 20261118,
+  10,000 resamples.
+- All seven pairs are played against the same control (EVAL-NONE) so that the
+  seven estimates are directly comparable.
+- Compute budget: **<= 1.5 compute-hours** of sandbox match time.
+- **EVAL-ALL vs EVAL-NONE:** KEPT if the candidate's 95% CI lower bound is
+  > 0 Elo difference. REJECTED if the 95% CI upper bound is <= 0.
+  INCONCLUSIVE otherwise.
+- **Per feature X:** the feature is KEPT only if EVAL-ALL scores at least as
+  well as EVAL-NO-X (i.e. its point estimate is >= the ablation's). A feature
+  whose ablation point estimate is *higher* by more than 40 Elo is flagged
+  HARMFUL and must be removed or re-weighted. Features whose comparison is
+  within 40 Elo are INDETERMINATE and are retained, but only the aggregate
+  result may be claimed.
+- **No individual feature may be claimed as a strength improvement from this
+  screening.** A feature-level strength claim requires a larger sample.
+- No experiment may be described as a strength improvement from NPS, bench
+  signature or node counts alone.
+- If EVAL-ALL is REJECTED or INCONCLUSIVE, the evaluation change is not
+  merged; the flags stay in the tree as measurement scaffolding only, or the
+  working tree is reverted.
+
+### Independent re-audit of the STRENGTH-1 and EVAL-1 raw records
+
+The raw game records were re-audited from disk with `scripts/audit_pair.py`
+(added for this purpose), independently of the `stats.py` analysis that
+produced the numbers above. The audit checks the counted-game count against
+the registered 80, engine errors, uncounted records, duplicate schedule slots
+(opening x repetition x colour assignment), the AB/BA colour balance, and the
+opening coverage.
+
+| Pair | Games | Counted | Errors | Uncounted | Duplicate slots | Colours | Openings | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| STRENGTH-1 SPEED-1 | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| STRENGTH-1 HIST-1 | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-1 EVAL-ALL *(withdrawn)* | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS (but withdrawn — wrong binaries) |
+| EVAL-1 EVAL-NO-MOBILITY-TAPER *(withdrawn)* | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS (but withdrawn — wrong binaries) |
+| EVAL-1 EVAL-NO-PAWN-STRUCTURE *(withdrawn)* | 77 | 77 | 0 | 0 | 0 | — | — | incomplete (campaign stopped) |
+
+The re-audit reproduces the recorded candidate scores exactly (SPEED-1
+50.0/80, HIST-1 32.5/80, EVAL-ALL 37.5/80, EVAL-NO-MOBILITY-TAPER 38.0/80)
+from the raw records, independently of the analysis code path that produced
+them. The withdrawn pairs passed the integrity checks as well; they are
+withdrawn for a different reason — they measured binaries that are not in the
+tree.
+
+### EVAL-2 — note on a later value-identical performance commit
+
+After the EVAL-2 campaign was dispatched, commit `a0ea236` reduced the
+evaluation cost by a further ~8 % **without changing any evaluation value**.
+The campaign therefore ran with binaries whose evaluation *behaviour* is
+identical to the current tree's, but whose binary hashes are not.
+
+This is checked two ways rather than asserted:
+
+- the depth-10 bench signature and node count are unchanged at
+  `b58979ca90492208` / 3,666,233 nodes, so the **searched tree is identical
+  on the 12 bench positions**;
+- the full per-component breakdown was compared between the campaign's binary
+  and the current tree's binary over ten positions — including the four the
+  outpost regression test uses — with **zero differences**.
+
+### EVAL-2 — correction to the note above (2026-11-19, review finding)
+
+The claim that the campaign's games *are* the games the current tree produces
+is **not** established and is withdrawn. The campaign ran under a fixed
+`movetime 100 ms` budget, so the search is budget-limited rather than
+deterministic across builds: a build that computes the same values in less
+time searches more nodes before the deadline, and a different compiler changes
+throughput. An unchanged bench signature at a *fixed depth* does not imply an
+unchanged game under a *fixed time* budget.
+
+What the measurements do establish, and what may be claimed:
+
+- the **evaluation values** are unchanged — verified directly by the
+  per-component breakdown comparison over ten positions with zero differences,
+  not inferred from the bench;
+- the **searched tree is unchanged on the 12 bench positions** — an
+  unchanged fixed-depth bench signature and node count are a regression signal
+  over those positions only, and cannot rule out a changed evaluation on a
+  position the bench does not visit;
+- the **binary identities stay separate**. The campaign's SHA-256 values are
+  the ones the campaign used; the current tree's binaries have different
+  SHA-256 values. No claim of identical games, identical search paths, or
+  identical play is made beyond the two points above.
+
+### EVAL-2 — compute environment note
+
+The campaign runs two match shards concurrently on a 2-vCPU sandbox, and the
+sandbox is shared with the development work in this session (builds,
+benchmarks and test runs). A fixed `movetime` budget means a busier CPU
+searches fewer nodes within that budget, so the absolute depth reached varied
+during the campaign.
+
+The engines in a game take **alternating turns**, so they do not necessarily
+face the same CPU load at the same moment: a build or test that runs during
+one engine's turn but not during the other's changes only that engine's
+throughput. Exact AB/BA colour reversal pairs the *schedule*, but it does not
+establish that the load was balanced. Load-related bias is therefore carried
+as an **uncertainty** in this screening result, not asserted away; no
+measurement in this campaign establishes load balance.
+
+It does mean the absolute scores are not comparable to a campaign run on an
+idle machine, and it is one more reason the result is screening evidence and
+not a rating. A confirmatory run on a quiet machine would be required before
+any claim beyond the registered screening decision rules.
+
+The STRENGTH-1 campaign has the same property and was run the same way.
+
+---
+
+## EVAL-2 — RESULT RECORD (analysis run 2026-11-18, after the campaign)
+
+### Integrity
+
+All seven pairs were re-audited from the raw records with `scripts/audit_pair.py`,
+independently of `scripts/stats.py`:
+
+| Pair | Games | Counted | Engine errors | Uncounted | Duplicate slots | Colours | Openings | Audit |
+|---|---|---|---|---|---|---|---|---|
+| EVAL-ALL | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-MOBILITY-TAPER | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-PAWN-STRUCTURE | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-PASSER | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-SPACE | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-OUTPOSTS | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+| EVAL-NO-KING-SAFETY | 80 | 80 | 0 | 0 | 0 | 40 AB / 40 BA | 20 distinct, 4 each | PASS |
+
+**560 games in total**, zero engine errors. Terminal reasons: 472 checkmate,
+63 threefold repetition, 14 insufficient material, 9 fifty-move, 2 stalemate.
+Raw evidence: `/home/user/matches/eval-*/games.jsonl` and
+`/home/user/matches/eval-*/shard{0,1}/games.jsonl`; the campaign log is
+`/home/user/matches/eval2_campaign.log`.
+
+### Results (candidate perspective, opening-clustered 95% bootstrap, seed 20261118)
+
+| Pair | Score | Score CI | Elo difference | Elo CI | Audit |
+|---|---|---|---|---|---|
+| EVAL-NONE vs EVAL-ALL | 41.5/80 = 0.519 | [0.419, 0.619] | **+13** | [−57, +84] | PASS |
+| EVAL-NONE vs EVAL-NO-MOBILITY-TAPER | 33.5/80 = 0.419 | [0.319, 0.512] | −57 | [−132, +9] | PASS |
+| EVAL-NONE vs EVAL-NO-PAWN-STRUCTURE | 42.0/80 = 0.525 | [0.456, 0.594] | +17 | [−30, +66] | PASS |
+| EVAL-NONE vs EVAL-NO-PASSER | 40.5/80 = 0.506 | [0.388, 0.625] | +4 | [−80, +89] | PASS |
+| EVAL-NONE vs EVAL-NO-SPACE | 37.5/80 = 0.469 | [0.381, 0.556] | −22 | [−84, +39] | PASS |
+| EVAL-NONE vs EVAL-NO-OUTPOSTS | 37.5/80 = 0.469 | [0.394, 0.537] | −22 | [−75, +26] | PASS |
+| EVAL-NONE vs EVAL-NO-KING-SAFETY | 40.5/80 = 0.506 | [0.406, 0.606] | +4 | [−66, +75] | PASS |
+
+### The aggregate decision
+
+**EVAL-ALL vs EVAL-NONE: INCONCLUSIVE.**
+
+The registered rule is KEPT if the 95 % CI lower bound is > 0 Elo and REJECTED
+if the upper bound is <= 0. The observed interval is **[−57, +84]**: it
+contains zero, so neither condition holds. The point estimate (+13 Elo) is
+positive but the interval is wide — the sample cannot distinguish the
+evaluation upgrade from no change.
+
+**Consequence, applied as registered:** the evaluation change is **not merged
+as a strength improvement**. The six feature flags stay in the tree as
+measurement scaffolding, which the registered rule explicitly permits. The
+evaluation is not described as a strength improvement anywhere.
+
+### The per-feature decisions
+
+The registered per-feature rule compares EVAL-ALL's point estimate with each
+ablation's. A feature is retained when EVAL-ALL is at least as good as the
+ablation; an ablation more than 40 Elo *higher* would be HARMFUL; a
+difference within 40 Elo is INDETERMINATE and the feature is retained but
+**not claimed**.
+
+| Feature | EVAL-ALL | Ablation | Difference | Decision |
+|---|---|---|---|---|
+| `FEAT_MOBILITY_TAPER` | +13 | −57 | +70 | **RETAINED** — the ablation is 70 Elo worse, well outside the 40 Elo band |
+| `FEAT_PAWN_STRUCTURE` | +13 | +17 | −4 | INDETERMINATE (retained, not claimed) |
+| `FEAT_PASSER` | +13 | +4 | +9 | INDETERMINATE (retained, not claimed) |
+| `FEAT_SPACE` | +13 | −22 | +35 | INDETERMINATE (retained, not claimed) |
+| `FEAT_OUTPOSTS` | +13 | −22 | +35 | INDETERMINATE (retained, not claimed) |
+| `FEAT_KING_SAFETY` | +13 | +4 | +9 | INDETERMINATE (retained, not claimed) |
+
+**No feature is flagged HARMFUL.** No ablation scored more than 40 Elo
+higher than EVAL-ALL, so nothing has to be removed or re-weighted on this
+evidence.
+
+**No individual feature may be claimed as a strength improvement.** Five of
+the six are INDETERMINATE by the registered rule, and the one that is not
+(the mobility taper) is supported by a single 80-game screening pair whose
+own interval [−132, +9] straddles zero. The only defensible summary is that
+the evaluation upgrade as a whole is not distinguishable from the control at
+this sample size, and that the mobility taper is the one component whose
+ablation is clearly worse.
+
+### What this does and does not say
+
+- It does **not** say the evaluation upgrade is harmful. The aggregate
+  interval [−57, +84] is consistent with a real gain of up to about 84 Elo
+  and with a real loss of up to about 57 Elo.
+- It does **not** support a claim of strength for the upgrade, for any
+  individual feature, or for the engine's absolute playing strength.
+- The one clear signal is negative for the *ablation*: turning the mobility
+  taper off costs 70 Elo relative to keeping it on. That is the only
+  per-feature comparison in this campaign that falls outside the
+  indeterminate band.
+- A confirmatory campaign with a larger sample would be needed to settle the
+  aggregate. That is a separate registered experiment and has not been run.
+
+### Binary identities of the current tree
+
+The campaign ran with the binaries registered in the EVAL-2 section above.
+Commit `a0ea236` subsequently changed the binaries without changing any
+evaluation value (see the note above). The current tree's binaries are:
+
+| ID | Binary SHA-256 (current tree) | Bench signature | Depth-10 nodes |
+|---|---|---|---|
+| EVAL-NONE | `dbf64b3e94fb9c5a07d36f58fd8dfecf0d07aed3102a803157add91714d04d2e` | `8370f143c3b76fb4` | 2,697,573 |
+| EVAL-ALL | `02ff44c73e9e01cac948903b07a786c2b2fdeaebb773f0fc3e75a843630daf12` | `b58979ca90492208` | 3,666,233 |
+| EVAL-NO-MOBILITY-TAPER | `880e00e4f515397cec7f872e998de4a9915eaecd14f526ca11e6cbd34f15f47c` | `ef9410f8cce0da89` | 3,161,626 |
+| EVAL-NO-PAWN-STRUCTURE | `ea29fad3d79fc44ad755145efd571ef540af7ab44eade0e475d04a6be6fb7790` | `c164bbabc73cfc45` | 3,335,879 |
+| EVAL-NO-PASSER | `78c5b5c3034f1179611f413d01d4386209338c27aec78240aea191d44e7ed4c8` | `ef9410f8cce0da89` | 3,590,574 |
+| EVAL-NO-SPACE | `da850fbea022c3d9f059b4430b75e4525ed9ec052cc4fc30171b93f7b4c1e606` | `e282fa6554c5cecd` | 4,547,011 |
+| EVAL-NO-OUTPOSTS | `405e29fa688dd733bd4b301340e85d57c1b7573de27f17aba3bcebcf688d61f3` | `906fe14c58ff639f` | 4,278,204 |
+| EVAL-NO-KING-SAFETY | `3b0c38603ff5ca282ae8388ce1bb2e1b214b1ab6c80f77f524057c83a066abce` | `acf066a921c1dde1` | 3,080,004 |
+
+Every bench signature and node count is identical to the campaign's
+registration, which is the verification that the searched trees are the same.
+
+---
+
+## Historical evidence recovery — CTRL-2-R and SCREEN-3 (2026-11-19)
+
+### Why this was recovered
+
+Two `rating-run` executions completed with every shard job green but skipped
+their aggregate-and-commit-evidence job, so no canonical committed evidence
+existed for them:
+
+| Run | Dispatch rev | Commit | Purpose | Shape |
+|---|---|---|---|---|
+| 43820392119 | 13 | `8e21435` | CTRL-2-R, `flawless-self-r` — candidate **self-match** null control | 120 shards x 2 games = 240 games, TC 40/15, seed 20261125 |
+| 43820645420 | 14 | `9890407` | SCREEN-3 vs `akimbo-0.1.1` — third-anchor screening | 60 shards x 2 games = 120 games, TC 40/15, seed 20261126 |
+
+All 120 + 60 shard artifacts were present and unexpired. The sandbox cannot
+reach the artifact blob host (`productionresultssa15.blob.core.windows.net`,
+TLS failure — the same failure mode as crates.io), so the download and the
+strict fail-closed aggregation were run on a GitHub runner by the
+`evidence-bridge` workflow (run **44465050400**, request revision 4).
+
+### Integrity verification performed
+
+- The strict aggregator `scripts/aggregate_shards.py` was used unchanged; it
+  rejects a wrong engine hash, a wrong anchor hash, a wrong opening-suite
+  hash, an unexpected time control, duplicate shard ids, duplicate games, a
+  missing shard, a shard whose game count differs from its manifest, or an
+  incomplete shard. It accepted both runs.
+- Every game record was independently re-read: schedule indices are 0–239
+  (CTRL-2-R) and 0–119 (SCREEN-3), each appearing exactly once; every record
+  has `counted = true`, `engine_error = false`, `adjudicated != false`; the
+  per-opening counts are exactly 4 and 2 respectively.
+- Color balance: CTRL-2-R has 120 AB + 120 BA over 60 openings (2 AB + 2 BA
+  per opening); SCREEN-3 has 60 AB + 60 BA over 60 openings (1 AB + 1 BA per
+  opening).
+- The four revision-3 entries in the request were re-aggregated as well; the
+  `games.jsonl` files are byte-identical and only the manifest gained the
+  `time_control` block that the aggregator records today. The recovery is
+  therefore reproducible.
+- Each game was additionally replayed independently with `python-chess` from
+  the standard position plus the registered suite line; every recorded move
+  sequence is legal and every recorded result agrees with the final position.
+
+### Recovered result
+
+| Evidence | Games | Counted | Engine errors | Terminal reasons |
+|---|---|---|---|---|
+| `benches/evidence/control/flawless-self-r/` | 240 | 240 | 0 | 115 checkmate, 99 threefold, 17 insufficient material, 8 fifty-move, 1 stalemate |
+| `benches/evidence/screening-3/akimbo-0.1.1/` | 120 | 120 | 0 | 99 checkmate, 11 fifty-move, 7 threefold, 3 insufficient material |
+
+Manifests: `merged_sha256`
+`8b643304e20433cd0a8b1c7ec96c114b097a459fff70012c28b997020a8bbf79` (CTRL-2-R)
+and the SCREEN-3 counterpart committed alongside.
+
+### The null controls computed from the recovered evidence
+
+| Control | Games | Statistic | 95 % CI | Verdict |
+|---|---|---|---|---|
+| CTRL-2-R candidate self-match (ENGINE-1) | 240 | seat-A score 0.460417 | [0.420833, 0.497917] | **FAIL** — does not contain 0.5 |
+| CTRL-1 anchor-vs-anchor (topple-0.1.1 vs topple-0.2.1) | 240 | measured -125.32 Elo vs published -115 Elo, error **-10.32** | tolerance ±75 | **PASS** |
+| Pre-ENGINE-1 self-match (`benches/evidence/control/flawless-self/`) | 240 | seat-A score 0.514583 | [0.481250, 0.550000] | **PASS** |
+
+The CTRL-2-R failure is recorded and analysed in `FAILURE_LEDGER.md`
+(2026-11-19). **ENGINE-1 is disqualified as a rated candidate.** Its evidence
+remains valid *historical* screening/control evidence for the variance model
+and is never used as gate evidence.
+
+### Clarification of the AB/BA opening convention (append-only note)
+
+The opening suite header reads "Colors reversed (AB/BA) for every line" and
+the runner manifest records "exact color reversal". The precise, implemented
+semantics are: **the suite line is replayed exactly as written (White moves
+first) in both halves; only the engine seats are swapped between the AB and
+BA halves.** This is the standard engine-testing convention and it is the
+convention under which the registered self-match control has its exact 0.5
+expectation (derivation in `FAILURE_LEDGER.md`, 2026-11-19). The suite files
+are frozen evidence and are **not** edited; this note fixes the wording for
+all future registrations.
+
+### What this recovery does and does not authorise
+
+- It **does** supply the third anchor's screening distribution
+  (`akimbo-0.1.1`) that the prospective power assessment previously had to
+  model rather than observe.
+- It **does not** authorise any confirmatory dispatch: the prospective power
+  assessment is still preregistered for the ENGINE-1 identity only, the
+  V1 candidate has not yet been frozen, and the V1 candidate's own null
+  controls have not been run.
+- It **does not** change any anchor's published rating, any suite hash, or
+  any registered decision rule.
+
+---
+
+## EVAL-3 — search-audit fix screening (registered 2026-11-19, BEFORE any game)
+
+### Purpose
+
+The Phase B source audit of PR #2 found and fixed three defects in the search
+(`708d53c`, `61dd642`, `018e920`). The fixes are **correctness fixes** and
+are retained on that ground irrespective of this campaign: the PVS fix makes
+the engine report the value of the move it actually chose, the ordering fix
+makes the documented ordering bands true, and the quiescence fix makes the
+search path mean what it says.
+
+What this campaign measures is a different question: **do the three fixes
+also make the engine stronger at a fixed time control?** The pre-fix engine
+reports root scores that are below the value of the move it prefers and
+sometimes prefers the worse move, so it is a plausible source of lost Elo.
+This is screening evidence about a change that is already in the tree, and it
+is not a rating.
+
+### Identities (pinned before dispatch)
+
+Both binaries are release builds of the same tree with the same local
+toolchain (rustc/cargo 1.97.0, `lto = "fat"`, `codegen-units = 1`), so the
+comparison isolates the source change and not the compiler.
+
+| ID | Description | Source commit | Binary SHA-256 | Bench signature | Depth-10 nodes |
+|---|---|---|---|---|---|
+| EVAL-3-CANDIDATE | audited tree (PVS fix, disjoint ordering bands, quiescence path) | `b3dabc3` | `540a10df5f3617e156b289ec9c9475704b18596dd6ec3400c7a31c0f6f2f492f` | `c64d148d39181140` | 3,413,723 |
+| EVAL-3-CONTROL | pre-audit tree (the head this audit replaced) | `adda48e` | `2b41a8e6b21294eac87bc21698d27dc354e2e60593613ff1715da85efd4a41e5` | `b58979ca90492208` | 3,666,233 |
+
+**Identity to the hosted-runner candidate.** The hosted runner built the same
+source tree at the audited head and recorded bench signature
+`c64d148d39181140` and binary SHA-256
+`4daa6bcea2bac0e74dbfca748daaef4dc33340ae0321ff7ae6a106d790b4f549` (anchor-verify
+run 44491186467, merge commit `7800553637d27035a8803c59b45cf8a10e7363f7`, tree
+`b8494b3fbf7756563111f284922e4d08b39db85c`, identical to the head tree). The
+campaign binary's SHA differs from the runner's because the compilers differ
+(runner 1.99.0, sandbox 1.97.0); the **bench signature is identical**, which
+is the proof that the searched tree is identical and, the search being
+deterministic, that the campaign binary plays exactly the games the
+runner-built candidate would play. The confirmatory batches use the
+runner-built binary.
+
+**Control validity check (performed before dispatch):** the control binary
+reproduces the pre-audit bench signature `b58979ca90492208` and node count
+3,666,233 exactly, so it is the pre-audit engine and not a different build.
+
+### Hypotheses
+
+- **H-EVAL-3:** the audited candidate scores higher than the pre-audit control
+  at a fixed 100 ms/move time control.
+- Secondary, not a decision: the candidate searches fewer nodes for the same
+  bench signature work (3,413,723 against 3,666,233), i.e. the fix is not
+  bought with a slowdown.
+
+### Design
+
+- Harness: `scripts/match.py`, unchanged.
+- Time control: **fixed movetime 100 ms per move** (screening only).
+- Hash: 16 MiB; single-threaded for both engines.
+- Openings: `benches/openings-20.txt` (20 openings, SHA-256
+  `97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d`).
+- Schedule: opening-major, repetition-minor, exact AB/BA colour reversal;
+  20 openings x 2 repetitions x 2 colours = **80 counted games**, run as two
+  shards of 40 games each.
+- Analysis: `scripts/stats.py --focus EVAL-3-CANDIDATE` — logistic Elo
+  difference and 95% bootstrap CI resampled over **openings** (clusters),
+  seed 20261118, 10,000 resamples.
+- Integrity: `scripts/audit_pair.py` re-audits the raw records independently of
+  the analysis path (counted-game count, engine errors, uncounted records,
+  duplicate schedule slots, AB/BA balance, opening coverage).
+- Compute budget: **<= 1.5 compute-hours** of sandbox match time.
+
+### Decision rules (registered before dispatch)
+
+- **EVAL-3-CANDIDATE vs EVAL-3-CONTROL:** the change is a *strength
+  improvement* only if the candidate's 95% CI lower bound is > 0 Elo
+  difference. It is *significantly worse* if the 95% CI upper bound is <= 0.
+  Otherwise the result is INCONCLUSIVE.
+- **The three fixes are not reverted on an INCONCLUSIVE result.** They are
+  correctness fixes and stay in the tree; an INCONCLUSIVE screening result
+  means that no strength claim may be made, not that the defects may be
+  restored. A *significantly worse* result is a red flag that must be
+  investigated before the candidate is frozen, not an automatic revert.
+- No strength claim may be made from node counts, bench signatures or NPS.
+- This campaign is screening evidence on a shared 2-vCPU sandbox. It is not a
+  rating and it is not gate evidence.
+
+
+---
+
+## EVAL-3 — RESULT RECORD (analysis run 2026-11-19, after the campaign)
+
+### Integrity
+
+The campaign ran as two shards of 40 games each and was re-audited from the
+raw records with `scripts/audit_pair.py`, independently of the analysis path:
+
+| Check | Result |
+|---|---|
+| Games in file | 80 |
+| Counted | 80 (expected 80) |
+| Engine errors | 0 |
+| Uncounted | 0 |
+| Duplicate schedule slots | 0 |
+| Colour balance | 40 AB / 40 BA |
+| Openings | 20 distinct, 4 games each |
+| Audit verdict | **PASS** |
+
+Terminal reasons: 61 checkmate, 9 threefold repetition, 5 insufficient
+material, 5 fifty-moves. Raw evidence:
+`benches/evidence/screening-eval3/games.jsonl` (SHA-256
+`a336d82543feccb741df6b0364d9511fb4667e4d2bfe2c9aa5cf273f211a47df`), with the
+manifest in `benches/evidence/screening-eval3/manifest.json`.
+
+### Results (candidate perspective, opening-clustered 95% bootstrap, seed 20261118)
+
+| Quantity | Value |
+|---|---|
+| Score | **60.5 / 80 = 0.756** |
+| 95% CI for the score | **[0.662, 0.838]** |
+| Elo difference (logistic) | **+197** |
+| 95% CI for the Elo difference | **[+117, +285]** |
+
+The numbers were reproduced twice, by two independent code paths: `scripts/stats.py`
+and a separate recomputation written directly against the raw JSONL (per-opening
+cluster bootstrap with the same seed and resample count). Both give 0.75625,
+[0.6625, 0.8375], +197, [+117, +285].
+
+### The decision
+
+The registered rule was: *the change is a strength improvement only if the
+candidate's 95% CI lower bound is > 0 Elo difference.* The lower bound is
+**+117**, which is above zero by a wide margin and nowhere near the
+inconclusive band.
+
+**EVAL-3-CANDIDATE is a strength improvement over EVAL-3-CONTROL.** The three
+search fixes (`708d53c` PVS full-window verification, `61dd642` disjoint
+ordering bands, `018e920` quiescence search-path capture) are not only
+correctness fixes: at a fixed 100 ms/move they are worth about **+197 Elo**
+(CI +117 to +285) against the pre-audit engine.
+
+This is the *opposite* direction to the null result of the recovered CTRL-2-R
+self-match (0.460, clustered z ≈ −2.00), and the difference is instructive:
+CTRL-2-R compared the pre-audit engine against *itself* over a different
+opening suite and time control, whereas EVAL-3 compares the audited engine
+against the pre-audit engine on the standard screening suite. The audit's
+mechanical root-consistency measurements (the pre-fix engine reported root
+scores below the value of the move it chose in 5/12 and 8/12 positions, and
+understated the MultiPV best in 7/12) are the direct explanation of the
+Elo gain.
+
+### What this does and does not say
+
+- This is **screening evidence on a shared 2-vCPU sandbox** with a fixed
+  100 ms/move time control. It is not a rating, and the absolute number
+  (+197 Elo) is not comparable to a campaign run on an idle machine or under
+  the 40/15 clock used for gate evidence.
+- It says the audited tree is **better than the pre-audit tree**. It does not
+  say anything about the audited tree's strength against any other engine, and
+  it does not substitute for the >2,000 Elo gate in `docs/RATING_PROTOCOL.md`.
+- The campaign ran against the tree at `b3dabc3`. The subsequent mate-distance
+  fix (`32ad8ab`) is **behaviour-neutral for this campaign**: it changes the
+  mate band from `MATE_SCORE - 100` to `MATE_SCORE - MAX_PLY`, which can only
+  alter a search that reaches a mate more than 100 plies from the root. A
+  depth-10 search cannot reach such a mate, and the depth-10 bench signature
+  and node count are byte-identical before and after the fix
+  (`c64d148d39181140` / 3,413,723). The result therefore carries over to the
+  current tree unchanged.
+- Per the registered rules, no individual fix may be credited with part of the
+  gain from this campaign: the three fixes were applied and measured as one
+  bundle.
+
+
+---
+
+## RATING-100 control-robustness amendment (registered 2026-11-19, BEFORE any candidate control is dispatched)
+
+### What was found
+
+The two null controls of `docs/RATING_PROTOCOL.md` §5 do not have the same
+robustness properties, and the difference was not previously stated.
+
+- The **anchor-vs-anchor** control is decided by comparing the *measured point
+  estimate* with the published difference under a ±75 Elo tolerance. It does not
+  use a bootstrap interval, so its verdict does not depend on the bootstrap seed
+  at all. Verified: CTRL-1 returns `d_measured = -125.3211`, `error = -10.3211`
+  and `pass = true` identically for 40 different bootstrap seeds.
+- The **self-match** control is decided by whether a percentile cluster-bootstrap
+  95 % CI contains 0.5. That CI is evaluated on a coarse grid: with *n* clusters
+  of four games the resampled mean takes values on a grid of 1/(8n). When the
+  bootstrap's 97.5 % percentile falls between two adjacent grid points, the
+  discrete rank index lands on one or the other depending on the seed, and the
+  verdict flips. This happens exactly at the rejection boundary, where the
+  criterion is meant to be 50/50.
+
+Measured on the committed CTRL-2-R evidence (ENGINE-1 self-match, 240 counted
+games, 60 clusters, seat-A score 0.460417):
+
+| Bootstrap replicates | Seeds tried | FAIL | PASS | Flip rate | Upper bound values seen |
+|---|---|---|---|---|---|
+| 1,000 | 60 | 35 | 25 | 58.3 % | 0.4958333, 0.4979167, 0.5, 0.5020833 |
+| 10,000 | 60 | 27 | 33 | 45.0 % | 0.4979167, 0.5 |
+| 50,000 | 24 | 13 | 11 | 54.2 % | 0.4979167, 0.5 |
+
+The flip is structural, not a Monte-Carlo artifact: more replicates do not
+remove it, and the interval's upper endpoint takes only the two adjacent grid
+values. The recorded CTRL-2-R verdict (FAIL with the registered seed 20261114,
+CI [0.4208333333, 0.4979166667]) reproduces **byte-identically** with the
+registered tool and seed and **stands unchanged**. What the analysis adds is
+that the same evidence yields PASS under 41 % of bootstrap seeds, so the
+verdict is a borderline outcome reported by a knife-edge test, not a property
+of the binary. The pre-ENGINE-1 self-match is not affected: it passes
+unanimously across all 16 registered seeds (16/16 PASS).
+
+### The amendment
+
+For any null control dispatched **after** this amendment:
+
+1. The self-match verdict is certified across the **registered seed set**
+   `20261114 … 20261129` (16 seeds) in `scripts/rating_estimator.py`
+   (`CONTROL_ROBUSTNESS_SEEDS`).
+2. A control whose verdict is **not unanimous** across that set is reported as
+   **NOT ROBUST** and the gate treats it as **unavailable** — never as PASS
+   and never as FAIL.
+3. The amendment is a **strengthening only**. It can turn an ambiguous PASS
+   into "unavailable"; it can never turn a FAIL into a PASS. It therefore
+   cannot rescue the recorded ENGINE-1 disqualification, and it does not
+   change any already-recorded verdict.
+4. The registered control sizes are unchanged: the anchor-vs-anchor control is
+   240 games and the candidate self-match control is 240 games (120 shards × 2).
+   The analysis shows the flip band in z is ≈ ±0.027 SE **independently of the
+   control size**, so a larger control would not reduce the frequency of an
+   ambiguous verdict (≈ 0.3 % for a genuinely fair candidate); the robustness
+   certification is what makes the rare ambiguous case safe. The estimator
+   records the certificate alongside the verdict, and the candidate's own
+   control must additionally report `seed_robust: true`.
+
+### Status
+
+This amendment changes **no** dispatch authorization. The prospective power
+assessment is still `BLOCKED` and still guarded to the ENGINE-1 binary; no gate
+plan and no confirmatory dispatch exist. The candidate's own screening,
+controls and power assessment have still not been run, so this is a
+*prospective* registration made before the evidence it governs exists.
+
+---
+
+## Candidate-specific qualification design amendment (registered 2026-11-18, before any candidate game)
+
+The machine-readable, append-only design is `benches/candidate-qualification.json`.
+It binds qualification evidence to the candidate binary SHA-256
+`0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5` and bench
+signature `c64d148d39181140`. The binary SHA-256 is authoritative. The exact
+source commit used by a later dispatch must be pinned in its dispatch config,
+be an ancestor of the branch head, and pass the hosted binary identity check;
+this preregistration does not authorize `freeze`, a different binary, or any
+execution by itself.
+
+### Candidate screening — selection only
+
+- **Purpose:** candidate-specific anchor selection only. These games and every
+  estimate derived from them are permanently ineligible as gate/confirmatory
+  evidence.
+- **Anchors:** `topple-0.1.1`, `topple-0.2.1`, and `akimbo-0.1.1` from the
+  frozen pool.
+- **Suites:** the disjoint, registered 50-opening suites
+  `benches/rating-openings-100-batchA.txt` (SHA-256
+  `5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df`) and
+  `benches/rating-openings-100-batchB.txt` (SHA-256
+  `ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253`).
+- **Sample:** one paired repetition per opening cluster, exact AB/BA seat
+  reversal; 50 clusters × 2 games = 100 counted games per anchor and batch.
+  Three anchors × two batches = **exactly 600 counted games** in six cells.
+  Each cell is 50 deterministic shards (one opening cluster per shard).
+- **Clock:** 40 moves in 900 seconds, repeating with `add` semantics, zero
+  increment, ponder off. Engine errors are replayed under the harness policy;
+  uncounted attempts do not change the target of exactly 100 valid counted
+  games per cell.
+- **Dispatch seed fields:** Batch A `20261119`, Batch B `20261120`; these are
+  provenance labels only because `match.py` uses a deterministic fixed opening
+  schedule and does not consume an RNG seed. Estimator bootstrap seeds remain
+  the separately registered `20261114 … 20261129` where required.
+- **Evidence location:**
+  `benches/evidence/candidates/<candidate-sha256>/screening/batchA/<anchor>/`
+  or `.../batchB/<anchor>/`. Every committed manifest records candidate
+  SHA-256, purpose/evidence class, suite identity, batch, anchor, target commit,
+  dispatch seed, repetitions, clock, and raw evidence digest. No legacy generic
+  screening path is eligible.
+
+### Candidate self-match null control
+
+- **Purpose:** candidate-specific null control; not screening and not gate
+  evidence. Both seats use the exact candidate binary.
+- **Suite:** frozen historical 60-opening suite
+  `benches/rating-openings-batchA.txt`, SHA-256
+  `2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96`. This
+  reuses only the opening definitions, never historical game records.
+- **Sample:** two paired repetitions per opening, four games per cluster; 60
+  clusters = **exactly 240 counted games**, scheduled in 60 deterministic
+  four-game shards; exact AB/BA reversal within each repetition.
+- **Clock:** same registered 40/15 clock and settings as screening.
+- **Seed robustness:** evaluate the self-control verdict for every registered
+  bootstrap seed `20261114 … 20261129`. The control is usable only when the
+  registered estimator reports unanimous `seed_robust: true`; otherwise it is
+  unavailable, never PASS.
+- **Evidence location:**
+  `benches/evidence/candidates/<candidate-sha256>/self-control/`. This path is
+  disjoint from screening and all historical ENGINE-1 control roots.
+
+The valid anchor-vs-anchor null control remains reusable without new games.
+Historical ENGINE-1 self-match evidence is not reusable for this candidate.
+The candidate-specific screening and self-control paths, sizes, identities,
+and separation rules are enforced by `scripts/candidate_qualification.py`,
+`scripts/aggregate_shards.py`, and `.github/workflows/rating-run.yml`. The
+candidate-specific power sensitivity and cost tools require the complete
+candidate-qualified evidence set, keep screening selection-only, and are
+non-authorizing by construction. No games are dispatched by this amendment.
+It creates no power PASS, gate plan, or confirmatory dispatch authority.

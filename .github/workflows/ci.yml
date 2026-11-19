@@ -40,10 +40,41 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --release --all-targets -- -D warnings
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: never
+        run: |
+          status=0
+          cargo clippy --release --all-targets -- -D warnings > clippy-out.txt 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo clippy --release --all-targets -- -D warnings FAILED (exit $status)"
+            # Surface the REAL diagnostic through annotations: the log channel is
+            # not reachable from every environment, annotations always are.
+            # One annotation per line, so no single message can be too large.
+            head -c 12000 clippy-out.txt | while IFS= read -r line; do
+              case "$line" in ::*) line="#${line}";; esac
+              echo "::error::out:${line}"
+            done
+            exit 1
+          fi
+          tail -1 clippy-out.txt | sed 's/^/::notice::ok: /'
 
       - name: Tests (release)
-        run: cargo test --release --locked
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: never
+        run: |
+          status=0
+          cargo test --release --locked > test-out.txt 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo test --release --locked FAILED (exit $status)"
+            head -c 12000 test-out.txt | while IFS= read -r line; do
+              case "$line" in ::*) line="#${line}";; esac
+              echo "::error::out:${line}"
+            done
+            exit 1
+          fi
+          tail -1 test-out.txt | sed 's/^/::notice::ok: /'
 
       - name: Python harness + estimator regression tests
         shell: bash
@@ -58,7 +89,7 @@ jobs:
             exit $status
           fi
           "$PY" -c "import chess; print('::notice::chess', chess.__version__)"
-          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py; do
+          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py scripts/test_audit_pair.py scripts/test_estimate_campaign_cost.py scripts/test_collect_eval_results.py scripts/test_pe_imports.py scripts/test_windows_package.py scripts/test_candidate_qualification.py scripts/test_aggregate_candidate.py scripts/test_aggregate_60.py scripts/test_certify_candidate_control.py scripts/test_candidate_power_analysis.py scripts/test_recover_download.py; do
             if ! "$PY" "$suite" > suite-out.txt 2>&1; then
               echo "::error::$suite FAILED"
               # Surface the REAL diagnostic through annotations (logs are unreadable
@@ -69,14 +100,26 @@ jobs:
             tail -1 suite-out.txt | sed 's/^/::notice::ok: /'
           done
 
-      - name: Verify amended 50-opening suites and prospective power model
+      - name: Verify historical ENGINE-1 power diagnostic and candidate preregistration
         shell: bash
         run: |
           PY=$(command -v python3 || command -v python)
           "$PY" scripts/verify_opening_subsets.py
+          "$PY" scripts/candidate_qualification.py
           "$PY" scripts/power_analysis.py --replicates 1000 --out power-smoke.json
           "$PY" -c "import json; r=json.load(open('power-smoke.json')); assert r['status']=='BLOCKED' and r['eligible_for_confirmatory_dispatch'] is False; assert r['engine_sha256']=='9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428'; assert r['screening_inputs']['selected_batch_a_opening_clusters']==50; assert len(r['scenarios'])==36; assert r['opening_suites']['batch_a_sha256']=='5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df'; assert r['opening_suites']['batch_b_sha256']=='ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253'"
           rm -f power-smoke.json
+
+      # The compute-cost estimate is a PLANNING diagnostic. It must stay
+      # reproducible, must never claim dispatch authority, and must not
+      # disturb the fail-closed power report or the dispatch marker.
+      - name: Verify the confirmatory cost estimate is reproducible and non-authorizing
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/estimate_campaign_cost.py --replicates 2000 --out cost-smoke.json
+          "$PY" -c "import json; c=json.load(open('cost-smoke.json')); p=json.load(open('benches/rating-100-power-assessment.json')); assert c['status']=='PLANNING_ONLY'; assert c['authorizes_dispatch'] is False; assert c['design']['expected_total_counted_games']==600; assert c['confirmatory_campaign']['counted_games']==600; assert c['confirmatory_campaign']['shard_jobs']==300; assert p['status']=='BLOCKED' and p['eligible_for_confirmatory_dispatch'] is False"
+          rm -f cost-smoke.json
 
       - name: Release build
         run: cargo build --release --locked
@@ -118,7 +161,11 @@ jobs:
       - name: UCI bestmove smoke test (search depth 2)
         shell: bash
         run: |
-          out=$(printf 'uci\nisready\nposition startpos\ngo depth 2\nquit\n' | ./target/release/flawless uci)
+          # Keep stdin open until the search has answered. Sending `quit` straight
+          # after `go` races the search: the engine stops an in-flight search and
+          # answers `bestmove 0000`, which is not a legal move and made this step
+          # flaky on slow runners.
+          out=$( { printf 'uci\nisready\nposition startpos\ngo depth 2\n'; sleep 5; } | ./target/release/flawless uci)
           echo "$out"
           echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8]([qrbn])?' || { echo "no legal bestmove"; exit 1; }
 

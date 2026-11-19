@@ -421,3 +421,446 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - MSRV 1.80 build NOT VERIFIED: no 1.80 toolchain available (npm mirror has none; rustup blocked). Open blocker.
 - Binary-identity blocker: R-02/R-03/R-07/R-08/R-10 change the engine binary. The ENGINE-1 hash frozen in PREREGISTRATION.md no longer identifies this code. Any gate or confirmatory evidence for the new behaviour needs a new candidate hash registered before dispatch. Not done; requires a decision.
 - rating-gate (failed at 3ebf617 and at 071f875): cause not yet investigated; left as fail-closed.
+
+## 2026-11-18 — campaign runner analysed the wrong perspective
+
+- **Observed:** the STRENGTH-1 campaign log reported SPEED-1 at 0.375 and
+  HIST-1 at 0.594. Recomputing from the raw JSONL gave the opposite signs for
+  the candidates (SPEED-1 0.625, HIST-1 0.406).
+- **Root cause:** `/home/user/tc/run_campaign.sh` called
+  `scripts/stats.py --focus "$wname"`, where `wname` was the *white* engine
+  name (`base`). The registration specifies "score from the candidate's
+  perspective", so the sign of the reported effect was inverted.
+- **Correction:** the raw game records were never modified. The registered
+  estimator (same script, same seed 20261118, same 10,000 opening-clustered
+  bootstrap resamples) was re-run with `--focus <candidate>` on the same
+  records. The runner now takes the candidate name as an explicit argument.
+- **Guard added:** the analysis focus is a required, explicit parameter of the
+  runner rather than a positional one, and the result record states which
+  perspective was used.
+
+## 2026-11-18 — evaluation ablation "off" branches did not match the base
+
+- **Observed:** the first EVAL-NONE build produced a different bench signature
+  (`e581eaf7b92b50e9`, 2,512,920 nodes) from the parent tree
+  (`8370f143c3b76fb4`, 2,697,573 nodes), so the ablation control was not a
+  faithful reproduction of the base evaluation.
+- **Root cause:** when the feature flags were introduced, the rook and queen
+  "off" branches were written with the *endgame* weight in both the midgame and
+  endgame slots (`2,5` and `1,9` instead of `2,2` and `1,1`). The base
+  evaluation used one weight for both phases.
+- **Correction:** the off branches now reproduce the base weights exactly. The
+  control was rebuilt and re-verified: EVAL-NONE reproduces the parent
+  signature `8370f143c3b76fb4` and node count 2,697,573 exactly.
+- **Lesson applied:** the control-validity check (all flags off must reproduce
+  the parent tree bit for bit) is now performed *before* dispatch and is
+  recorded in the registration. It is part of the EVAL-1 preconditions.
+
+## 2026-11-18 — "space" evaluation term was computed but never applied
+
+- **Observed:** the evaluation rewrite introduced a space term, but the score
+  did not change when it was enabled.
+- **Root cause:** `space` was accumulated into a local variable and then folded
+  into the `pawns` display field only; it was never added to the midgame or
+  endgame totals.
+- **Correction:** `space` now has its own component and is added to both
+  phase totals. The evaluation breakdown remains an exact decomposition of the
+  tapered score.
+
+## 2026-11-18 — candidate-pawn gap was O(pawns on file)
+
+- **Observed:** the candidate-pawn term scanned every friendly pawn ahead on the
+  file for each pawn on that file, making the term quadratic in the worst case.
+- **Root cause:** the gap was computed by iterating the pawns ahead instead of
+  taking the nearest one.
+- **Correction:** the nearest friendly pawn ahead is found directly from the
+  bitboard (lowest set bit for White, highest for Black). The term is now O(1)
+  per pawn and is colour-symmetric, which the new antisymmetry test confirms.
+
+## 2026-11-18 — outpost test used the wrong pawn-attack table (both directions)
+
+- **Observed:** the outpost term counted pieces that were not defended and
+  ignored pieces that were attacked by an enemy pawn. The error was invisible
+  to the existing evaluation gates: the evaluator stayed antisymmetric under
+  the board flip (the defect is itself symmetric), stayed finite, and the
+  breakdown still summed to the total.
+- **Root cause:** the pawn-attack table is *directional*. The set of squares
+  from which a pawn of colour C attacks square X is
+  `PAWN_ATTACKS_[other(C)][X]`. The outpost test used the wrong table in both
+  of its two lookups:
+  - "defended by one of our own pawns" used
+    `pawn_attacks_lookup(color, sq) & pawns`. For a White piece on d5 that is
+    `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — the squares a White pawn
+    *standing on d5* would attack. The pawns that actually *defend* d5 stand
+    on c4/e4, which is `PAWN_ATTACKS_BLACK[d5]`.
+  - "no enemy pawn attacks it" used
+    `pawn_attacks_lookup(them, sq) & enemy_pawns`. For the same piece that is
+    `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — the squares a Black pawn
+    *standing on d5* would attack. The Black pawns that actually *attack* d5
+    stand on c6/e6, which is `PAWN_ATTACKS_WHITE[d5]`.
+
+  Both lookups therefore asked "is this square attacked by a pawn of the same
+  colour as the piece".
+- **Correction:** commit `c702066`. The two lookups now use the opposite
+  tables, and the code comments say which colour each one means. The "no
+  enemy pawn can step forward to attack it" test already looked at the right
+  squares and is unchanged.
+- **Regression test added:** `outpost_requires_defence_and_safety_in_the_right_direction`
+  in `tests/eval_quality.rs` pins the two directions down with four
+  positions — a defended and unattacked knight on d5 is an outpost; an
+  undefended one is not; one attacked by a Black pawn on e6 is not; and one
+  that a Black pawn on e7 can step forward to attack is not. The test was
+  verified to FAIL on the pre-fix source and PASS on the fixed source.
+- **Consequence:** the evaluation values change, so the searched tree changes:
+  the depth-10 bench signature moves from `03e46bba31f35591` to
+  `b58979ca90492208` and the node count from 3,445,466 to 3,666,233. Every
+  binary built for the EVAL-1 campaign was made from the defective source, so
+  the whole EVAL-1 campaign was **withdrawn** and re-registered as EVAL-2 with
+  fresh binaries. The withdrawn raw records are retained unmodified under
+  `/home/user/matches/eval-*-invalidated-outpostbug/` and must not be cited.
+- **Lesson applied:** an antisymmetry test cannot catch a defect that is
+  itself symmetric. Terms that consult a *directional* table need a test that
+  exercises each direction separately, not only a test that checks the whole
+  evaluator's symmetry.
+
+## 2026-11-18 — evaluation cost grew ~40-50% per evaluation with the new terms
+
+- **Observed:** the depth-10 bench fell from ~832k NPS to ~715k NPS after the
+  evaluation upgrade, even though the tree got smaller (3,445,466 nodes
+  versus 3,666,233 is not a like-for-like comparison, but the per-evaluation
+  cost measured directly rose from ~265 ns to ~365 ns).
+- **Root cause:** two separate inefficiencies. (1) The slider attack masks
+  were computed twice per evaluation: `eval_color` runs once per side, and
+  for side X it computed the masks for X's own pieces (mobility) and again for
+  Y's pieces (king safety); the second call then computed the same masks
+  again. (2) The pawn-structure section recomputed, for every pawn, values
+  that depend only on the pawn's square.
+- **Correction:** commit `815ca47`. The masks are computed once per side and
+  shared; the pawn-structure section uses lookup tables (`FILE_NEIGHBOURS`,
+  `BEHIND_SQUARE`, `BEHIND_DIAGONALS`, `SIDE_FILES`); and `evaluate` no
+  longer routes through the ten-component `breakdown` taper, which cost ten
+  integer divisions per evaluation for values the search discarded.
+- **Verification:** the bench signature and node count are **unchanged** at
+  `b58979ca90492208` / 3,666,233, which proves the evaluation values did not
+  change — the searched tree is identical. Measured cost fell from 1219 ns to
+  1077 ns (minimum of 20 runs summed over the four `bench_eval` positions),
+  about 12 %.
+- **Lesson applied:** a performance change that alters no value can be
+  verified exactly, by comparing the bench signature and node count. That
+  check was used instead of a hand-written equivalence test.
+
+---
+
+## 2026-11-19 — CTRL-2-R self-match null control FAILED (ENGINE-1 identity)
+
+### Hypothesis / what was expected
+
+`docs/RATING_PROTOCOL.md` §5 requires the candidate self-match control to be
+"consistent with a score of 0.5 under the registered binomial confidence
+criterion". The recovered CTRL-2-R evidence (240 counted games, 60 opening
+clusters, 40 AB / 40 BA, zero engine errors) was expected to satisfy it, and
+it does not.
+
+### Exact implementation and identity
+
+- Run: GitHub Actions `rating-run` run **43820392119**, dispatch revision 13,
+  commit `8e21435`, completed/successful, all 120 shard jobs green, the
+  aggregate-and-commit-evidence job skipped.
+- Engine: ENGINE-1, binary SHA-256
+  `9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428`
+  (frozen in the dispatch and verified by the strict aggregator).
+- Opening suite: `benches/rating-openings-batchA.txt`, SHA-256
+  `2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96`.
+- Time control: 40 moves / 900 s repeating. Seed 20261125.
+- Recovered to `benches/evidence/control/flawless-self-r/` (games.jsonl 240
+  records, manifest with 120 shard ids, `merged_sha256`
+  `8b643304e20433cd0a8b1c7ec96c114b097a459fff70012c28b997020a8bbf79`).
+- Aggregation was performed on a GitHub runner by `evidence-bridge` run
+  **44465050400** (the sandbox cannot reach the artifact blob host), with the
+  strict fail-closed `scripts/aggregate_shards.py`.
+
+### Methodology
+
+`scripts/rating_estimator.py control --mode self-match` — the registered
+tool, unchanged — with the registered 10,000-resample opening-cluster
+bootstrap and seed 20261114.
+
+### Raw evidence and outcome
+
+| Quantity | Value |
+|---|---|
+| Counted games | 240 (60 openings x 4 games: 2 AB + 2 BA each) |
+| Engine errors | 0 |
+| Unadjudicated | 0 |
+| Schedule indices | 0–239, each exactly once |
+| Seat-A perspective score | **0.4604166667** |
+| 95 % cluster-bootstrap CI | **[0.4208333333, 0.4979166667]** |
+| White-perspective score | 0.5229166667 |
+| **Verdict** | **FAIL — the CI does not contain 0.5** |
+
+### Root-cause analysis (verified, not assumed)
+
+The deficit is **entirely in the decisive games**: every draw contributes
+exactly 0.5 from either seat, and the 125 drawn games sit exactly at 0.5. Among
+the 115 checkmate games the seat-A score is 0.4174 (47/115).
+
+At the cluster level the seat score has mean 0.4604 with a cluster SD of
+0.1535 over 60 clusters, i.e. SE 0.0198 and **z = -2.00** (two-sided
+p ≈ 0.046). The registered percentile bootstrap CI misses 0.5 by 0.0021 at the
+upper end.
+
+Two candidate causes were investigated:
+
+1. **A harness asymmetry in the AB/BA opening handling — REJECTED.** The
+   opening suite header says "Colors reversed (AB/BA) for every line" and the
+   manifest claims "exact color reversal", which reads as if the suite line
+   were replayed with the colours swapped. It is not: `apply_opening` replays
+   the line White-first in both halves and only the *engine commands* are
+   swapped. This was checked directly against the raw records — the first
+   `len(line)` moves of every BA game are byte-identical to the AB game of the
+   same opening, in all four recovered evidence sets.
+   It was then shown that the harness is **correct** and the suite header is
+   ambiguous: from the post-opening position P, let `w` = P(the side to move
+   wins) and `d` = P(draw) for two identical engines. The standard
+   convention gives seat-A score
+   `(w + d/2 + (1-w-d) + d/2)/2 = 1/2` **exactly**, for any `w` and `d`,
+   while a *mirrored* opening convention gives `w + d/2`, which is above 0.5
+   whenever White has the advantage. The registered control's 0.5 expectation
+   is therefore only meaningful under the convention the harness implements.
+   Mirroring the line would have *broken* the control. **No harness change is
+   warranted, and none was made.**
+2. **Sampling fluctuation — CONSISTENT WITH THE DATA.** With an unbiased
+   estimator, a z of -2.00 at a 5 % two-sided level is an unlucky but ordinary
+   outcome for a single control.
+
+The other recovered control does not fail: the anchor-vs-anchor control
+(CTRL-1, topple-0.1.1 vs topple-0.2.1, 240 games) recovers the published
+difference of -115 Elo as -125.3 Elo, an error of **-10.3 Elo** against the
+registered ±75 tolerance, and the earlier pre-ENGINE-1 self-match (120 games)
+passes at 0.5146 with CI [0.4813, 0.5500].
+
+### Consequence
+
+- **ENGINE-1 is disqualified as a rated candidate.** Its self-match null
+  control failed, and §5 requires that any result failing a null control
+  invalidates the affected batch. ENGINE-1 was never aggregated into a
+  canonical batch in any case (its evidence job was skipped), so no ENGINE-1
+  number is reported anywhere.
+- **No Flawless rating may be reported from the ENGINE-1 evidence.** The
+  recovered SCREEN-3 and CTRL-2-R records remain valid *historical* evidence
+  and are used only for the variance/selection model of a prospective power
+  assessment, never as gate evidence.
+- **The V1 candidate requires its own controls.** The candidate-specific
+  self-match and anchor-vs-anchor controls must be run against the exact
+  frozen V1 binary before any confirmatory dispatch. The control's 5 %
+  false-positive rate is a known cost and is handled by running the control
+  on the candidate, not by relaxing it.
+
+### Uncertainty
+
+The z = -2.00 is a point reading on a 240-game, 60-cluster sample; the true
+effect could be anywhere in the CI [-0.079, -0.002]. The analysis does not
+distinguish "a real 0.04 seat deficit" from "an unlucky draw", and it does
+not need to: either way the registered control fails for this identity and
+the identity is not used for rating.
+
+### What was learned
+
+- A null control can fail for the right reason and still be the correct
+  instrument. The temptation was to "fix" the harness; the arithmetic showed
+  the harness was right and the mirrored convention would have been wrong.
+- The `fen` field in a match record is the **final** position, not the start
+  position. Replaying a game's `moves` from its own `fen` fails on every
+  record and means nothing; the games start from the standard position with
+  the suite line applied.
+- The opening suite's "Colors reversed (AB/BA) for every line" header is
+  ambiguous and reads as if the line were mirrored. It should be reworded to
+  say that the line is replayed as written and only the engine seats are
+  swapped. **Not yet done — the suite files are frozen evidence and must not
+  be edited in place; the wording is corrected in the append-only protocol
+  notes instead.**
+
+### Next experiment
+
+Run candidate-specific self-match and anchor-vs-anchor controls against the
+exact frozen V1 candidate binary, on the registered 40/15 control, with the
+registered AB/BA schedule and the registered bootstrap seed, before any
+confirmatory dispatch.
+
+## 2026-11-19 — Sandbox restore: commit history, toolchain and worktrees lost again
+
+- Attempt: continue the Phase B audit from the restored workspace.
+- What happened: the sandbox was restored to the initial clone state. `git log` showed only the base
+  commit `5e36b06`, the PR #2 commits (`adda48e` and its ancestors) were no longer in the local
+  object store, the extra worktrees (`wt-baseline`, `wt-fixed`, `wt-eval2`, `wt-mate`) were gone,
+  `/home/user/.toolchain`, `/home/user/.venv` and `/home/user/tc` were gone, and `/tmp` was empty.
+  The working tree still held the whole PR #2 change as uncommitted modifications.
+- Recovery: `git fetch origin arena/8259ce1c-flawlesschess` restored the history (`adda48e` and its
+  ancestors). Every file that the restore had left untracked was verified byte-identical to its
+  `adda48e` blob before the branch pointer was moved with `git reset --mixed adda48e`; the working
+  tree was not touched by the reset. The Rust toolchain was restored from the pinned PyPI mirror
+  (`arena-rust-toolchain` 1.97.0 plus the three data wheels) with `/home/user/tc/fetch.py`, and the
+  Python environment with `python-chess` 1.11.2 in `/home/user/.venv`.
+- Result: the workspace is back at the state the audit started from. The uncommitted PVS re-search
+  probe that had been in `/home/user/wt-fixed` was lost with the worktree and was rewritten from
+  scratch.
+- Lesson: the unpushed working tree is the only copy of an uncommitted change. Recreate the
+  toolchain from the pinned mirror before doing anything else, and verify byte identity of a
+  restored tree against the remote before trusting it.
+
+## 2026-11-19 — Phase B audit: the PVS scout bound was used as a move score
+
+- Attempt: audit `src/search.rs` against the PVS algorithm, then measure the root score against the
+  exact value of the best single move over the Batch A opening list.
+- What happened: the re-search that converts a scout bound into a move value was guarded by
+  `reduction > 0`, so an unreduced non-first move never got one and its null-window bound was used
+  as the move's score. At depth 2 the root score was below the best move's value in 7 of the first 8
+  Batch A positions, with gaps up to 172 centipawns, and the root chose a different move than the
+  best one in the same positions. The pre-PR-2 baseline satisfies the invariant exactly, so this
+  was introduced with the search rework.
+- The same defect also produced a bogus mate claim: the King's Gambit Accepted position of the
+  Batch A suite (after 1.e4 e5 2.f4 exf4) reported `score mate 15` at depth 3, which is not a
+  forced mate at all. The bound propagated into the mate range and was formatted as a mate
+  distance.
+- Result: fixed in `708d53c`. The full-window re-search is now performed for every non-first move
+  that beats alpha. Two regression tests were added and verified to fail against the old code.
+- Uncertainty: the residual differences between the root score and the value of the best single
+  move at depth 5 are the late-move-reduction and pruning approximations, not unverified bounds.
+  They are inherent to the search and are not treated as defects.
+- Lesson: a null-window scout result is a bound. Promoting it to a score is a correctness bug that
+  a score-consistency invariant catches immediately, and the invariant must be tested at a depth
+  where the deliberate approximations are switched off.
+
+## 2026-11-19 — Phase B audit: the move-ordering bands overlapped
+
+- Attempt: check that the documented ordering bands ("sound captures outrank killers, losing
+  captures are deliberately demoted below ordinary quiet moves") hold for every reachable value of
+  the history tables.
+- What happened: they did not. A quiet move scores `50_000 + history + cont_history +
+  cont_history2`, and each entry is clamped to `+/- 8192`, so the quiet band reaches down to
+  25_424. A losing capture scored `40_000 + see` with `see` in `[-10_000, -1]` plus the
+  capture-history refinement (at most `8192 / 4 = 2048`), so it could reach 27_952 and be ordered
+  above a quiet move. A capture-promotion was worse: the promotion bonus of up to 20_225 was added
+  to losing captures as well and pushed them to 48_177 .. 62_272, in the middle of the quiet band.
+- Result: fixed in `61dd642`. The bands are now laid out so that they cannot overlap whatever the
+  history tables hold, and the layout is documented next to the constants. Two regression tests
+  check the invariant directly and fail against the old bases.
+- Lesson: an ordering band described in prose is not a band. The bands must be derived from the
+  clamped value ranges of the tables that feed them, and the layout must be checked by a test that
+  fills the tables with both extremes.
+
+## 2026-11-19 — Phase B audit: the quiescence did not record its captures on the search path
+
+- Attempt: classify the open question "quiescence does not update `self.path`".
+- What happened: the search path is documented as "path[p] is the move made at ply p", but only the
+  main search wrote to it. From the second quiescence level on, the counter-move lookup and the
+  continuation-history lookup were made for a move from an unrelated earlier branch, so the
+  counter-move bonus could land on a capture that is not the counter move.
+- Classification: the effect is confined to the ordering inside the quiescence. The quiescence's
+  returned value is the maximum over the captures it searched and does not depend on the order, so
+  the value stays a valid bound; only the place of the beta cutoff moves. It is a quality defect,
+  not a correctness defect.
+- Result: fixed in `018e920`. The quiescence records the capture it plays and restores the
+  previous entry afterwards. The bench node count moves from 3413870 to 3413723.
+- Lesson: the path is an input to the ordering, so every level of the search has to maintain it.
+
+## 2026-11-19 — Phase C audit: the mate-score band was narrower than the reachable mate range
+
+- Attempt: complete the TT mate-distance normalisation trace and decide whether the mate-distance handling was sound.
+- What happened: the mate-score band was `MATE_SCORE - 100` in three places (the transposition table, the UCI score formatter and the search's pruning guards), while the search's ply limit is `MAX_PLY = 128`. The search returns a static evaluation at `ply >= MAX_PLY` *before* it looks for mate, so the deepest checkmate node it can reach is at ply `MAX_PLY - 1` and the longest mate it can report is 127 plies from the root. A mate 100 plies or more from the root therefore fell **outside** the band, and the band was 28 plies too narrow in each direction.
+- Classification: **correctness defect**, not a quality defect. Two distinct failures:
+  (1) the transposition table did not recognise such a score as a mate score, so it stored it in root-relative form and returned it unchanged when the entry was probed at a different ply. The mate distance was then wrong by exactly the ply difference — a mate 101 plies away, stored at ply 0 and re-used at ply 50, was reported as 101 plies away instead of 151. Reproduced directly against the table's public API.
+  (2) the UCI layer printed such a mate as a centipawn score (`cp 29899`), which is not a score the format can represent and which a GUI would render as a nonsensical evaluation rather than a mate.
+  The search's own pruning guards shared the same band, so a null move could be attempted with a mate beta (a mate 100–127 plies away yields a beta in `[MATE_SCORE - 127, MATE_SCORE - 100]`). That is a third consequence of the same root cause.
+- Result: fixed in `32ad8ab`. The band is now `MATE_SCORE - MAX_PLY`, derived from the search's ply limit rather than from an arbitrary constant, and it is defined once in `eval::MATE_BOUND` and used by the search, the table and the UCI layer. The fix is **behaviour-neutral for ordinary positions**: the depth-10 bench signature and node count are unchanged at `c64d148d39181140` / 3,413,723, because a depth-10 search can never reach a mate 100 plies away. `tests/mate_distance.rs` adds eight regressions, four of which fail against the pre-fix source.
+- Lesson: a threshold that classifies a *kind of score* must be derived from the range the producer can actually emit. `MATE_SCORE - 100` looks like a safe margin; it was in fact a band 28 plies narrower than the reachable range, and the same constant was duplicated in three modules, so the three copies agreed with each other and were all wrong together.
+
+## 2026-11-19 — EVAL-3 screening: the audited tree is measurably stronger than the pre-audit tree
+
+- Attempt: measure whether the three audited search fixes also make the engine stronger, not merely correct.
+- What happened: with the identities pinned before dispatch (candidate `540a10df…` / bench `c64d148d39181140`; control `2b41a8e6…` / bench `b58979ca90492208`), the candidate scored **60.5/80 = 0.756**, 95% CI [0.662, 0.838], Elo difference **+197**, 95% CI **[+117, +285]**, over 80 games on 20 opening clusters with exact AB/BA reversal and zero engine errors.
+- Classification: not a failure. The registered decision rule (95% CI lower bound > 0 Elo) is met with a wide margin, and the result was reproduced by two independent code paths (`scripts/stats.py` and a separate recomputation against the raw JSONL).
+- Result: recorded in `PREREGISTRATION.md` (EVAL-3 result record) and the raw evidence is preserved under `benches/evidence/screening-eval3/`. The result is screening evidence on a shared 2-vCPU sandbox at a fixed 100 ms/move time control; it is not a rating and it does not substitute for the >2,000 Elo gate.
+- Lesson: the mechanical root-consistency measurements of the audit (root score below the value of the chosen move in 5/12 and 8/12 positions; MultiPV best understated in 7/12) predicted a real strength gap. A correctness audit that measures the *symptom* it fixed gives a falsifiable strength prediction, which the screening campaign then tested.
+
+## 2026-11-19 — the self-match null-control verdict is seed-dependent at the boundary
+
+### What was found
+
+While reviewing the minimum candidate-specific control set, the committed
+CTRL-2-R self-match evidence was re-aggregated with the registered tool
+(`scripts/rating_estimator.py control --mode self-match`, unchanged) to check
+that the committed control evidence still reproduces. It does — but only for the
+exact seed the verdict was recorded with.
+
+| Seed | Seat-A score | 95 % CI | Verdict |
+|---|---|---|---|
+| 20261114 (registered) | 0.46041666666666664 | [0.42083333333333334, **0.4979166666666667**] | **FAIL** — CI does not contain 0.5 |
+| 20261125 (the dispatch seed) | 0.46041666666666664 | [0.42083333333333334, **0.5**] | PASS — CI contains 0.5 |
+
+Across 300 consecutive seeds the recorded evidence gives **177 PASS and 123
+FAIL**. The point estimate is seed-independent (0.46041666666666664 = 110.5/240);
+only the interval's endpoint moves, and it takes only two values, 0.4979167 and
+0.5 — adjacent points on the grid the bootstrap mean lives on.
+
+### Root cause
+
+The self-match criterion is "the 95 % CI contains 0.5", and the CI is a
+percentile cluster bootstrap. With *n* clusters of four games the resampled
+mean is a multiple of 1/(8n), so the bootstrap distribution is a coarse grid.
+The 97.5 % percentile for this evidence falls at ≈ 0.4992 — *between* the grid
+points 0.4979167 and 0.5. The discrete rank index `int(0.975 * n_boot)`
+therefore lands on one or the other depending on the seed. The number of
+bootstrap resamples at or above 0.5 has mean `n_boot * Φ(z)` and standard
+deviation ≈ 16 at `n_boot = 10,000`, so the verdict flips whenever that count
+straddles the rank threshold — a band of roughly ±0.027 SE in z.
+
+This is not a Monte-Carlo artifact and more replicates do not remove it:
+
+| Bootstrap replicates | Seeds tried | FAIL | PASS | Flip rate | Upper bound values seen |
+|---|---|---|---|---|---|
+| 1,000 | 60 | 35 | 25 | 58.3 % | 0.4958333, 0.4979167, 0.5, 0.5020833 |
+| 10,000 | 60 | 27 | 33 | 45.0 % | 0.4979167, 0.5 |
+| 50,000 | 24 | 13 | 11 | 54.2 % | 0.4979167, 0.5 |
+
+The flip band in z is ≈ ±0.027 SE **independently of the control size**, so a
+larger control would not reduce how often a genuinely fair candidate lands in
+it (≈ 0.3 % of fair candidates); what makes the rare ambiguous case safe is
+certifying the verdict across a registered seed set, not collecting more games.
+
+The **anchor-vs-anchor** control does not have this problem: it is decided by
+comparing the measured point estimate with the published difference under the
+±75 Elo tolerance and uses no bootstrap interval, so its verdict is identical
+for 40 different seeds (`d_measured = -125.3211`, `error = -10.3211`, PASS).
+
+### Impact on the recorded verdicts
+
+**None — every recorded verdict stands unchanged.** The CTRL-2-R FAIL was
+recorded with the registered seed 20261114 and reproduces byte-identically. The
+pre-ENGINE-1 self-match PASS reproduces byte-identically at its recorded seed
+and is unanimous across all 16 registered seeds (16/16 PASS), so it is not
+affected. CTRL-1 reproduces byte-identically and is seed-independent by
+construction.
+
+What the analysis adds is the *characterisation* of the ENGINE-1 outcome: it is
+a borderline result (clustered z ≈ −2.00 against a 1.96 threshold) reported by
+a knife-edge test, not evidence that the ENGINE-1 binary is biased in colour.
+The disqualification of ENGINE-1 as a rated candidate is a conservative
+consequence of the registered criterion and is **not** reversed.
+
+### Fix
+
+Registered prospectively (before any candidate control is dispatched) in
+`PREREGISTRATION.md` § "RATING-100 control-robustness amendment" and
+`docs/RATING_PROTOCOL.md`: the self-match verdict is certified across the
+registered seed set `20261114 … 20261129`, and a verdict that is not unanimous
+is reported as **NOT ROBUST** and treated by the gate as **unavailable** —
+never as PASS and never as FAIL. The amendment is a strengthening only, so it
+cannot rescue a failing control. `scripts/rating_estimator.py` now reports
+`seed_robust` for both null controls, and the gate requires it.
+
+## 2026-11-19 — current rating checkpoint: artifact retrieval and local environment
+
+- Attempted `gh run download 44513810693 --name flawless-windows-x86_64` to inspect the exact-head Windows release ZIP. GitHub Actions returned an artifact-blob download EOF. The runner workflow's success is verified, but artifact contents/checksums could not be independently checked in this session; do not claim package inspection.
+- Local restored environment lacked `cargo`/`rustc` and initially lacked `python-chess`/PyYAML. Installed Python test dependencies into a temporary `/tmp` target (not the repository); all 16 Python suites and six workflow YAML parses then passed. No Rust source changed in the local patch; exact remote head CI is the available Rust verification.
+- Measured cumulative branch Actions work during the observed period at 281.3 job-minutes. This is above the 60-minute mission cap; no further hosted execution should be initiated without user authorization.

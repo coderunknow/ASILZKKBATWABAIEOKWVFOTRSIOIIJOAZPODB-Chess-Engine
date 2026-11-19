@@ -1,0 +1,387 @@
+{
+  "report": "confirmatory-campaign-cost-estimate",
+  "schema": 1,
+  "date": "2026-11-19",
+  "status": "PLANNING_ONLY",
+  "authorizes_dispatch": false,
+  "authority_note": "This report is a compute-cost planning diagnostic. It is not a prospective power assessment, it does not change the status of benches/rating-100-power-assessment.json (BLOCKED), and it does not authorize any confirmatory dispatch. The fail-closed requirements are unchanged: candidate-specific controls and a reviewed candidate-specific power PASS must exist before dispatch; exact identity and suite hashes are enforced; exactly 600 counted games are required; all three unrounded Elo lower bounds must exceed 2,000; and no pull request is merged automatically.",
+  "design": {
+    "sample_design": "rating-100-v1",
+    "counted_games_per_anchor_per_batch": 100,
+    "opening_clusters_per_anchor_per_batch": 50,
+    "games_per_cluster": 2,
+    "batches": [
+      "A",
+      "B"
+    ],
+    "anchors": [
+      "topple-0.1.1",
+      "topple-0.2.1",
+      "akimbo-0.1.1"
+    ],
+    "time_control": "40/15 repeating wall-clock",
+    "shard_job_timeout_minutes": 350,
+    "expected_total_counted_games": 600,
+    "expected_total_shard_jobs": 300,
+    "dispatch_count": 6
+  },
+  "timing_basis": {
+    "screening_engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
+    "screening_engine_label": "ENGINE-1 (time-management remediation)",
+    "screening_opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+    "measured_games": 360,
+    "measured_source_runs": [
+      43820645420,
+      43820392119
+    ],
+    "observed_job_overhead_seconds": 35.0,
+    "observed_job_overhead_max_seconds": 51.0,
+    "observed_account_peak_concurrency": 40,
+    "transfer_caveats": [
+      "All wall-clock measurements come from the ENGINE-1 binary. The confirmatory campaign runs a different candidate binary, and NO candidate-specific 40/15 wall-clock timing evidence exists yet, so the engine-to-engine duration transfer is unmeasured.",
+      "Batch B has never been timed at all; its durations are modelled as exchangeable with the anchor's observed Batch A population.",
+      "The candidate is expected to change game length, because the 40/15 repeating wall-clock schedule ends on move count and decisive result, not on a fixed duration. A stronger candidate can produce longer or shorter games."
+    ]
+  },
+  "per_anchor": {
+    "topple-0.1.1": {
+      "evidence": "benches/evidence/screening-2/topple-0.1.1/games.jsonl",
+      "screening_engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
+      "measured_clusters": 60,
+      "measured_attempts": 120,
+      "measured_counted": 120,
+      "measured_shards": 60,
+      "time_control": {
+        "expected": {
+          "mode": "clock",
+          "period_moves": 40,
+          "period_seconds": 900.0
+        },
+        "source": "prereg",
+        "provenance": "PREREGISTRATION.md#screen-2 (120 games, TC 40/15, seed 20261123)"
+      },
+      "cluster_pair_seconds": {
+        "mean": 6777.546333333335,
+        "median": 6523.173000000001,
+        "p05": 4874.536150000001,
+        "p95": 10688.1841,
+        "max": 11493.521
+      },
+      "batch_a": {
+        "clusters": 50,
+        "directly_measured": true,
+        "point_seconds": 339314.2050000001,
+        "bootstrap": {
+          "n_draws": 50,
+          "replicates": 20000,
+          "mean": 338864.9471720991,
+          "median": 338474.8685,
+          "p05": 320594.7964500001,
+          "p95": 358523.58915,
+          "min": 298601.757,
+          "max": 386974.016
+        }
+      },
+      "batch_b": {
+        "clusters": 50,
+        "directly_measured": false,
+        "assumption": "Batch B cluster durations are modelled as exchangeable with the anchor's observed Batch A population; Batch B has never been timed.",
+        "bootstrap": {
+          "n_draws": 50,
+          "replicates": 20000,
+          "mean": 338875.913113399,
+          "median": 338514.97899999993,
+          "p05": 320600.94464999996,
+          "p95": 358231.7067000001,
+          "min": 293923.574,
+          "max": 395265.15699999995
+        }
+      }
+    },
+    "topple-0.2.1": {
+      "evidence": "benches/evidence/screening-2/topple-0.2.1/games.jsonl",
+      "screening_engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
+      "measured_clusters": 60,
+      "measured_attempts": 120,
+      "measured_counted": 120,
+      "measured_shards": 60,
+      "time_control": {
+        "expected": {
+          "mode": "clock",
+          "period_moves": 40,
+          "period_seconds": 900.0
+        },
+        "source": "prereg",
+        "provenance": "PREREGISTRATION.md#screen-2 (120 games, TC 40/15, seed 20261124)"
+      },
+      "cluster_pair_seconds": {
+        "mean": 6374.594283333335,
+        "median": 6321.495,
+        "p05": 4160.70485,
+        "p95": 9169.809299999999,
+        "max": 14188.215
+      },
+      "batch_a": {
+        "clusters": 50,
+        "directly_measured": true,
+        "point_seconds": 301491.76200000005,
+        "bootstrap": {
+          "n_draws": 50,
+          "replicates": 20000,
+          "mean": 318602.8692738483,
+          "median": 318066.094,
+          "p05": 298901.83524999995,
+          "p95": 340364.97945000004,
+          "min": 274052.661,
+          "max": 377171.72000000003
+        }
+      },
+      "batch_b": {
+        "clusters": 50,
+        "directly_measured": false,
+        "assumption": "Batch B cluster durations are modelled as exchangeable with the anchor's observed Batch A population; Batch B has never been timed.",
+        "bootstrap": {
+          "n_draws": 50,
+          "replicates": 20000,
+          "mean": 318621.17428184865,
+          "median": 318129.83199999994,
+          "p05": 298600.91635,
+          "p95": 340005.58855000016,
+          "min": 271291.80899999995,
+          "max": 373602.555
+        }
+      }
+    },
+    "akimbo-0.1.1": {
+      "evidence": "benches/evidence/screening-3/akimbo-0.1.1/games.jsonl",
+      "screening_engine_sha256": "9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428",
+      "measured_clusters": 60,
+      "measured_attempts": 120,
+      "measured_counted": 120,
+      "measured_shards": 60,
+      "time_control": {
+        "expected": {
+          "mode": "clock",
+          "period_moves": 40,
+          "period_seconds": 900.0
+        },
+        "source": "manifest",
+        "provenance": "benches/evidence/screening-3/akimbo-0.1.1/manifest.json"
+      },
+      "cluster_pair_seconds": {
+        "mean": 7513.878666666665,
+        "median": 6736.6185,
+        "p05": 4520.285749999999,
+        "p95": 12689.614749999999,
+        "max": 15763.643
+      },
+      "batch_a": {
+        "clusters": 50,
+        "directly_measured": true,
+        "point_seconds": 381829.35800000007,
+        "bootstrap": {
+          "n_draws": 50,
+          "replicates": 20000,
+          "mean": 375463.1486511003,
+          "median": 374991.0965,
+          "p05": 345939.32420000003,
+          "p95": 406556.80304999993,
+          "min": 310743.60199999996,
+          "max": 455459.3849999999
+        }
+      },
+      "batch_b": {
+        "clusters": 50,
+        "directly_measured": false,
+        "assumption": "Batch B cluster durations are modelled as exchangeable with the anchor's observed Batch A population; Batch B has never been timed.",
+        "bootstrap": {
+          "n_draws": 50,
+          "replicates": 20000,
+          "mean": 375810.43980694894,
+          "median": 375377.284,
+          "p05": 346322.93964999996,
+          "p95": 406824.1686000001,
+          "min": 310919.5519999999,
+          "max": 450630.855
+        }
+      }
+    }
+  },
+  "cells": [
+    {
+      "anchor": "topple-0.1.1",
+      "batch": "A",
+      "counted_games": 100,
+      "shards": 50,
+      "directly_measured": true,
+      "point_seconds": 339314.2050000001,
+      "bootstrap_mean_seconds": 338864.9471720991,
+      "bootstrap_p05_seconds": 320594.7964500001,
+      "bootstrap_p95_seconds": 358523.58915
+    },
+    {
+      "anchor": "topple-0.1.1",
+      "batch": "B",
+      "counted_games": 100,
+      "shards": 50,
+      "directly_measured": false,
+      "point_seconds": null,
+      "bootstrap_mean_seconds": 338875.913113399,
+      "bootstrap_p05_seconds": 320600.94464999996,
+      "bootstrap_p95_seconds": 358231.7067000001
+    },
+    {
+      "anchor": "topple-0.2.1",
+      "batch": "A",
+      "counted_games": 100,
+      "shards": 50,
+      "directly_measured": true,
+      "point_seconds": 301491.76200000005,
+      "bootstrap_mean_seconds": 318602.8692738483,
+      "bootstrap_p05_seconds": 298901.83524999995,
+      "bootstrap_p95_seconds": 340364.97945000004
+    },
+    {
+      "anchor": "topple-0.2.1",
+      "batch": "B",
+      "counted_games": 100,
+      "shards": 50,
+      "directly_measured": false,
+      "point_seconds": null,
+      "bootstrap_mean_seconds": 318621.17428184865,
+      "bootstrap_p05_seconds": 298600.91635,
+      "bootstrap_p95_seconds": 340005.58855000016
+    },
+    {
+      "anchor": "akimbo-0.1.1",
+      "batch": "A",
+      "counted_games": 100,
+      "shards": 50,
+      "directly_measured": true,
+      "point_seconds": 381829.35800000007,
+      "bootstrap_mean_seconds": 375463.1486511003,
+      "bootstrap_p05_seconds": 345939.32420000003,
+      "bootstrap_p95_seconds": 406556.80304999993
+    },
+    {
+      "anchor": "akimbo-0.1.1",
+      "batch": "B",
+      "counted_games": 100,
+      "shards": 50,
+      "directly_measured": false,
+      "point_seconds": null,
+      "bootstrap_mean_seconds": 375810.43980694894,
+      "bootstrap_p05_seconds": 346322.93964999996,
+      "bootstrap_p95_seconds": 406824.1686000001
+    }
+  ],
+  "confirmatory_campaign": {
+    "counted_games": 600,
+    "shard_jobs": 300,
+    "game_runner_hours": 571.0952367228324,
+    "job_overhead_runner_hours": 2.9166666666666665,
+    "total_runner_hours": 574.011903389499,
+    "runner_hours_p05": 536.3779879305556,
+    "runner_hours_p95": 614.029676527778,
+    "replay_allowance_fraction": 0.0,
+    "replay_allowance_runner_hours": 0.0,
+    "total_runner_hours_with_allowance": 574.011903389499,
+    "standard_runner_usd_notional": 206.64428522021964,
+    "billing_note": "The repository is public and the campaign uses standard GitHub-hosted runners, so these runner-minutes are unmetered and cost USD 0. The dollar figure is a notional valuation at the published standard-runner rate.",
+    "wall_clock_span_hours": {
+      "concurrent_dispatches": {
+        "10": 57.571105277777775,
+        "20": 28.858021944444445,
+        "38": 15.332067499999999,
+        "40": 14.947521388888891
+      },
+      "sequential_dispatch_waves": {
+        "10": {
+          "per_wave_hours": [
+            10.159607499999998,
+            9.597566666666667,
+            8.532910555555555,
+            9.125511388888889,
+            11.107359166666667,
+            11.070229444444443
+          ],
+          "total_hours": 59.59318472222222
+        },
+        "20": {
+          "per_wave_hours": [
+            5.669260277777778,
+            5.153953888888889,
+            4.791262222222222,
+            4.8041925,
+            5.639605555555556,
+            6.032027222222222
+          ],
+          "total_hours": 32.09030166666666
+        },
+        "38": {
+          "per_wave_hours": [
+            3.315350555555556,
+            3.2023669444444445,
+            2.9492294444444442,
+            3.9508930555555555,
+            4.388511944444445,
+            4.388511944444445
+          ],
+          "total_hours": 22.19486388888889
+        },
+        "40": {
+          "per_wave_hours": [
+            3.205369722222222,
+            3.2023669444444445,
+            2.7321174999999998,
+            3.9508930555555555,
+            4.388511944444445,
+            4.388511944444445
+          ],
+          "total_hours": 21.86777111111111
+        }
+      },
+      "note": "concurrent_dispatches: all six dispatches run together against one account-wide concurrency budget. sequential_dispatch_waves: one dispatch at a time, 50 shards per wave, which is the conservative mode because the dispatch marker is a single file."
+    },
+    "timeout_risk": {
+      "shard_timeout_minutes": 350,
+      "bootstrap_exceedance_rate": 0.0306,
+      "bootstrap_replicates": 20000,
+      "note": "Probability that a two-game shard exceeds the 350-minute job timeout. An exceeded shard fails and is re-run into a fresh output directory, which costs a further pair of games."
+    }
+  },
+  "gate_path_prerequisites": {
+    "note": "Cost of the candidate-specific evidence that must exist before any confirmatory dispatch can be considered. These runs are NOT authorized by this report; they are costed so the owner can weigh them.",
+    "candidate_specific_screening": {
+      "cells": 6,
+      "counted_games": 600,
+      "shard_jobs": 300,
+      "runner_hours": 571.0952367228324,
+      "rationale": "The prospective power report is BLOCKED partly because the third anchor's cluster-level distribution is unmeasured and partly because the disjoint Batch B subset has no measured distribution. Screening all three anchors on both 50-opening subsets supplies both, so the Batch B exchangeability assumption becomes a measurement."
+    },
+    "candidate_self_match_control": {
+      "counted_games": 240,
+      "shard_jobs": 120,
+      "runner_hours": 228.43809468913298,
+      "candidate_dependent": true,
+      "seed_robustness_required": true,
+      "rationale": "The registered self-match null control seats the candidate against itself, so it must be re-run for the candidate binary. The committed flawless-self-r evidence carries the ENGINE-1 binary and does not transfer.",
+      "verification": "The verdict must additionally be certified across the registered bootstrap seed set (PREREGISTRATION.md, control-robustness amendment, 2026-11-19). The self-match criterion reads a percentile cluster-bootstrap CI, which is evaluated on a coarse grid, so a verdict near the rejection boundary can depend on the bootstrap seed: the committed CTRL-2-R evidence flips on 45-58% of seeds. An ambiguous control is reported as unavailable, never as PASS. The registered 240-game size is unchanged because the flip band is approximately +/-0.027 SE independently of the control size, so the certification, not a larger control, is what makes the rare ambiguous case safe."
+    },
+    "anchor_vs_anchor_control": {
+      "counted_games": 0,
+      "shard_jobs": 0,
+      "runner_hours": 0.0,
+      "candidate_dependent": false,
+      "seed_robustness_required": false,
+      "rationale": "Neither seated engine is the candidate, so the committed anchor-vs-anchor control evidence remains valid and is reused; no new games are needed. Its verdict compares the measured point estimate with the published difference under the +/-75 Elo tolerance and uses no bootstrap interval, so it is seed-independent: CTRL-1 reproduces identically for 40 bootstrap seeds."
+    },
+    "total_prerequisite_runner_hours": 799.5333314119654,
+    "total_prerequisite_counted_games": 840
+  },
+  "grand_total": {
+    "counted_games": 1440,
+    "runner_hours": 1373.5452348014642,
+    "standard_runner_usd_notional": 494.47628452852706
+  }
+}

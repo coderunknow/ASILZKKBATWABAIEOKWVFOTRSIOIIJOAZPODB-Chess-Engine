@@ -63,7 +63,7 @@ on:
         required: true
         default: "40/15"
       purpose:
-        description: "pilot|control|screening|confirmatory"
+        description: "pilot|control|screening|candidate-screening|candidate-self-control|confirmatory"
         required: true
         default: "pilot"
   pull_request:
@@ -169,9 +169,10 @@ jobs:
           if cfg.get("schema") != 1:
               fail("schema must be 1")
           purpose = cfg.get("purpose", "")
-          # 'screening-3' = conditional third screening (PREREGISTRATION.md#screen-3);
-          # evidence lands at benches/evidence/screening-3/<anchor>/ via the generic path.
-          if purpose not in ("pilot", "control", "screening", "screening-2", "screening-3", "confirmatory"):
+          # Candidate qualification evidence has a binary-SHA-qualified destination;
+          # it must never share the legacy purpose/anchor roots.
+          if purpose not in ("pilot", "control", "screening", "screening-2", "screening-3",
+                             "candidate-screening", "candidate-self-control", "confirmatory"):
               fail(f"bad purpose {purpose!r}")
           batch = cfg.get("batch", "")
           if batch not in ("A", "B", "CTRL"):
@@ -182,8 +183,9 @@ jobs:
           # Engine slots: 'flawless' (built at the frozen commit) or a frozen-pool key.
           pool = json.load(open("benches/anchor-pool.json"))
           pool_keys = {e.get("key") for e in pool.get("engines", [])}
+          default_black = "flawless" if purpose == "candidate-self-control" else anchor
           for slot in ("white_engine", "black_engine"):
-              v = cfg.get(slot, "flawless" if slot == "white_engine" else anchor)
+              v = cfg.get(slot, "flawless" if slot == "white_engine" else default_black)
               if v != "flawless" and v not in pool_keys:
                   fail(f"{slot}={v!r} must be 'flawless' or a frozen-pool anchor key")
               cfg[slot] = v
@@ -229,13 +231,22 @@ jobs:
                   fail("a new confirmatory dispatch must include all 50 opening shards")
               if cfg.get("run_evidence") is not True:
                   fail("every confirmatory dispatch must preserve immutable per-run evidence")
-              power_path = "benches/rating-100-power-assessment.json"
+              power_path = "benches/candidate-rating-100-power-assessment.json"
               with open(power_path) as power_file:
                   power = json.load(power_file)
               if power.get("status") != "PASS" or power.get("eligible_for_confirmatory_dispatch") is not True:
                   fail("prospective power assessment is not an evidence-backed PASS; confirmatory dispatch blocked")
               if power.get("engine_sha256") != cfg.get("engine_sha256"):
                   fail("prospective power assessment was computed for a different engine binary")
+              screening = power.get("screening_inputs", {})
+              if (screening.get("candidate_engine_sha256") != cfg.get("engine_sha256")
+                      or screening.get("counted_games") != 600
+                      or screening.get("self_control_seed_robust") is not True
+                      or screening.get("self_control_all_registered_seeds_pass") is not True
+                      or screening.get("self_control_counted_games") != 240
+                      or screening.get("third_anchor_full_distribution_available") is not True
+                      or screening.get("batch_b_new_suite_distribution_available") is not True):
+                  fail("prospective power assessment lacks the full candidate-specific screening and robust self-control evidence")
               approval = power.get("approval")
               if not isinstance(approval, dict) or not all(
                   isinstance(approval.get(field), str) and approval[field].strip()
@@ -310,15 +321,63 @@ jobs:
           if not re.fullmatch(r"[0-9a-f]{64}", want or "") or got != want:
               fail(f"suite hash mismatch: got {got} want {want!r}")
 
+          # Candidate qualification is deliberately stricter than historical
+          # exploratory runs: exact preregistered identity, matrix, suites,
+          # seed labels, repetitions, and clock are mandatory.
+          if purpose in ("candidate-screening", "candidate-self-control"):
+              sys.path.insert(0, "scripts")
+              try:
+                  from candidate_qualification import load_design, verify_suite_files
+                  design = load_design("benches/candidate-qualification.json")
+                  verify_suite_files(".")
+              except Exception as exc:
+                  fail(f"candidate qualification preregistration is invalid: {exc}")
+              candidate_sha = design.get("candidate", {}).get("engine_sha256")
+              if eng != candidate_sha or eng != "0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5":
+                  fail("candidate evidence requires the exact preregistered candidate binary SHA-256")
+              if cfg.get("tc") != "40/15":
+                  fail("candidate qualification evidence must use the preregistered 40/15 clock")
+              if cfg.get("run_evidence") is not True:
+                  fail("candidate qualification evidence must be committed")
+              if purpose == "candidate-screening":
+                  batches = design["screening"]["batches"]
+                  cell = batches.get(batch)
+                  if cell is None or anchor not in design["screening"]["anchors"]:
+                      fail("candidate screening requires a preregistered batch and anchor")
+                  if (suite, want, cfg.get("seed")) != (cell["suite"], cell["suite_sha256"], cell["dispatch_seed"]):
+                      fail("candidate screening suite or dispatch seed differs from preregistration")
+                  if cfg["white_engine"] != "flawless" or cfg["black_engine"] != anchor:
+                      fail("candidate screening must be candidate (white) versus the registered anchor (black)")
+                  evidence_root = f"benches/evidence/candidates/{candidate_sha}/screening/batch{batch}/{anchor}"
+                  if os.path.exists(evidence_root):
+                      fail(f"candidate screening evidence destination already exists: {evidence_root}")
+                  if count != 50 or reps != 1 or indices != list(range(50)):
+                      fail("candidate screening requires all 50 shards, one AB/BA pair per opening")
+              else:
+                  control = design["self_control"]
+                  if batch != "CTRL" or anchor != control["anchor_id"]:
+                      fail("candidate self-control requires batch CTRL and the preregistered self-control id")
+                  if cfg["white_engine"] != "flawless" or cfg["black_engine"] != "flawless":
+                      fail("candidate self-control must run the candidate binary against itself")
+                  if (suite, want, cfg.get("seed")) != (control["suite"], control["suite_sha256"], control["dispatch_seed"]):
+                      fail("candidate self-control suite or dispatch seed differs from preregistration")
+                  evidence_root = f"benches/evidence/candidates/{candidate_sha}/self-control"
+                  if os.path.exists(evidence_root):
+                      fail(f"candidate self-control evidence destination already exists: {evidence_root}")
+                  if count != 60 or reps != 2 or indices != list(range(60)):
+                      fail("candidate self-control requires all 60 shards and exactly 240 scheduled games")
+
           # --- target commit policy ---
           tc_target = cfg.get("target_commit", "")
           if tc_target == "auto":
-              if purpose == "confirmatory":
-                  fail("'auto' target_commit not allowed for confirmatory runs")
+              if purpose == "confirmatory" or purpose in ("candidate-screening", "candidate-self-control"):
+                  fail("'auto' target_commit not allowed for confirmatory or candidate qualification runs")
               target = head
           else:
               if not re.fullmatch(r"[0-9a-f]{7,40}", tc_target or ""):
                   fail(f"bad target_commit {tc_target!r}")
+              if purpose in ("candidate-screening", "candidate-self-control") and len(tc_target) != 40:
+                  fail("candidate qualification requires the full frozen 40-character target commit")
               rc = subprocess.run(["git", "merge-base", "--is-ancestor", tc_target, head]).returncode
               if rc != 0:
                   fail(f"target_commit {tc_target} is not an ancestor of head {head}")
@@ -328,13 +387,17 @@ jobs:
                    "src", "Cargo.toml", "Cargo.lock", "scripts", "benches/anchor-pool.json",
                    "benches/rating-openings-batchA.txt", "benches/rating-openings-batchB.txt",
                    "benches/rating-openings-100-batchA.txt", "benches/rating-openings-100-batchB.txt",
-                   "benches/rating-100-power-assessment.json"]).returncode
+                   "benches/rating-100-power-assessment.json",
+                   "benches/candidate-qualification.json",
+                   "benches/candidate-rating-100-power-assessment.json"]).returncode
               if rc != 0:
                   fail("engine/harness/suite/pool drift between target_commit and head")
               target = tc_target
 
           cfg["resolved_target_commit"] = target
           cfg["resolved_engine_sha256"] = eng
+          if purpose in ("candidate-screening", "candidate-self-control"):
+              cfg["candidate_sha256"] = eng
           with open("/tmp/resolved-config.json", "w") as f:
               json.dump(cfg, f, indent=2)
           print(f"resolved: purpose={purpose} batch={batch} anchor={anchor} "
@@ -630,6 +693,11 @@ jobs:
           if c["purpose"] == "confirmatory":
               # Batch A and B have disjoint suites and independent merge roots.
               out = f"benches/evidence/confirmatory/batch{c['batch']}/{c['anchor_id']}/run-{os.environ['GITHUB_RUN_ID']}"
+          elif c["purpose"] == "candidate-screening":
+              out = (f"benches/evidence/candidates/{c['candidate_sha256']}/screening/"
+                     f"batch{c['batch']}/{c['anchor_id']}")
+          elif c["purpose"] == "candidate-self-control":
+              out = f"benches/evidence/candidates/{c['candidate_sha256']}/self-control"
           else:
               out = f"benches/evidence/{c['purpose']}/{c['anchor_id']}"
           if os.path.isdir(out) and os.listdir(out):
@@ -648,9 +716,16 @@ jobs:
               "--tc-moves", c["tc"].split("/")[0],
               "--tc-seconds", str(float(c["tc"].split("/")[1]) * 60.0),
               "--expected-shards", os.environ["COMPLETED_SHARDS"],
+              "--opening-suite", c["opening_suite"],
+              "--evidence-purpose", c["purpose"],
+              "--target-commit", c["resolved_target_commit"],
+              "--repetitions", str(c["repetitions"]),
+              "--dispatch-seed", str(c["seed"]),
               "--out", f"{out}/games.jsonl",
               "--manifest", f"{out}/manifest.json",
           ]
+          if c["purpose"] in ("candidate-screening", "candidate-self-control"):
+              cmd.extend(["--candidate-sha256", c["candidate_sha256"]])
           print("invoking:", " ".join(cmd), flush=True)
           rc = subprocess.call(cmd)
           if rc != 0:

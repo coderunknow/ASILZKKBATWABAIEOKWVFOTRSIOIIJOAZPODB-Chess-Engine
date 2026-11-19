@@ -408,3 +408,253 @@ DRAFT ONLY — no code changes under this entry.
 - CI run 44067826990 passed Ubuntu but failed Windows in the power-analysis smoke when checking the committed SCREEN-2 games.jsonl against merged_sha256. Git for Windows checked out LF JSONL as CRLF, while the evidence aggregator computed manifest hashes on Linux LF bytes.
 - The power analyzer now hashes logical UTF-8 JSONL content after canonicalizing only line endings to LF. Record content, ordering, whitespace and record boundaries remain covered by SHA-256. Exact LF attributes were added for the two source evidence files, plus tests for CRLF portability and actual record tampering.
 - No evidence was modified or rewritten; no confirmatory game ran. The power report remains ENGINE-1-specific and BLOCKED. Full exact-head CI is required.
+
+## 2026-11-18 — Throughput work, STRENGTH-1 screening, and the evaluation rewrite
+
+### Analytic fast legality filter (already on `main` as `cd17da0`)
+
+The search used to make each move, scan the resulting position for legality, and
+unmake it if illegal. The new filter computes pins and check evasion directly
+from the current occupancy, so illegal moves are never generated in the first
+place. The searched tree is provably unchanged — the fixed-depth-10 bench
+signature and node count are identical to the previous build — while throughput
+rose from ~441 k nps to ~785 k nps (+78 %).
+
+### One static evaluation per node
+
+The classical evaluator is a full board scan, and the search performed it up to
+three times for the same node: once for futility pruning, once for reverse
+futility pruning, and once more for the quiescence stand-pat. The static
+evaluation is now computed once and threaded into quiescence through
+`quiesce_with_eval`. This is a pure throughput change with an unchanged tree.
+
+### Precomputed file and ahead-rank masks
+
+`file_mask` and `ahead_ranks_mask` rebuilt bitboards with a loop on every call,
+and `ahead_ranks_mask` was called once per pawn. Both are now compile-time
+tables with inline lookups.
+
+### History tables, counter moves, capture history, full-window LMR re-search
+
+Move ordering gained first- and second-order continuation history, a
+counter-move table and capture history. All history tables use gravity-damped
+updates and are aged between searches, and the search path is tracked so the
+previous two moves are known at each node.
+
+Separately, a reduced search that failed high was re-searched with a **null
+window**. A null-window re-search returns a fail-low bound, which is a
+pessimistic estimate of the move's true value, so a move that had just proved
+itself could still be discarded. The re-search now uses the full window.
+
+### STRENGTH-1 screening outcome (registered before dispatch)
+
+| Pair | Candidate score | 95 % CI (score) | Elo diff | 95 % CI (Elo) | Decision |
+|---|---|---|---|---|---|
+| BASE vs SPEED-1 | 0.625 (50.0/80) | [0.519, 0.725] | +89 | [+13, +168] | **KEPT** |
+| BASE vs HIST-1 | 0.406 (32.5/80) | [0.306, 0.512] | −66 | [−142, +9] | **INCONCLUSIVE** |
+
+Both pairs used 20 openings × 2 repetitions × exact AB/BA colour reversal
+(80 counted games each), fixed 100 ms/move, 16 MiB hash, single-threaded, and
+an opening-clustered bootstrap with 10,000 resamples at seed 20261118. All 160
+games were counted, with zero engine errors and balanced colour pairs.
+
+SPEED-1 is kept because the tree is identical and the CI excludes zero. HIST-1
+is inconclusive because the interval straddles zero; it is retained only as a
+candidate and is **not** described as a strength improvement.
+
+### Reporting defect in the campaign runner
+
+The runner passed `--focus base` to the statistics script where the
+registration specifies "score from the candidate's perspective", so the first
+log line reported the sign of the effect inverted. The raw JSONL was never
+modified. The registered estimator was re-run on the same records with the
+correct focus, and the runner now takes the candidate name explicitly.
+
+### Evaluation rewrite
+
+The evaluation gained six separable concerns, each behind a `const` flag in
+`src/eval.rs` so that its contribution is measured rather than assumed:
+tapered mobility, pawn structure (chained/phalanx, backward, candidate),
+passer refinement (defended, enemy-king distance), space, outposts and revised
+king safety.
+
+The breakdown is now an exact decomposition of the tapered score: every
+component is tapered with the same phase, so the parts add up to the total.
+Previously the breakdown mixed midgame values with the total and could not be
+used for diagnosis.
+
+The rewrite also corrected two defects found while reviewing it:
+
+  * the candidate-pawn gap was computed by scanning every pawn ahead on the
+    file; it now uses the nearest one directly, which is O(1) per pawn;
+  * the "space" term was computed but never added to the score, so it was
+    dead weight in the evaluation.
+
+### Evaluation correctness gates
+
+`tests/eval_quality.rs` adds three gates that do not depend on any search or
+match result: antisymmetry under the board flip (up to the tempo constant),
+positional sanity checks, and finiteness plus exact decomposition of the
+breakdown. The antisymmetry gate is what would catch a sign error or a
+colour-specific term in any new evaluation code.
+
+### Ablation control validity
+
+The EVAL-NONE build (all six flags off) reproduces the parent tree's bench
+signature `8370f143c3b76fb4` and node count 2,697,573 exactly. This was
+checked before any EVAL-1 game was played, so that a measured difference can
+be attributed to the flags and not to incidental refactoring.
+
+## 2026-11-18 — the outpost term used the wrong pawn-attack table
+
+### The defect
+
+The pawn-attack tables are directional. `PAWN_ATTACKS_WHITE[sq]` is the set of
+squares a **White** pawn standing on `sq` would attack; `PAWN_ATTACKS_BLACK[sq]`
+is the set a **Black** pawn standing on `sq` would attack. Equivalently: the
+squares from which a pawn of colour C attacks square X are
+`PAWN_ATTACKS_[other(C)][X]`.
+
+The outpost term needed two different questions, and asked both with the
+wrong table:
+
+| Question | Code used | For a White piece on d5 that is | The correct answer is |
+|---|---|---|---|
+| Is it defended by one of our own pawns? | `pawn_attacks_lookup(color, sq) & pawns` | `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — the squares a White pawn *standing on d5* would attack | `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — where the White pawns that *defend* d5 stand |
+| Is it attacked by an enemy pawn? | `pawn_attacks_lookup(them, sq) & enemy_pawns` | `PAWN_ATTACKS_BLACK[d5] = {c4, e4}` — the squares a Black pawn *standing on d5* would attack | `PAWN_ATTACKS_WHITE[d5] = {c6, e6}` — where the Black pawns that *attack* d5 stand |
+
+Both lookups therefore asked the same question: "is this square attacked by a
+pawn of the same colour as the piece?" The outpost term was rewarding pieces
+that were *not* defended and counting pieces that *were* attacked.
+
+The third test in the term — "no enemy pawn can step forward to attack it" —
+already looked at the right squares and was left unchanged.
+
+### Why the gates did not catch it
+
+The defect is symmetric under the board flip. The evaluator therefore stayed
+antisymmetric, and `evaluation_is_antisymmetric_under_board_flip` — the gate
+that is supposed to be the catch-all for colour errors — was satisfied by a
+wrong evaluator. The other two gates (finiteness/bounds, and exact
+decomposition of the breakdown) are colour-agnostic and could not catch it
+either.
+
+This is a general limitation, not a mistake in the gate: **a symmetry test
+cannot catch a defect that is itself symmetric.** The new gate
+`outpost_requires_defence_and_safety_in_the_right_direction` exercises the two
+directions separately with four positions, and was verified to fail on the
+pre-fix source.
+
+### Consequence
+
+The evaluation values change, so the searched tree changes: the depth-10 bench
+signature moves from `03e46bba31f35591` to `b58979ca90492208` and the node
+count from 3,445,466 to 3,666,233. Every EVAL-1 binary was built from the
+defective source, so the EVAL-1 campaign was withdrawn and re-registered as
+EVAL-2 with fresh binaries. The withdrawn raw records are retained unmodified
+and are not citable.
+
+## 2026-11-18 — evaluation cost
+
+The evaluation was measured at 24.5 % of node time and the pawn-structure
+section at roughly a third of the evaluation cost. Three value-identical
+changes brought the cost down about 12 % (1219 ns to 1077 ns, minimum of 20
+runs summed over the four `bench_eval` positions):
+
+1. **Share the slider attack masks.** `eval_color` is called once per side.
+   For side X it computed the masks for X's own pieces (mobility) and again
+   for Y's pieces (king safety); the call for side Y then computed the same
+   masks again. Every slider's mask was computed exactly twice per
+   evaluation, and a queen three times (once combined for mobility, once as a
+   bishop and once as a rook for king safety). The masks are now computed
+   once per side, in `SliderMasks`, and both terms read them.
+2. **Lookup tables in the pawn-structure section.** The union of the
+   neighbouring files, the square directly behind, the two squares diagonally
+   behind and the number of adjacent files depend only on the pawn's square.
+   They are now `FILE_NEIGHBOURS`, `BEHIND_SQUARE`, `BEHIND_DIAGONALS` and
+   `SIDE_FILES`.
+3. **`evaluate` does not route through `breakdown`.** `breakdown` tapers all
+   ten components separately, each with its own integer division, and the
+   search discarded every one of them.
+
+The king-zone mask also became a table (`KING_ZONE`) instead of being rebuilt
+with a 3x3 loop on every evaluation.
+
+The bench signature and node count are **unchanged** at `b58979ca90492208` /
+3,666,233, which proves the evaluation values did not change. That is the
+verification method for this class of change: a performance change that
+alters no value can be checked exactly against the tree signature, rather
+than with a hand-written equivalence test.
+
+A further attempt — flattening the piece-square tables and computing material
+with a popcount — was measured and **reverted** as a consistent 3 %
+regression.
+
+## 2026-11-18 — EVAL-2 result and what follows from it
+
+The seven-pair ablation campaign completed: 560 games, zero engine errors,
+every pair passing the schedule audit.
+
+| Pair | Score | Elo diff | Elo CI |
+|---|---|---|---|
+| EVAL-NONE vs EVAL-ALL | 0.519 | +13 | [−57, +84] |
+| EVAL-NONE vs EVAL-NO-MOBILITY-TAPER | 0.419 | −57 | [−132, +9] |
+| EVAL-NONE vs EVAL-NO-PAWN-STRUCTURE | 0.525 | +17 | [−30, +66] |
+| EVAL-NONE vs EVAL-NO-PASSER | 0.506 | +4 | [−80, +89] |
+| EVAL-NONE vs EVAL-NO-SPACE | 0.469 | −22 | [−84, +39] |
+| EVAL-NONE vs EVAL-NO-OUTPOSTS | 0.469 | −22 | [−75, +26] |
+| EVAL-NONE vs EVAL-NO-KING-SAFETY | 0.506 | +4 | [−66, +75] |
+
+The aggregate is INCONCLUSIVE under the registered rule. The decision that
+follows is not "the evaluation is bad" but "this sample cannot tell": the
+interval is consistent with a gain of up to about 84 Elo and with a loss of up
+to about 57 Elo. The flags stay in the tree as measurement scaffolding, which
+the registered rule permits, and nothing about the evaluation is described as
+a strength improvement.
+
+The one clear signal is about an ablation rather than the aggregate: turning
+the mobility taper off costs 70 Elo relative to keeping it on, well outside
+the 40-Elo indeterminate band. The other five ablations all land within the
+band, so their features are retained and unclaimed.
+
+### What the three evaluation-cost commits bought
+
+| Commit | Change | Evaluation cost |
+|---|---|---|
+| `815ca47` | share the slider masks; lookup tables in the pawn section; `evaluate` stops routing through `breakdown` | 1219 ns → 1077 ns |
+| `a0ea236` | `const FULL` so the fast path stops writing the components it discards | 1077 ns → 996 ns |
+
+Cumulative: **1219 ns → 996 ns, about 18 % less evaluation time**, with the
+bench signature and node count unchanged at `b58979ca90492208` / 3,666,233
+throughout. The `const FULL` commit was additionally checked by comparing the
+full per-component breakdown between the old and new binaries over ten
+positions: zero differences.
+
+That last point is the general lesson worth keeping: a performance change
+that alters no value can be verified **exactly**, because the fixed-depth
+bench signature pins the searched tree. Two of the three cost commits were
+also *rejected* by measurement — flattening the piece-square tables and
+popcount-based material were a consistent 3 % regression — and the bench
+signature is what made it safe to try them at all.
+
+## 2026-11-19 — candidate attempt provenance and campaign-cost accounting
+
+A local audit of candidate qualification exposed two integrity details worth enforcing before any future experiment. First, schedule validation previously accepted an engine-error retry attempt without proving that the initial attempt for that exact slot had failed, and did not apply every seat/opening/shard identity check to uncounted attempts. Candidate screening and self-control validation now require every attempt (counted or failed) to match the registered schedule and shard; a retry is valid only after its initial engine-error attempt, and a successful base attempt may not have an unnecessary retry. The sample size and retry policy are unchanged.
+
+Second, the candidate runtime estimator used only counted games, omitting wall time spent on uncounted engine-error attempts. Its cluster-duration inputs now sum all attempts after strict provenance validation, so retries are included both in measured prerequisite cost and in resampling the confirmatory shard-time distribution. Added regressions for a valid retry, an unnecessary retry, and accounting for failed-attempt time. During implementation the self-control test caught an ordering error in the new validator (suite names were used before loading); this was fixed before the full local test run.
+
+No experiment or hosted workflow was dispatched. All 16 local Python test suites, six workflow YAML parses, candidate preregistration validation, Python compilation of changed tooling, and `git diff --check` pass. The candidate cost report remains planning-only and cannot authorize dispatch.
+
+## 2026-11-19 — portable evidence hashes and Windows package acceptance
+
+Candidate evidence and its manifests are byte-hashed, so Windows checkout line-ending conversion could otherwise make a correct committed LF file appear tampered. Added a candidate-root LF rule in `.gitattributes` and made the candidate preregistration validator enforce its presence; `git check-attr` confirms LF for candidate JSONL and manifests.
+
+The prior Windows release job tested the built PE and generated a ZIP, but did not inspect the ZIP after creation. Added a platform-independent package verifier for exact archive contents, ZIP and executable checksums, manifest/source identity, binary size, PE import table/runtime dependencies, and staged-vs-packaged bytes. The Windows workflow now runs it on the produced ZIP and runs UCI handshake, search, and perft against the extracted packaged executable before upload. Six synthetic package regressions pass locally. The added runner step has not been executed because the measured Actions budget is already exceeded; no real package is claimed accepted until that step runs under future authorized capacity.
+
+### Follow-up — AMD64 package format regression
+
+The package validator also now checks the executable's PE machine and optional-header type are AMD64/PE32+ (not merely that the build manifest claims an x86-64 target). The package suite has seven tests, including a wrong-machine synthetic PE regression. The previously recorded six-test count above was accurate before this follow-up.
+
+## 2026-11-19 — candidate cost report distinguishes observations from estimates
+
+The candidate-specific cost planner now separates observed per-attempt game wall time from transferred per-shard job overhead and labels the resulting runner totals and confirmation distribution as estimates. This avoids implying that game elapsed time plus an overhead transferred from historical Actions runs is a measured runner-minute total. The output remains planning-only and non-authorizing; the candidate evidence required to populate it does not exist.

@@ -412,3 +412,460 @@
 - CI 44067826990: Ubuntu passed; Windows failed during power-report smoke because the raw SCREEN-2 games file was checked out as CRLF while its manifest merged_sha256 was generated from LF on Ubuntu.
 - The game records were unchanged; this was cross-platform Git newline conversion. Added a logical-JSONL SHA helper that canonicalizes line endings only, preserving every record, order and content. Added exact LF attributes for the two SCREEN-2 evidence files, plus regression tests simulating CRLF checkout and record tampering.
 - No evidence was changed and no rating games launched. Power report remains ENGINE-1-specific and BLOCKED. Rerun exact-head CI.
+
+## 2026-11-18 — throughput work, STRENGTH-1 screening, evaluation rewrite
+
+- Verified the remote state first: `origin/main` is at `5e36b06`, PR #1 is
+  merged, no open PRs, and the branch `arena/8259ce1c-flawlesschess` was
+  created from that exact commit. Nothing was merged, tagged or released.
+- Rebuilt the Rust toolchain (1.99.0) and the Python environment from the npm
+  and PyPI mirrors after the sandbox was restored; recorded the toolchain
+  hashes and the reason in `docs/ENVIRONMENT.md`.
+- Established a pre-change baseline: source identity, binary SHA-256, fmt,
+  clippy `-D warnings`, the full release test suite, the release build, the
+  23-count fast-perft matrix, and a fixed-depth-10 bench signature with node
+  count and NPS.
+- Landed the analytic fast legality filter (`cd17da0`): identical searched
+  tree, +78 % throughput. Added `tests/fast_legality.rs` as a differential
+  suite against the reference generator, covering random playouts, tactical
+  positions, en-passant discovered checks and perft.
+- Ran the STRENGTH-1 screening campaign (80 counted games per pair, exact
+  AB/BA colour reversal, opening-clustered bootstrap). SPEED-1 is **KEPT**
+  (+89 Elo, CI [+13, +168]); HIST-1 is **INCONCLUSIVE** (−66 Elo, CI
+  [−142, +9]). Neither result is reported as an absolute rating.
+- Found and corrected a reporting defect in the campaign runner (it analysed
+  the baseline's perspective where the registration specified the candidate's).
+  The raw game records were never modified; the registered estimator was
+  re-run on them with the correct focus.
+- Rewrote the evaluation with six independently measurable features behind
+  `const` flags, made the breakdown an exact decomposition of the tapered
+  score, and added `tests/eval_quality.rs` (antisymmetry under the board flip,
+  positional sanity, finiteness).
+- Verified the ablation control BEFORE dispatch: EVAL-NONE reproduces the
+  parent tree's bench signature and node count exactly. Two defects found in
+  the process (mobility "off" weights, and a space term that was never applied)
+  are recorded in `FAILURE_LEDGER.md`.
+- Registered EVAL-1 (seven matched pairs against one control) with fixed
+  decision rules before dispatching it.
+- Split the working tree into a reviewable commit series (throughput, history
+  tables, preregistration, evaluation, tests, results) and verified fmt,
+  clippy `-D warnings`, the full release test suite and the perft matrix at the
+  head.
+
+## 2026-11-18 — outpost defect, EVAL-1 withdrawal, EVAL-2, evaluation cost
+
+- Audited the evaluation code after the EVAL-1 dispatch and found a
+  **correctness defect in the outpost term**: both of its pawn-attack lookups
+  used the wrong-colour table, so the term asked "is this square attacked by a
+  pawn of the same colour as the piece?" twice. The pawn-attack table is
+  directional — the squares from which a pawn of colour C attacks square X
+  are `PAWN_ATTACKS_[other(C)][X]` — and both lookups read the other table.
+  Verified the direction at the square level on d5 with a Python check of the
+  two tables before changing any code.
+- The defect was **invisible to the existing gates**: it is symmetric under
+  the board flip, so the evaluator stayed antisymmetric and the antisymmetry
+  gate was satisfied by a wrong evaluator. A symmetry test cannot catch a
+  defect that is itself symmetric.
+- Fixed it (`c702066`) and added a regression test that exercises the two
+  directions separately with four positions. **Verified the test fails on the
+  pre-fix source** by reverting the fix and re-running, and passes on the
+  fixed source. Added `pawn_attack_direction_convention_holds` to pin the
+  convention itself, and `every_term_has_the_right_direction` to check every
+  evaluation term directly.
+- The fix changes the evaluation values, so the searched tree changes (bench
+  signature `03e46bba31f35591` → `b58979ca90492208`, 3,445,466 → 3,666,233
+  nodes). **Withdrew the whole EVAL-1 campaign**: every EVAL-1 binary was
+  built from the defective source, so the campaign measured a program that is
+  not in the tree. The raw records are retained unmodified under
+  `/home/user/matches/eval-*-invalidated-outpostbug/` and are marked
+  not citable; nothing was rewritten or deleted.
+- Re-registered as **EVAL-2** before dispatch, with seven fresh binary
+  identities, the control validity check re-run, and the hypotheses, design,
+  budget and decision rules restated so that EVAL-2 stands on its own.
+- Measured the evaluation at 24.5 % of node time and profiled it: the
+  pawn-structure section was the largest single part. Three **value-identical**
+  changes cut the evaluation cost by about 12 % (1219 ns → 1077 ns, min of 20
+  runs over the four `bench_eval` positions): share the slider attack masks
+  between the mobility and king-safety terms (they were computed twice per
+  evaluation, and a queen three times), replace the per-pawn square-dependent
+  recomputation with lookup tables, and stop `evaluate` routing through the
+  ten-component `breakdown` taper.
+  The proof that no evaluation value changed is that the bench signature and
+  node count stayed identical — the searched tree is the same tree. A further
+  attempt (flattening the piece-square tables, popcount material) was
+  measured and **reverted** as a consistent 3 % regression.
+- Added `scripts/audit_pair.py`, which re-derives the integrity properties of
+  a match pair from the raw records independently of `scripts/stats.py`, and
+  `scripts/test_audit_pair.py` (22 assertions). Writing the tests found a real
+  gap: the audit reported the colour balance but did not require it, so an
+  imbalanced pair would have passed. Fixed, and the suite is wired into CI.
+- Added `scripts/collect_eval_results.py`, which applies the registered
+  decision rules mechanically instead of by hand.
+- Corrected the `anchor-verify` workflow, which pinned the pre-fix bench
+  signature and is why run 44327388368 failed. Anchor verification now passes
+  13/13 and the runner recorded `bench_signature=b58979ca90492208`.
+- Everything was verified at the head: fmt clean, clippy `-D warnings` clean,
+  the full release test suite green, and all 23 fast-perft counts matching.
+  CI is green on Linux, Windows and Rust 1.80.
+- EVAL-2 dispatched and running. No strength claim is made from any of this:
+  SPEED-1 remains the only KEPT screening result, and the evaluation work
+  stays unmeasured until EVAL-2 completes. PR #2 remains Draft and
+  `OWNER_TEST_PENDING` remains.
+
+## 2026-11-18 — EVAL-2 completed
+
+- The seven-pair EVAL-2 campaign finished: **560 games, zero engine errors**,
+  and every pair passed the independent schedule audit (80 counted games, no
+  duplicate slots, 40 AB / 40 BA, 20 openings with 4 games each). Terminal
+  reasons: 472 checkmate, 63 threefold repetition, 14 insufficient material,
+  9 fifty-move, 2 stalemate.
+- **EVAL-ALL vs EVAL-NONE: INCONCLUSIVE** (0.519, CI [0.419, 0.619], Elo
+  +13, CI [−57, +84]). The registered rule keeps the change only if the CI
+  lower bound is > 0 and rejects it only if the upper bound is <= 0, so the
+  evaluation upgrade is not merged as a strength improvement; the six flags
+  stay in the tree as measurement scaffolding, which the rule explicitly
+  permits.
+- **No feature is HARMFUL.** Turning the mobility taper off is 70 Elo worse
+  than keeping it on — the only comparison outside the 40-Elo indeterminate
+  band. The other five are within the band and are retained but not claimed.
+  No individual feature is described as a strength improvement.
+- Rebuilt the eight evaluation variants with the final tree and confirmed
+  that every bench signature and node count is identical to the registration,
+  which verifies that the searched trees are the ones the campaign measured.
+- Recorded the results in `PREREGISTRATION.md`, `BENCHMARKING.md`,
+  `STATUS.md`, `CHANGELOG.md` and `DESIGN_LOG.md`, and left SPEED-1 as the
+  only KEPT screening result. PR #2 remains Draft; `OWNER_TEST_PENDING`
+  remains; the rating power assessment remains BLOCKED.
+
+## 2026-11-19 — historical evidence recovery, control failure, and the PR #2 audit
+
+### Recovery of the skipped aggregates
+
+- The sandbox was restored mid-session: the working tree came back byte-identical to
+  the pushed head, but `/home/user/tc`, `/home/user/matches`, `/home/user/bins`,
+  `/home/user/.toolchain`, `/home/user/.venv` and `/home/user/opponents` were gone.
+  The toolchain, venv and opponents were rebuilt from the documented pins
+  (Rust 1.99.0 via `@toolchain-bin`, python-chess 1.11.2, Stockfish 19.0.1).
+- **The raw STRENGTH-1 / EVAL-1 / EVAL-2 campaign records in `/home/user/matches`
+  were never committed to the repository and are therefore permanently lost.**
+  Their recorded numbers remain in the append-only logs, but the underlying
+  per-game records can no longer be re-audited. This is recorded here so that no
+  later agent treats the EVAL-2 table as independently re-verifiable. Every
+  campaign from now on commits its raw evidence under `benches/`.
+- The two historical rating runs whose evidence jobs were skipped were recovered
+  through the `evidence-bridge` workflow (the artifact blob host is unreachable
+  from the sandbox): CTRL-2-R (240 games, candidate self-match) and SCREEN-3
+  (120 games vs akimbo-0.1.1). Both pass the strict fail-closed aggregator.
+
+### The self-match null control FAILED
+
+- CTRL-2-R: seat-A score 0.460417, cluster-bootstrap CI [0.420833, 0.497917] —
+  does not contain 0.5. **ENGINE-1 is disqualified as a rated candidate.**
+- The anchor-vs-anchor control passes (error -10.32 Elo against a ±75 tolerance),
+  and the earlier pre-ENGINE-1 self-match passes.
+- Root cause: the estimator is unbiased (the seat score is exactly 0.5 in
+  expectation under the implemented convention) and the observed z is -2.00, so
+  this is a marginal statistical failure rather than a harness defect. The
+  alternative hypothesis — that the suite line should be mirrored in the BA half
+  — was investigated and **rejected by arithmetic**: mirroring would make the
+  registered control's expectation `w + d/2` instead of exactly 0.5, so it would
+  break the control rather than fix it. The harness was left unchanged.
+- Full analysis in `FAILURE_LEDGER.md` (2026-11-19).
+
+### PR #2 source audit
+
+- The evaluator was re-read term by term against the pawn-attack direction
+  convention. Every directional lookup is correct: the outpost fix is right, the
+  mobility/pawn/space/passer/rook-file/king-safety terms all read the right
+  side's pieces and the right king. The feature-flag semantics are coherent
+  (each flag isolates a refinement on top of the historical baseline, so
+  EVAL-NONE reproduces HIST-1 exactly).
+- A suspected Rust precedence bug in `breakdown` (`if c { a } else { b } + TEMPO`)
+  was checked empirically and **is not a bug**: Rust parses the expression as
+  `(if c { a } else { b }) + TEMPO`, so `breakdown().total` does include the
+  tempo term and agrees with `evaluate()`.
+- The fast legality filter was audited against the reference generator: the pin
+  table removes our own pieces from the occupancy so that a pinner behind a
+  pinned piece is still discovered, which is what makes the "capture the checker
+  while uncovering a second attack" case correct. The single-check evasion
+  squares, the double-check rule, the king-move occupancy and the en-passant
+  delegation are all correct.
+- **One real defect found and fixed**: the post-castling occupancy used the
+  kingside rook squares for a queenside castling, so a1 was left occupied and
+  the king's own rook on d1 was invisible. The legality outcome happens to be
+  identical in every reachable position (proved in the commit message and the
+  test), but the computation was wrong. It is now computed per side in
+  `post_castling_occupancy`, with a unit test that fails against the old logic.
+  The bench signature and node count are unchanged.
+- Added `evaluation_total_matches_the_trait_for_both_sides_to_move` and
+  `evaluation_is_antisymmetric_over_random_playouts` to the evaluation gate
+  suite (7/7 pass).
+
+## 2026-11-19 — Phase B audit continued: three search defects found and fixed
+
+- Environment: the sandbox had been restored to the initial clone state. The PR #2 history was
+  recovered with `git fetch` and the branch pointer was moved to `adda48e` with `git reset --mixed`
+  after verifying that every restored file was byte-identical to its `adda48e` blob. The pinned
+  Rust toolchain (1.97.0) was restored from the PyPI mirror with `tc/fetch.py` and the Python
+  environment with `python-chess` 1.11.2.
+- Audit of `src/search.rs` against the PVS algorithm found that the full-window re-search was
+  guarded by `reduction > 0`, so an unreduced non-first move kept its null-window bound as its
+  score. Measured over the Batch A openings at depth 2 (where late move reductions are off): the
+  old code reports a root score below the best move's value in 7 of the first 8 positions, with
+  gaps up to 172 centipawns; the fixed code is exact in every position. The pre-PR-2 baseline is
+  exact as well, so this is a regression of the search rework. The same defect produced a bogus
+  `score mate 15` for a non-mate position in the Batch A suite.
+- Fixed in `708d53c` together with two regression tests that were verified to fail against the old
+  code. Bench signature b58979ca90492208 -> c64d148d39181140, nodes 3666233 -> 3413870.
+- Audit of the move-ordering bands found that the losing-capture band overlapped the quiet band
+  (27_952..42_047 against 25_424..74_576) and that the promotion bonus pushed losing
+  capture-promotions into the middle of the quiet band. Fixed in `61dd642` by laying the bands out
+  so that they cannot overlap, with two regression tests that fill the history tables with both
+  extremes and check the invariant. The bench signature and node count are unchanged.
+- Audit of the quiescence path bookkeeping found that the quiescence never wrote `self.path`, so
+  its counter-move and continuation-history lookups used a stale previous move from the second
+  quiescence level on. Classified as a quality defect (the returned value is the maximum over the
+  captures searched and stays a valid bound). Fixed in `018e920`; the quiescence now records the
+  capture and restores the entry afterwards.
+- Gates after the three fixes: `cargo fmt --all -- --check`, `cargo clippy --release --all-targets
+  -- -D warnings`, 67 Rust tests (26 lib + 3 + 21 + 7 + 5 + 5), `cargo build --release --locked`
+  and the bench all pass. The seven Python harness suites pass (111, 65, 7, 7, OK, all cases, 22)
+  and `verify_opening_subsets.py` and the power-analysis assertions pass unchanged.
+- Note for the reader: the local toolchain has no `rustdoc`, so `cargo test --doc` cannot run
+  here. The crate has no doc examples, so the doctest suite is empty and CI, which installs the
+  full toolchain, is unaffected.
+
+## 2026-11-19 — Phase C: mate-distance trace, mate-band fix, and the EVAL-3 screening campaign
+
+- Completed the mate-distance normalisation trace that Phase B left open. The mate-score band
+  was `MATE_SCORE - 100` in three modules (transposition table, UCI score formatter, search
+  pruning guards), while the search's ply limit is `MAX_PLY = 128`. The search returns a static
+  evaluation at `ply >= MAX_PLY` before it looks for mate, so the deepest checkmate node it can
+  reach is at ply `MAX_PLY - 1` and the longest mate it can report is 127 plies from the root. A
+  mate 100 plies or more away therefore fell **outside** the band, which is 28 plies too narrow.
+- Reproduced the defect directly against the table's public API: a mate 101 plies from the root,
+  stored at ply 0 and re-used at ply 50, was reported as 101 plies away instead of 151 — wrong by
+  exactly the ply difference. The UCI formatter printed the same class of score as `cp 29899`.
+  The search's own null-move guard shared the band, so a null move could be attempted with a mate
+  beta.
+- Fixed in `32ad8ab`: the band is now `MATE_SCORE - MAX_PLY`, derived from the search's ply limit
+  rather than from an arbitrary constant, and defined once in `eval::MATE_BOUND` for the search,
+  the table and the UCI layer to share. The fix is behaviour-neutral for ordinary positions — the
+  depth-10 bench signature and node count are unchanged at `c64d148d39181140` / 3,413,723 —
+  because a depth-10 search can never reach a mate 100 plies away.
+- `tests/mate_distance.rs` adds eight regressions. Four of them were verified to fail against the
+  pre-fix source (exhaustive normalisation over the reachable range, the concrete cross-ply
+  transposition case, the UCI format at the band edge, and the width of the band), and four are
+  end-to-end checks that the real binary reports `mate 1` and `mate 2` through the protocol and
+  that the mate distance survives a table re-use. Rust test count 67 -> 75.
+- Registered **EVAL-3** in `PREREGISTRATION.md` *before* dispatching any game, with both binary
+  SHA-256 hashes, both bench signatures and both node counts pinned. The candidate is the audited
+  tree; the control is the pre-audit tree (`adda48e`), rebuilt from the same source tree with the
+  same local toolchain so the comparison isolates the source change and not the compiler. The
+  hosted-runner candidate identity was recorded alongside it: the runner built the same tree and
+  reported bench signature `c64d148d39181140` and binary SHA-256
+  `4daa6bcea2bac0e74dbfca748daaef4dc33340ae0321ff7ae6a106d790b4f549` (anchor-verify run
+  44491186467 at merge commit `78005536…`; run 44491236384 at the exact head `b3dabc3`, merge
+  commit `fe915cd9…`). The SHA differs from the sandbox build because the compilers differ
+  (runner 1.99.0, sandbox 1.97.0); the identical bench signature is the proof that the searched
+  tree is identical.
+- Ran EVAL-3 as two shards of 40 games each: **80 games, 20 opening clusters, exact AB/BA colour
+  reversal, zero engine errors, audit verdict PASS**. The candidate scored **60.5/80 = 0.756**,
+  95% CI [0.662, 0.838], Elo difference **+197**, 95% CI **[+117, +285]**. The numbers were
+  reproduced by two independent code paths (`scripts/stats.py` and a separate recomputation against
+  the raw JSONL). The registered rule — 95% CI lower bound > 0 Elo — is met with a wide margin.
+- Note for the reader: EVAL-3 is screening evidence on a shared 2-vCPU sandbox at a fixed
+  100 ms/move time control. It is not a rating, it is not comparable to a campaign run on an idle
+  machine or under the 40/15 clock, and it does not substitute for the >2,000 Elo gate in
+  `docs/RATING_PROTOCOL.md`.
+- **Confirmatory campaign compute-cost estimate (planning diagnostic only).** Added
+  `scripts/estimate_campaign_cost.py` and `scripts/test_estimate_campaign_cost.py`, and committed the
+  generated report at `benches/confirmatory-cost-estimate.json`. The estimator derives the cost from
+  the committed per-game wall-clock evidence (SCREEN-2 `topple-0.1.1`/`topple-0.2.1` and SCREEN-3
+  `akimbo-0.1.1`, 120 counted games each, 40/15 wall clock) after verifying the frozen engine
+  binary SHA-256, the frozen anchor binary SHA-256 from `benches/anchor-pool.json`, the opening-suite
+  SHA-256, the attempt/count totals and the merged raw-game digest; it fails closed on any drift.
+  Batch A is a direct measurement over the 50 registered clusters; Batch B has never been timed and
+  is modelled as exchangeable with the anchor's observed population.
+  Result for the 600-game / 300-shard-job campaign: **574.0 runner-hours** (p05 536.4, p95 614.0),
+  of which 571.1 h is game time and 2.9 h is measured per-shard job overhead (35 s/job, matched
+  against 60 hosted shard jobs). Wall-clock span by greedy list scheduling: 14.9 h at the observed
+  40-way account concurrency and 21.9 h if the six dispatches are run one wave at a time. The
+  bootstrap probability that a two-game shard exceeds the 350-minute job timeout is **3.06 %**.
+  The notional standard-runner valuation is USD 206.6, but the repository is public and the
+  campaign uses standard GitHub-hosted runners, so the metered minutes cost **USD 0**; runner-hours
+  and wall-clock span are the meaningful quantities.
+  The report also costs the candidate-specific evidence that must exist first: 600 games of
+  screening across all three anchors on both the Batch A and the disjoint Batch B subsets
+  (571.1 runner-hours) plus a candidate-specific self-match null control (228.4 runner-hours). The
+  anchor-vs-anchor null control seats no candidate engine, so the committed evidence is reused and
+  no new games are needed. Gate-path total **799.5 runner-hours**; grand total **1,373.5
+  runner-hours / 1,440 counted games**, a notional USD 494.5 on a private repository but USD 0 on
+  this public one.
+  This is **planning only**: it does not change `benches/rating-100-power-assessment.json`
+  (still `BLOCKED`, still guarded to the ENGINE-1 binary), it does not create a gate plan or a
+  dispatch, and it authorizes nothing. The fail-closed requirements are unchanged — candidate-
+  specific controls and a reviewed candidate-specific power PASS must exist before dispatch, exact
+  identity and suite hashes are enforced, exactly 600 counted games are required, all three
+  unrounded Elo lower bounds must exceed 2,000, and no pull request is merged automatically.
+  Caveats recorded in the report: all timings come from the ENGINE-1 binary and the confirmatory
+  campaign runs a different candidate binary, and no candidate-specific 40/15 wall-clock timing
+  evidence exists yet.
+- **CodeRabbit review findings at head `92ae065` (2026-11-19), all addressed.** CodeRabbit posted
+  eight findings against the PR at the new head. Two were real defects in tooling, four were
+  over-claims in documentation, one was a data-integrity error in a table, and one was a packaging
+  claim that was not verifiable.
+  - **`scripts/audit_pair.py` — the audit accepted a schedule that reversed no opening.** The audit
+    checked a *global* AB/BA balance, a total game count and a per-opening multiplicity. A schedule
+    in which ten openings are played AB-only and ten BA-only satisfies all three — it balances
+    40/40 — while no opening has a colour-reversed pair at all. Verified: the old audit printed
+    `verdict: PASS` on exactly that evidence. The audit now compares the actual
+    `(opening, repetition, color_pair)` slots with the registered schedule and additionally requires
+    every opening to carry the same repetition set. The real EVAL-3 evidence (20 openings x 2
+    repetitions x 2 colours, every slot reversed, score 60.5/80 = 0.7562) still passes.
+    `scripts/test_audit_pair.py` grows from 22 to 34 checks, including the exact bypass scenario, a
+    relabelled repetition set, and the registered 20 x 2 x 2 schedule that must still be accepted.
+  - **`scripts/collect_eval_results.py` — a failed audit could still produce a registered decision.**
+    The aggregate path printed `KEPT` whenever the Elo lower bound was positive, even when
+    `audit=FAIL`, and a failed ablation still participated in the per-feature decision. Both decision
+    paths now require `audit == "PASS"` and report `UNAVAILABLE (...)` otherwise. Failed results are
+    still written to `eval2_results.json` for diagnostics. New suite
+    `scripts/test_collect_eval_results.py` (15 checks) covers all three paths.
+  - **`BENCHMARKING.md` — the identity table mixed EVAL-1 and EVAL-2 binaries.** The EVAL-NONE and
+    EVAL-ALL rows carried the withdrawn EVAL-1 identities (`1fa874d2…`, `7fddfc05…`); the table now
+    carries the EVAL-2 identities pinned before dispatch (`a4695a7c…`, `0ab1d0cb…`, signature
+    `b58979ca90492208`, 3,666,233 nodes) and is labelled EVAL-2.
+  - **`BENCHMARKING.md`, `PREREGISTRATION.md`, `STATUS.md` — the bench signature was presented as
+    proof.** The depth-10 bench visits 12 fixed positions; an unchanged signature and node count
+    prove the search behaved identically *on those positions* and nothing more. The EVAL-2 campaign
+    also ran under a fixed 100 ms/move budget, where the search is budget-limited rather than
+    deterministic across builds, so the earlier claim that "the games the campaign produced are the
+    games the current tree produces" is withdrawn. The text now states what was actually measured:
+    the evaluation values are unchanged (verified directly by a per-component breakdown comparison
+    over ten positions with zero differences), the searched tree is unchanged on the bench
+    positions only, and the binary identities stay separate.
+  - **`PREREGISTRATION.md` — the shared-load assumption was asserted.** "Both engines in a game face
+    the same machine at the same time" is not true of alternating turns: a build running during one
+    engine's turn but not the other's changes only that engine's throughput, and AB/BA pairing pairs
+    the schedule, not the load. Load-related bias is now carried as an uncertainty.
+  - **`STATUS.md` — the EVAL-3 result was attributed to the current tree.** It is now attributed to
+    the binary it was played with; the current tree is not shown to produce the same games, so the
+    candidate's strength must be re-established on the frozen candidate binary.
+  - **`.github/workflows/windows-release.yml` — the "no extra runtime DLLs" claim was false.** The
+    Rust MSVC target links the C runtime dynamically by default, so the delivered `flawless.exe`
+    could import `VCRUNTIME140.dll` and a recipient without the Visual C++ Redistributable could
+    not start it. The release build now links the CRT statically
+    (`-C target-feature=+crt-static`) and a new step *verifies* the produced executable's PE import
+    table instead of asserting the claim: `scripts/pe_imports.py` is a dependency-free PE import
+    parser, and the workflow fails the build if any C-runtime DLL is imported. The package note and
+    `BUILD_MANIFEST.json` were corrected to match, and the manifest now records the actual imported
+    DLL list. `scripts/test_pe_imports.py` (12 checks) exercises the parser against a synthetic but
+    structurally valid PE32+ image and against non-PE and truncated inputs.
+
+  The Windows artefact's bytes change with the static-CRT link, so the owner's pending Windows
+  acceptance must be redone against the new artefact. The Linux candidate binary is **not** affected
+  — `RUSTFLAGS` is set only in the Windows workflow, `src/`, `tests/`, `Cargo.toml` and `Cargo.lock`
+  are untouched, and the candidate SHA-256 `0a9ddd91…` with bench signature `c64d148d39181140`
+  therefore still identifies the same program.
+
+  No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or
+  dispatch exists, PR #2 stays Draft, and candidate-specific controls plus a reviewed
+  candidate-specific power PASS plus three unrounded Elo lower bounds above 2,000 all remain
+  required before any dispatch.
+- **Minimum candidate-specific control set reviewed; the self-match control verdict was found to be
+  seed-dependent at the rejection boundary.** Reviewing which null controls the candidate actually
+  needs required re-aggregating the committed control evidence with the *registered* tool
+  (`scripts/rating_estimator.py control`), and two things fell out.
+  - The **anchor-vs-anchor** control is decided by comparing the *measured point estimate* with the
+    published difference under the ±75 Elo tolerance; it uses no bootstrap interval, so its verdict
+    is seed-independent. CTRL-1 reproduces identically for 40 bootstrap seeds
+    (`d_measured = -125.32114796874765`, `error = -10.321147968747653`, PASS). It seats no candidate
+    engine, so the committed evidence is reused and costs 0 new games. This was verified rather than
+    assumed.
+  - The **self-match** control is decided by whether a percentile cluster-bootstrap 95 % CI contains
+    0.5, and that verdict is **not** seed-independent near the boundary. The committed CTRL-2-R
+    evidence (ENGINE-1, 240 games, 60 clusters, seat-A score 0.460417) yields FAIL with the
+    registered seed 20261114 (CI [0.42083333333333334, 0.4979166666666667], reproduced
+    byte-identically) and PASS with the dispatch seed 20261125 (CI upper bound exactly 0.5). Across
+    300 consecutive seeds the same evidence gives 177 PASS / 123 FAIL. Root cause: with *n* clusters
+    of four games the resampled mean lives on a grid of 1/(8n), and the bootstrap's 97.5 %
+    percentile for this data falls at ≈ 0.4992 — *between* the grid points 0.4979167 and 0.5 — so the
+    discrete rank index lands on one or the other depending on the seed. More replicates do not
+    help (flip rate 58 % / 45 % / 54 % at 1,000 / 10,000 / 50,000 replicates). The flip band is
+    ≈ ±0.027 SE **independently of the control size**, so a larger control would not reduce how
+    often a fair candidate lands in it (≈ 0.3 %); what makes the rare ambiguous case safe is
+    certifying the verdict, not collecting more games.
+  - **Every recorded verdict stands unchanged.** CTRL-2-R is still FAIL and ENGINE-1 is still
+    disqualified as a rated candidate; the pre-ENGINE-1 self-match still passes (and passes
+    unanimously, 16/16 registered seeds); CTRL-1 still passes. The analysis only characterises the
+    ENGINE-1 outcome as a borderline result (clustered z ≈ −2.00 against a 1.96 threshold) reported
+    by a knife-edge test, rather than evidence that the binary is colour-biased.
+  - **Fix, registered prospectively** (before any candidate control is dispatched) in
+    `PREREGISTRATION.md` § "RATING-100 control-robustness amendment" and `docs/RATING_PROTOCOL.md`:
+    the self-match verdict is certified across the registered seed set `20261114 … 20261129`
+    (`CONTROL_ROBUSTNESS_SEEDS`); a verdict that is not unanimous is reported as **NOT ROBUST** and
+    the gate treats the control as **unavailable**, never as PASS and never as FAIL. The amendment is
+    a strengthening only, so it can never rescue a failing control. The registered control sizes are
+    unchanged (240 games each). `scripts/rating_estimator.py` now reports `seed_robust` for both null
+    controls and the gate requires it; `scripts/test_rating_estimator.py` grows from 65 to 83 checks,
+    including a reproduction test that pins the committed CTRL-1 and CTRL-2-R numbers.
+  - Consequence for the gate-path budget: unchanged at 799.5 runner-hours (600 candidate-specific
+    screening games across all three anchors on both Batch A and the disjoint Batch B, plus a
+    240-game candidate-specific self-match control; the anchor-vs-anchor control is reused at 0
+    games). The candidate's own control must additionally report `seed_robust: true`.
+  No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
+  exists, PR #2 stays Draft, and the three unrounded Elo lower bounds above 2,000 remain required.
+
+## 2026-11-19 — Candidate evidence validator review and local validation
+
+- Continued local-only review on `arena/8259ce1c-flawlesschess`; no hosted workflow, benchmark,
+  merge, tag, or release was started. Existing branch runner-minute cap remains exceeded.
+- Tightened `scripts/aggregate_shards.py` candidate schedule checks: each expected slot now has
+  exact initial/replay lineage, opening, color pair, engine seats, repetition, and expected shard
+  identity. A failed initial attempt must be an uncounted engine error with exactly one valid
+  counted replay; successful initial attempts may not have unnecessary retries. Updated the
+  synthetic candidate aggregation suite accordingly.
+- First focused test invocation exposed a test helper call passing an unsupported `batch=` keyword;
+  removed the erroneous argument and reran successfully: `scripts/test_aggregate_candidate.py`,
+  11/11 tests passed.
+- Ran all 17 `scripts/test_*.py` suites: all passed. The rating-estimator suite prints expected
+  failing null-control cases in a deliberately failing fixture; the suite itself reports 83 checks
+  passed, 0 failed. Candidate design validation passed and reports 600 screening + 240 self-control
+  games, status `PREREGISTERED_NOT_DISPATCHED`.
+- Static checks passed: all 7 workflow YAML files parsed; all 18 embedded Python heredoc blocks
+  compiled; changed Python scripts passed `py_compile`; `git diff --check` passed. PyYAML was
+  available under `/tmp/flawless-python-deps` and used via `PYTHONPATH`.
+- Absolute Elo remains unmeasurable from valid evidence; strict `>2,000` gate remains unpassed.
+  Windows package workflow verification still requires an authorized runner execution.
+
+## 2026-11-19 — Candidate evidence fail-closed provenance hardening
+
+- A deeper validator audit found two fail-open provenance cases: candidate counted records could
+  omit `adjudicated` (or use non-boolean provenance values), and aggregate did not compare each
+  shard's recorded `git_commit` with the frozen target commit. These could allow incomplete
+  provenance to survive aggregation even though the normal runner currently emits the fields.
+- Tightened aggregation plus downstream candidate-screening and self-control validators to require
+  boolean counted/error/adjudication fields, explicit `adjudicated: true` for counted results,
+  integer (not boolean) repetition identities, typed replay lineage, and final counted results.
+  Candidate aggregation now also rejects any shard whose `git_commit` differs from the frozen target.
+- Added regression tests for missing adjudication, non-boolean fields, boolean repetition values,
+  non-final counted results, and target-commit mismatch. Focused suites pass: aggregation 16/16,
+  candidate power/cost 9/9, self-control certification 8/8.
+
+## 2026-11-19 — Hosted CI caught Windows opening-suite newline drift
+
+- Pushed commit `ec4a89e2840501a324b6c6427c607bf1a352b827` as requested. On that exact head, Ubuntu CI and MSRV passed, but Windows CI failed in `test_candidate_qualification.py`; the Windows release package verification step also failed before artifact upload. GitHub's run-log download returned EOF, so the package-step cause is not yet verified.
+- Root cause for the Python failure: `benches/rating-openings-batchA.txt`, the candidate self-control suite, had a preregistered raw-byte SHA-256 but no LF checkout rule. Added the missing `.gitattributes` rule and made candidate preregistration validation require LF rules for all three registered suite files. Added a regression for missing self-control-suite LF configuration; focused suite passes 10/10.
+- No Windows ZIP artifact was uploaded by the failed package step; continue diagnosing the package verification failure before claiming delivery.
+
+## 2026-11-19 — Windows CI path portability and owner EXE artifact
+
+- The follow-up Windows CI exposed another host-specific issue: candidate evidence path suffixes were compared with POSIX separators on a Windows path. Normalized both expected and actual suffixes in the self-control certifier and candidate power reader. The Windows package-verification failure remains distinct and is being diagnosed.
+- Added a dedicated `flawless-windows-x86_64-exe` Actions artifact upload after the Windows executable acceptance checks, before ZIP verification. This delivers the `.exe` plus its checksum/manifest without adding any binary to Git. Package-verifier exceptions now emit a concise GitHub error annotation so the failed ZIP check is diagnosable without downloading the Actions log archive.
+- After these local changes: all 17 Python suites passed; seven workflow YAMLs parsed; 18 embedded Python blocks compiled; `git diff --check` passed. No rating games or benchmarks were launched.
+
+## 2026-11-19 — Latest Windows CI diagnostics and packaging adjustments
+
+- On commit `4fd5ea658c90cc15b122b830ba2536386fdb6a61`, Ubuntu CI passed, MSRV passed, but Windows CI exposed a platform-specific path comparison in `test_recover_download.py` (Windows backslashes vs POSIX fixture strings). Normalized extracted relative paths to `/`; the test now passes locally on Linux and is portable on Windows.
+- The Windows release job built the x86-64 executable and passed its direct acceptance checks. The new `flawless-windows-x86_64-exe` Actions artifact was uploaded (run `44537364659`, artifact size 254,627 bytes), but sandbox download failed with blob-storage EOF. The package check reported `ZIP checksum sidecar must name exactly the delivery ZIP`; replaced Windows-hosted `sha256sum` sidecar generation with canonical Python SHA-256 formatting for both the EXE list and outer ZIP.
+- The actual ZIP verification is not yet green; the latest push is required to validate the checksum change and make the EXE artifact available at the current head. No binary is added to Git.

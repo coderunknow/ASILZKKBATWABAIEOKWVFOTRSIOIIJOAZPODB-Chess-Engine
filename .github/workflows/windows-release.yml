@@ -1,0 +1,280 @@
+name: Windows Release Artifact
+
+# Builds the owner-deliverable Windows executable and attaches it as a workflow
+# ARTIFACT (never a GitHub Release, never committed to git).
+#
+# Target: Windows 10 LTSC 2021, x86-64, Intel i5-7300U (4 threads), 8 GB RAM.
+# The default `x86_64-pc-windows-msvc` target uses the baseline x86-64 feature set
+# (SSE2), so no CPU-specific flags are used and the binary runs on the target CPU.
+# The C runtime is linked statically so the package needs no redistributable;
+# the produced executable's PE import table is verified before publishing.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'arena/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-release:
+    name: windows-x86_64 release artifact
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (pinned)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-release-
+
+      # The Rust MSVC target links the C runtime DYNAMICALLY by default, so the
+      # delivered flawless.exe would import VCRUNTIME140.dll and a recipient
+      # without the Visual C++ Redistributable could not start it. Link the CRT
+      # statically so the package really is self-contained, and verify the
+      # produced PE imports below rather than asserting it.
+      - name: Release build (baseline x86-64, static CRT, no CPU-specific flags)
+        run: cargo build --release --locked
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+
+      - name: Verify no CPU-specific codegen flags were injected
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RIn -- '-C *target-cpu' .cargo 2>/dev/null; then
+            echo "::error::target-cpu flag present; the artifact would not be portable"
+            exit 1
+          fi
+          echo "no target-cpu override found"
+
+      # Verify the packaging claim instead of asserting it: the delivered
+      # executable must not import a C runtime the recipient would have to
+      # install separately.
+      - name: Verify the executable has no external C-runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/pe_imports.py target/release/flawless.exe | tee dist-imports.txt
+          if grep -Ei '^(vcruntime|msvcp|msvcr|ucrtbase|api-ms-win-crt)' dist-imports.txt; then
+            echo "::error::the executable imports a C runtime DLL; the package is not self-contained"
+            exit 1
+          fi
+          echo "no C-runtime DLL import: the package is self-contained"
+
+      - name: Stage executable and package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/release/flawless.exe dist/flawless.exe
+          cd dist
+          PY=$(command -v python3 || command -v python)
+          EXE_SHA=$("$PY" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' flawless.exe)
+          printf '%s  flawless.exe\n' "$EXE_SHA" > SHA256SUMS.txt
+          RUSTC_V=$(rustc --version)
+          CARGO_V=$(cargo --version)
+          TARGET=$(rustc -vV | sed -n 's/^host: //p')
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          COMMIT=$(git rev-parse HEAD)
+          cat > BUILD_MANIFEST.json <<JSON
+          {
+            "engine": "Flawless",
+            "engine_version": "0.1.0-dev.1",
+            "source_commit": "$COMMIT",
+            "source_repository": "https://github.com/coderunknow/FlawLessChess",
+            "binary_sha256": "$EXE_SHA",
+            "binary_file": "flawless.exe",
+            "binary_size_bytes": $(stat -c%s flawless.exe 2>/dev/null || stat -f%z flawless.exe),
+            "rust_toolchain": "$RUSTC_V",
+            "cargo_toolchain": "$CARGO_V",
+            "target_triple": "$TARGET",
+            "profile": "release (lto=fat, codegen-units=1, debug=false, panic=unwind)",
+            "codegen_flags": "baseline x86-64; no target-cpu override; C runtime linked statically via -C target-feature=+crt-static",
+            "build_date_utc": "$BUILD_DATE",
+            "external_dependencies": [],
+            "imported_dlls": $(python -c "import json,sys;print(json.dumps([l.strip() for l in open('../dist-imports.txt') if l.strip()]))" 2>/dev/null || echo '[]'),
+            "uci_features": [
+              "uci", "isready", "ucinewgame", "position", "position fen", "position moves",
+              "go depth", "go nodes", "go movetime", "go wtime/btime/winc/binc/movestogo",
+              "go infinite", "go ponder", "go searchmoves", "stop", "ponderhit", "quit",
+              "register", "debug", "setoption Hash", "setoption Threads", "setoption MultiPV"
+            ],
+            "delivery": "workflow artifact (not a GitHub Release; binary never committed)"
+          }
+          JSON
+          cat BUILD_MANIFEST.json
+
+      - name: Executable acceptance checks (Windows runner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXE=target/release/flawless.exe
+          echo "== UCI handshake =="
+          out=$(printf 'uci\nisready\nquit\n' | "$EXE" uci)
+          echo "$out"
+          echo "$out" | grep -q '^uciok$' || { echo "::error::missing uciok"; exit 1; }
+          echo "$out" | grep -q '^readyok$' || { echo "::error::missing readyok"; exit 1; }
+          echo "== startpos bestmove =="
+          out=$(printf 'uci\nisready\nposition startpos\ngo depth 6\nquit\n' | "$EXE" uci)
+          echo "$out" | tail -5
+          echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8][qrbn]?' || { echo "::error::no legal bestmove"; exit 1; }
+          echo "== perft sanity =="
+          "$EXE" perft 4
+          "$EXE" perft 4 | grep -q '197281' || { echo "::error::perft mismatch"; exit 1; }
+          "$EXE" perft 3 | grep -q '8902' || { echo "::error::perft mismatch"; exit 1; }
+          echo "== stop handling =="
+          out=$(printf 'uci\nisready\nposition startpos\ngo infinite\n' | timeout 25 "$EXE" uci | head -20)
+          echo "$out"
+          echo "== bench signature =="
+          "$EXE" bench | tail -3
+
+      - name: Upload Windows EXE for owner testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-windows-x86_64-exe
+          path: |
+            dist/flawless.exe
+            dist/SHA256SUMS.txt
+            dist/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Write TEST_README.md
+        shell: bash
+        run: |
+          cat > dist/TEST_README.md <<'MD'
+          # Flawless — Windows test package
+
+          This ZIP contains a portable release build of the **Flawless** UCI engine.
+
+          ## Contents
+
+          | File | Purpose |
+          |---|---|
+          | `flawless.exe` | The engine (UCI). No installation required. |
+          | `SHA256SUMS.txt` | SHA-256 of `flawless.exe`. Verify before use. |
+          | `BUILD_MANIFEST.json` | Source commit, toolchain, target triple, profile, build date. |
+          | `TEST_README.md` | This file. |
+
+          ## Requirements
+
+          - Windows 10 LTSC 2021 or newer, x86-64.
+          - Intel Core i5-7300U or newer (4 threads). The binary uses the baseline x86-64
+            instruction set (SSE2); no AVX/AVX2/BMI2 code is emitted, so it also runs on
+            older CPUs.
+          - No extra runtime DLLs are required. The C runtime is linked statically
+            (`-C target-feature=+crt-static`), and the release workflow inspects the
+            produced executable's PE import table before publishing, so the package
+            starts on a clean Windows install with no Visual C++ Redistributable.
+          - ~64 MB RAM for the default 64 MiB transposition table.
+
+          ## Verify the download
+
+          ```powershell
+          Get-FileHash -Algorithm SHA256 .\flawless.exe
+          ```
+
+          The value must equal the one in `SHA256SUMS.txt` and `BUILD_MANIFEST.json`.
+
+          ## Use in a UCI GUI
+
+          1. Add `flawless.exe` as an engine (path only; no arguments needed).
+          2. Start a new game. The engine reports `id name Flawless`.
+          3. Default settings: `Hash 64`, `Threads 1`, `MultiPV 1`.
+
+          `Threads` is capped at 1 in this build: the search is single-threaded by design.
+          Setting `Threads` to a higher value is accepted and ignored (the engine logs a
+          note on stderr); it does not change the search.
+
+          ## Manual smoke test
+
+          ```
+          flawless.exe uci
+          uci
+          isready
+          position startpos
+          go depth 10
+          ```
+
+          Expect `uciok`, `readyok`, an `info depth ...` line and a `bestmove <square>` line.
+
+          Perft sanity (self-contained, no GUI):
+
+          ```
+          flawless.exe perft 4
+          ```
+
+          must print `197281`.
+
+          ## Bug reports
+
+          Please quote the source commit from `BUILD_MANIFEST.json` and the SHA-256 of the
+          binary you tested.
+          MD
+
+      - name: Package ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          7z a -tzip ../flawless-windows-x86_64.zip flawless.exe SHA256SUMS.txt BUILD_MANIFEST.json TEST_README.md
+          cd ..
+          PY=$(command -v python3 || command -v python)
+          "$PY" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest() + "  " + sys.argv[1])' flawless-windows-x86_64.zip > flawless-windows-x86_64.zip.sha256
+          ls -la dist/
+          cat flawless-windows-x86_64.zip.sha256
+
+      - name: Verify and smoke-test the actual packaged ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          EXTRACT_DIR=$(mktemp -d)
+          "$PY" scripts/verify_windows_package.py \
+            --zip flawless-windows-x86_64.zip \
+            --source-commit "$(git rev-parse HEAD)" \
+            --staged-dir dist \
+            --extract-dir "$EXTRACT_DIR"
+          EXE="$EXTRACT_DIR/flawless.exe"
+          echo "== packaged UCI handshake =="
+          out=$(printf 'uci\nisready\nquit\n' | "$EXE" uci)
+          echo "$out"
+          echo "$out" | grep -q '^uciok$'
+          echo "$out" | grep -q '^readyok$'
+          echo "== packaged search =="
+          out=$(printf 'uci\nisready\nposition startpos\ngo depth 6\nquit\n' | "$EXE" uci)
+          echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8][qrbn]?'
+          echo "== packaged perft =="
+          "$EXE" perft 4 | grep -q '197281'
+          "$EXE" perft 3 | grep -q '8902'
+
+      - name: Upload Windows delivery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flawless-windows-x86_64
+          path: |
+            flawless-windows-x86_64.zip
+            flawless-windows-x86_64.zip.sha256
+            dist/SHA256SUMS.txt
+            dist/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 90

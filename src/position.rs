@@ -445,6 +445,66 @@ impl Position {
         false
     }
 
+    /// True if square `sq` is attacked by any piece of `by_side`, using an explicit
+    /// occupancy map instead of `self.occ_all`.
+    ///
+    /// Used by the fast legality filter, where the occupancy differs from the current
+    /// position (the king has left its square, or a castling rook has moved).
+    pub fn is_attacked_with_occ(&self, sq: Square, by_side: usize, occ: u64) -> bool {
+        let base = by_side * 6;
+        let pawn_attackers = if by_side == WHITE {
+            attack::PAWN_ATTACKS_BLACK[sq as usize]
+        } else {
+            attack::PAWN_ATTACKS_WHITE[sq as usize]
+        };
+        if pawn_attackers & self.pieces[base + PAWN] != 0 {
+            return true;
+        }
+        if attack::KNIGHT_ATTACKS[sq as usize] & self.pieces[base + KNIGHT] != 0 {
+            return true;
+        }
+        if attack::KING_ATTACKS[sq as usize] & self.pieces[base + KING] != 0 {
+            return true;
+        }
+        let diag = attack::bishop_attacks(sq, occ);
+        if (self.pieces[base + BISHOP] | self.pieces[base + QUEEN]) & diag != 0 {
+            return true;
+        }
+        let orth = attack::rook_attacks(sq, occ);
+        if (self.pieces[base + ROOK] | self.pieces[base + QUEEN]) & orth != 0 {
+            return true;
+        }
+        false
+    }
+
+    /// Bitboard of the enemy pieces that currently give check to `us`'s king.
+    ///
+    /// Only pieces that attack the king square *right now* are returned (a slider must
+    /// be the first blocker on the ray, so a pinned or blocked slider is not a checker).
+    pub fn checkers(&self, us: usize) -> u64 {
+        let them = 1 - us;
+        let ksq = self.king_sq(us);
+        let occ = self.occ_all;
+        let base = them * 6;
+        let pawn_attackers = if them == WHITE {
+            attack::PAWN_ATTACKS_BLACK[ksq as usize]
+        } else {
+            attack::PAWN_ATTACKS_WHITE[ksq as usize]
+        };
+        (pawn_attackers & self.pieces[base + PAWN])
+            | (attack::KNIGHT_ATTACKS[ksq as usize] & self.pieces[base + KNIGHT])
+            | (attack::bishop_attacks(ksq, occ)
+                & (self.pieces[base + BISHOP] | self.pieces[base + QUEEN]))
+            | (attack::rook_attacks(ksq, occ)
+                & (self.pieces[base + ROOK] | self.pieces[base + QUEEN]))
+    }
+
+    /// The piece type standing on `sq`, or `None` when the square is empty.
+    #[inline]
+    pub fn piece_type_on(&self, sq: Square) -> Option<usize> {
+        self.piece_on(sq).map(|(_, p)| p)
+    }
+
     // ---------------- make / unmake ----------------
 
     /// Apply a legal move, returning the undo record. The move MUST be legal (pseudo-legal or castle);

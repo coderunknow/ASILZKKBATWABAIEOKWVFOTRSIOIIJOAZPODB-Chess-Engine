@@ -11,9 +11,9 @@
 
 use crate::attack;
 use crate::eval::{
-    ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_SCORE, PIECE_VALUE_MG,
+    ClassicalEvaluator, Evaluator, DRAW_SCORE, INF_SCORE, MATE_BOUND, MATE_SCORE, PIECE_VALUE_MG,
 };
-use crate::movegen::{generate_legal, in_check};
+use crate::movegen::{generate_legal_fast, in_check};
 use crate::position::Position;
 use crate::tt::{TranspositionTable, BOUND_EXACT, BOUND_LOWER, BOUND_UPPER};
 use crate::types::*;
@@ -21,8 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-pub const MAX_PLY: i32 = 128;
-const MATE_BOUND: i32 = MATE_SCORE - 100;
+pub use crate::eval::MAX_PLY;
 /// Predicted duration of the next iteration = last iteration time * this factor (R-08).
 /// Measured overspend without prediction was ~1.7x the soft budget; iteration times grow
 /// roughly 2-4x per ply, so 3 is the conservative middle. Tunable.
@@ -78,7 +77,25 @@ pub struct Searcher<'a> {
     limits: Arc<Mutex<SearchLimits>>,
     eval: ClassicalEvaluator,
     killers: [[Option<Move>; 2]; MAX_PLY as usize],
+    /// Quiet-move history, indexed [side][from * 64 + to].
     history: [[i32; 64 * 64]; 2],
+    /// First-order continuation history: bonus for a quiet move to `to` played as a
+    /// reply to a previous move that ended on `prev_to`. Indexed
+    /// [side][prev_to * 64 + to].
+    cont_history: [[i32; 64 * 64]; 2],
+    /// Second-order continuation history (reply to the reply).
+    cont_history2: [[i32; 64 * 64]; 2],
+    /// Counter-move table: the move that refuted `from * 64 + to`, used to order the
+    /// opponent's reply when the same move is played again.
+    counter_move: [Option<Move>; 64 * 64],
+    /// Capture history, indexed [captured piece][from * 64 + to].
+    capture_history: [[i32; 64 * 64]; 6],
+    /// Moves played on the current search path: `path[p]` is the move made at ply `p`.
+    /// `path[ply - 1]` is therefore the move that produced the node at `ply`.
+    path: [Move; MAX_PLY as usize],
+    /// Test-only: the moves the quiescence recorded on the search path, in order.
+    #[cfg(test)]
+    quiesce_path_log: Vec<Move>,
     lmr: [[i32; 256]; MAX_PLY as usize + 1],
     nodes: u64,
     seldepth: i32,
@@ -88,6 +105,57 @@ pub struct Searcher<'a> {
     /// Best move found at ply 0 in the most recent completed search call. Used for
     /// restricted-root PV construction instead of stale TT entries.
     root_best: Option<Move>,
+}
+
+/// Maximum magnitude of a single history entry. Keeps the ordering bands disjoint:
+/// three quiet-history tables can contribute at most 3 * HISTORY_MAX, which stays
+/// below the killer band.
+const HISTORY_MAX: i32 = 8_192;
+
+// ---------------------------------------------------------------------------
+// Move-ordering bands.
+//
+// Every move is placed in exactly one band, and the bands are disjoint and
+// strictly ordered. A band is chosen first; the refinements inside a band
+// (capture history, promotion bonus) are bounded so that they can never move a
+// move into a neighbouring band.
+//
+//   band              base      range after the refinements
+//   ---------------   -------   --------------------------------------------
+//   TT move           1_000_000  1_000_000
+//   sound capture     110_000    107_952 .. 142_273
+//   quiet promotion   100_000    100_000 .. 100_225
+//   counter move       95_000    95_000
+//   killer 0           90_000    90_000
+//   killer 1           80_000    80_000
+//   quiet move         50_000    25_424 .. 74_576
+//   losing capture     10_000   -2_048 .. 12_048
+//
+// The capture-history refinement is at most HISTORY_MAX / 4 = 2_048 in either
+// direction and the promotion bonus is at most 20_000 + 900 / 4 = 20_225.
+// The quiet band spans 3 * HISTORY_MAX = 24_576 of history, so it is the widest
+// band and the two capture bands are placed clear of it: a losing capture is
+// always demoted below every quiet move, and a sound capture is always ranked
+// above every quiet move.
+const SOUND_CAPTURE_BASE: i32 = 110_000;
+const LOSING_CAPTURE_BASE: i32 = 10_000;
+const QUIET_BASE: i32 = 50_000;
+
+/// Apply a history bonus/penalty with gravity (the damping term stops old entries
+/// from dominating and bounds the value without an explicit cap).
+#[inline]
+fn apply_history(slot: &mut i32, bonus: i32) {
+    let v = *slot;
+    let damped = v - (v * bonus.abs()) / HISTORY_MAX;
+    *slot = (damped + bonus).clamp(-HISTORY_MAX, HISTORY_MAX);
+}
+
+/// Age a history table between searches (multiply by 3/4).
+#[inline]
+fn age_table(table: &mut [i32]) {
+    for v in table.iter_mut() {
+        *v = (*v * 3) / 4;
+    }
 }
 
 impl<'a> Searcher<'a> {
@@ -103,6 +171,13 @@ impl<'a> Searcher<'a> {
             eval: ClassicalEvaluator,
             killers: [[None; 2]; MAX_PLY as usize],
             history: [[0; 64 * 64]; 2],
+            cont_history: [[0; 64 * 64]; 2],
+            cont_history2: [[0; 64 * 64]; 2],
+            counter_move: [None; 64 * 64],
+            capture_history: [[0; 64 * 64]; 6],
+            path: [Move::NULL; MAX_PLY as usize],
+            #[cfg(test)]
+            quiesce_path_log: Vec::new(),
             lmr: build_lmr_table(),
             nodes: 0,
             seldepth: 0,
@@ -155,6 +230,26 @@ impl<'a> Searcher<'a> {
         self.eval.evaluate(pos)
     }
 
+    /// The move played one ply before the current node (`Move::NULL` at the root).
+    #[inline]
+    fn prev_move(&self, ply: usize) -> Move {
+        if ply >= 1 {
+            self.path[ply - 1]
+        } else {
+            Move::NULL
+        }
+    }
+
+    /// The move played two plies before the current node.
+    #[inline]
+    fn prev_move2(&self, ply: usize) -> Move {
+        if ply >= 2 {
+            self.path[ply - 2]
+        } else {
+            Move::NULL
+        }
+    }
+
     fn move_order_score(&self, pos: &Position, m: Move, tt_move: Option<Move>, ply: usize) -> i32 {
         if let Some(tm) = tt_move {
             if m == tm {
@@ -165,20 +260,39 @@ impl<'a> Searcher<'a> {
         let is_cap = is_capture(pos, m);
         if is_cap {
             let see = static_exchange_eval(pos, m);
-            // Sound captures outrank killers; losing captures are deliberately
-            // demoted below ordinary quiet moves. Promotions retain a bonus.
+            // Sound captures outrank every quiet move; losing captures are
+            // deliberately demoted below every quiet move. The two bands are
+            // disjoint and the refinements below stay inside the band.
             let mut score = if see >= 0 {
-                110_000 + see.min(10_000)
+                let mut s = SOUND_CAPTURE_BASE + see.min(10_000);
+                if m.promo != PROMO_NONE {
+                    // SEE already includes the promoted piece, so this bonus only
+                    // orders a sound promotion ahead of the other sound captures.
+                    s += 20_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
+                }
+                s
             } else {
-                40_000 + see.max(-10_000)
+                // A losing capture keeps no promotion bonus: SEE already accounts
+                // for the promoted piece, and the bonus would push the move back
+                // into the quiet band, which is exactly what the demotion avoids.
+                LOSING_CAPTURE_BASE + see.max(-10_000)
             };
-            if m.promo != PROMO_NONE {
-                score += 20_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
+            // Capture history refines the order inside the capture band.
+            if let Some(p) = captured_piece(pos, m) {
+                score += self.capture_history[p][(m.from as usize) * 64 + m.to as usize] / 4;
             }
             return score;
         }
         if m.promo != PROMO_NONE {
             return 100_000 + PIECE_VALUE_MG[promo_piece_type(m.promo)] / 4;
+        }
+        // Counter move: the reply that refuted the opponent's previous move.
+        let prev = self.prev_move(ply);
+        if prev != Move::NULL {
+            let cm = self.counter_move[(prev.from as usize) * 64 + prev.to as usize];
+            if cm == Some(m) {
+                return 95_000;
+            }
         }
         if let Some(killer) = self.killers[ply][0] {
             if m == killer {
@@ -190,7 +304,16 @@ impl<'a> Searcher<'a> {
                 return 80_000;
             }
         }
-        50_000 + self.history[us][(m.from as usize) * 64 + m.to as usize]
+        // Quiet score: main history plus the two continuation-history tables.
+        let mut h = self.history[us][(m.from as usize) * 64 + m.to as usize];
+        if prev != Move::NULL {
+            h += self.cont_history[us][(prev.to as usize) * 64 + m.to as usize];
+        }
+        let prev2 = self.prev_move2(ply);
+        if prev2 != Move::NULL {
+            h += self.cont_history2[us][(prev2.to as usize) * 64 + m.to as usize];
+        }
+        QUIET_BASE + h
     }
 
     fn order_and_score(
@@ -230,12 +353,15 @@ impl<'a> Searcher<'a> {
         self.killers = [[None; 2]; MAX_PLY as usize];
         self.root_best = None;
         for side in 0..2 {
-            for v in self.history[side].iter_mut() {
-                *v /= 2;
-            }
+            age_table(&mut self.history[side]);
+            age_table(&mut self.cont_history[side]);
+            age_table(&mut self.cont_history2[side]);
+        }
+        for p in 0..6 {
+            age_table(&mut self.capture_history[p]);
         }
 
-        let legal = generate_legal(pos);
+        let legal = generate_legal_fast(pos);
         let mut roots: Vec<Move> = legal.iter().copied().collect();
         if let Some(ref only) = root_moves {
             roots.retain(|m| only.contains(m));
@@ -431,7 +557,7 @@ impl<'a> Searcher<'a> {
             let key = pos.hash;
             match self.tt.probe_move(key) {
                 Some(m) => {
-                    let legal = generate_legal(&mut pos);
+                    let legal = generate_legal_fast(&mut pos);
                     if !legal.iter().any(|&x| x == m) {
                         break;
                     }
@@ -470,7 +596,7 @@ impl<'a> Searcher<'a> {
             return DRAW_SCORE;
         }
         if ply > 0 && pos.is_repetition() {
-            if in_chk && generate_legal(pos).len == 0 {
+            if in_chk && generate_legal_fast(pos).len == 0 {
                 return -MATE_SCORE + ply;
             }
             return DRAW_SCORE;
@@ -503,7 +629,7 @@ impl<'a> Searcher<'a> {
 
         // Terminal (no legal moves) BEFORE any pruning/fail-soft heuristic:
         // mate takes precedence over draw rules; stalemate is a draw.
-        let mut moves = generate_legal(pos);
+        let mut moves = generate_legal_fast(pos);
         if ply == 0 {
             if let Some(ref only) = self.root_moves {
                 let mut j = 0usize;
@@ -552,18 +678,18 @@ impl<'a> Searcher<'a> {
         }
 
         // Futility pruning at low depths
-        if depth <= 2 && !in_chk && !is_pv && !fifty_claim {
+        // One static evaluation per node, shared by the two pruning tests and by
+        // the quiescence stand-pat. The evaluator is a full board scan, so evaluating
+        // the same node two or three times was a measurable share of the node cost.
+        if depth <= 3 && !in_chk && !is_pv && !fifty_claim {
             let s = self.static_eval(pos);
-            if s + 150 * depth <= alpha {
-                return self.quiesce(pos, alpha, beta, ply);
+            // Futility pruning at low depths
+            if depth <= 2 && s + 150 * depth <= alpha {
+                return self.quiesce_with_eval(pos, alpha, beta, ply, Some(s));
             }
-        }
-
-        // Reverse futility pruning (static null-move): far-above-beta quiet
-        // positions fail high without searching. Non-PV, not in check, mate-bound safe.
-        if depth <= 3 && !in_chk && !is_pv && !fifty_claim && beta.abs() < MATE_BOUND {
-            let s = self.static_eval(pos);
-            if s - 150 * depth >= beta {
+            // Reverse futility pruning (static null-move): far-above-beta quiet
+            // positions fail high without searching. Non-PV, not in check, mate-bound safe.
+            if depth <= 3 && beta.abs() < MATE_BOUND && s - 150 * depth >= beta {
                 return beta;
             }
         }
@@ -581,6 +707,9 @@ impl<'a> Searcher<'a> {
             let m = moves.moves[i];
             let capture = is_capture(pos, m);
             let undo = pos.make_move(m);
+            // Record the move on the search path so that the continuation history and
+            // the counter-move tables know which move led to this node.
+            self.path[ply as usize] = m;
 
             // Late move reductions (quiet moves, not in check, late in the list)
             let searched_count = searched_count_usize as i32;
@@ -600,10 +729,23 @@ impl<'a> Searcher<'a> {
                     -alpha,
                     ply + 1,
                 );
-                if reduction > 0 && s > alpha {
-                    s = -self.search(pos, depth - 1 + extension, -alpha - 1, -alpha, ply + 1);
-                }
-                if s > alpha && s < beta {
+                if s > alpha && (reduction > 0 || s < beta) {
+                    // The scout search used the null window (-alpha-1, -alpha), so the
+                    // score it returns is a BOUND, not the move's value.
+                    //
+                    //  * `reduction > 0`: the reduced search failed high, so re-search at
+                    //    full depth. A null-window re-search returns a fail-low bound,
+                    //    which is a pessimistic estimate of the move's true value, so the
+                    //    re-search uses the FULL window.
+                    //  * `s < beta`: standard PVS verification. The move beats alpha, so
+                    //    its exact value is needed for the node's best_score, for the
+                    //    alpha update and for the score the root reports. Re-searching
+                    //    with the full window yields that value.
+                    //
+                    // Without this re-search the scout bound is used as the move's score:
+                    // the node's best_score, the alpha update and the root's reported
+                    // score are all too low, and the engine can pick a move that is worse
+                    // than one it already evaluated.
                     s = -self.search(pos, depth - 1 + extension, -beta, -alpha, ply + 1);
                 }
                 s
@@ -621,18 +763,68 @@ impl<'a> Searcher<'a> {
                 alpha = score;
             }
             if alpha >= beta {
-                if !capture {
+                let side = pos.side;
+                let bonus = depth * depth;
+                if capture {
+                    // Capture history: a capture that caused the cutoff is usually a
+                    // good capture, which refines the order inside the capture band.
+                    if let Some(p) = captured_piece(pos, m) {
+                        apply_history(
+                            &mut self.capture_history[p][(m.from as usize) * 64 + m.to as usize],
+                            bonus,
+                        );
+                    }
+                } else {
                     let ply_idx = ply as usize;
                     self.killers[ply_idx][1] = self.killers[ply_idx][0];
                     self.killers[ply_idx][0] = Some(m);
-                    let h = &mut self.history[pos.side][(m.from as usize) * 64 + m.to as usize];
-                    *h = (*h + depth * depth).min(100_000);
+                    let prev = self.prev_move(ply_idx);
+                    let prev2 = self.prev_move2(ply_idx);
+                    // Main history.
+                    apply_history(
+                        &mut self.history[side][(m.from as usize) * 64 + m.to as usize],
+                        bonus,
+                    );
+                    // Continuation history (first and second order).
+                    if prev != Move::NULL {
+                        apply_history(
+                            &mut self.cont_history[side][(prev.to as usize) * 64 + m.to as usize],
+                            bonus,
+                        );
+                    }
+                    if prev2 != Move::NULL {
+                        apply_history(
+                            &mut self.cont_history2[side][(prev2.to as usize) * 64 + m.to as usize],
+                            bonus,
+                        );
+                    }
+                    // Counter move: `m` refuted `prev`.
+                    if prev != Move::NULL {
+                        self.counter_move[(prev.from as usize) * 64 + prev.to as usize] = Some(m);
+                    }
+                    // Penalise the quiet moves that were tried and failed.
                     for q in quiet_tried.iter() {
                         if *q == Move::NULL {
                             break;
                         }
-                        let h = &mut self.history[pos.side][(q.from as usize) * 64 + q.to as usize];
-                        *h = (*h - depth * depth).max(0);
+                        apply_history(
+                            &mut self.history[side][(q.from as usize) * 64 + q.to as usize],
+                            -bonus,
+                        );
+                        if prev != Move::NULL {
+                            apply_history(
+                                &mut self.cont_history[side]
+                                    [(prev.to as usize) * 64 + q.to as usize],
+                                -bonus,
+                            );
+                        }
+                        if prev2 != Move::NULL {
+                            apply_history(
+                                &mut self.cont_history2[side]
+                                    [(prev2.to as usize) * 64 + q.to as usize],
+                                -bonus,
+                            );
+                        }
                     }
                 }
                 break;
@@ -679,9 +871,22 @@ impl<'a> Searcher<'a> {
     }
 
     fn quiesce(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
+        self.quiesce_with_eval(pos, alpha, beta, ply, None)
+    }
+
+    /// Quiescence search. `eval` carries a static evaluation of `pos` that the caller
+    /// already computed (the futility-pruning path), avoiding a second board scan.
+    fn quiesce_with_eval(
+        &mut self,
+        pos: &mut Position,
+        alpha: i32,
+        beta: i32,
+        ply: i32,
+        eval: Option<i32>,
+    ) -> i32 {
         // Fifty-move is a claimable draw (see `search`): the value is at least DRAW.
         let claim = pos.is_fifty_move();
-        let v = self.quiesce_core(pos, alpha, beta, ply);
+        let v = self.quiesce_core(pos, alpha, beta, ply, eval);
         if claim && v < DRAW_SCORE {
             DRAW_SCORE
         } else {
@@ -689,7 +894,14 @@ impl<'a> Searcher<'a> {
         }
     }
 
-    fn quiesce_core(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
+    fn quiesce_core(
+        &mut self,
+        pos: &mut Position,
+        alpha: i32,
+        beta: i32,
+        ply: i32,
+        eval: Option<i32>,
+    ) -> i32 {
         self.nodes += 1;
         if ply as usize >= self.seldepth as usize {
             self.seldepth = ply;
@@ -706,7 +918,7 @@ impl<'a> Searcher<'a> {
 
         // Terminal BEFORE the stand-pat cutoffs: stand-pat is only valid when the side
         // to move has at least one legal move. Stalemate is a draw; mate is scored.
-        let mut moves = generate_legal(pos);
+        let mut moves = generate_legal_fast(pos);
         if moves.len == 0 {
             return if in_chk {
                 -MATE_SCORE + ply
@@ -721,7 +933,10 @@ impl<'a> Searcher<'a> {
         }
 
         let stand_pat = if !in_chk {
-            let sp = self.static_eval(pos);
+            let sp = match eval {
+                Some(v) => v,
+                None => self.static_eval(pos),
+            };
             if sp >= beta {
                 return beta;
             }
@@ -763,7 +978,17 @@ impl<'a> Searcher<'a> {
                 }
             }
             let undo = pos.make_move(m);
+            // Record the capture on the search path. Without this the quiescence
+            // orders its captures with a stale previous move, so the counter-move
+            // table and the continuation-history tables are consulted for the
+            // wrong move. The previous value is restored afterwards, so the
+            // quiescence leaves the search path of the main search untouched.
+            let saved_path = self.path[ply as usize];
+            self.path[ply as usize] = m;
+            #[cfg(test)]
+            self.quiesce_path_log.push(m);
             let score = -self.quiesce(pos, -beta, -alpha, ply + 1);
+            self.path[ply as usize] = saved_path;
             pos.unmake_move(m, &undo);
             if self.stop.load(Ordering::Relaxed) {
                 return alpha;
@@ -990,11 +1215,11 @@ mod see_tests {
 #[cfg(test)]
 mod draw_rule_tests {
     use super::*;
-    use crate::movegen::generate_legal;
+    use crate::movegen::generate_legal_fast;
     use std::sync::atomic::AtomicBool;
 
     fn play(pos: &mut Position, uci: &str) {
-        let legal = generate_legal(pos);
+        let legal = generate_legal_fast(pos);
         let m = legal
             .iter()
             .copied()
@@ -1051,5 +1276,292 @@ mod draw_rule_tests {
             "claim value below draw: {}",
             r.score_cp
         );
+    }
+}
+
+#[cfg(test)]
+mod pvs_tests {
+    use super::*;
+    use crate::movegen::generate_legal_fast;
+    use std::sync::atomic::AtomicBool;
+
+    /// Root search over every legal move, with a fresh table per call.
+    fn run(pos: &mut Position, depth: i32) -> SearchResult {
+        let mut tt = TranspositionTable::new(4);
+        let stop = AtomicBool::new(false);
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: depth,
+            ..SearchLimits::default()
+        }));
+        let mut s = Searcher::new(&mut tt, &stop, limits);
+        s.search_root(pos, None, 1, &mut |_| {})
+    }
+
+    /// Root search restricted to a single move. The restricted move is the first
+    /// (and only) move of the root, so it is searched with the full window and its
+    /// score is the exact value of that move.
+    fn run_restricted(pos: &mut Position, mv: Move, depth: i32) -> SearchResult {
+        let mut tt = TranspositionTable::new(4);
+        let stop = AtomicBool::new(false);
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: depth,
+            ..SearchLimits::default()
+        }));
+        let mut s = Searcher::new(&mut tt, &stop, limits);
+        s.search_root(pos, Some(vec![mv]), 1, &mut |_| {})
+    }
+
+    /// Positions taken from the Batch A rating opening list (after the listed moves).
+    const POSITIONS: [&str; 6] = [
+        // Ruy Lopez Berlin
+        "r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        // Italian Game
+        "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        // Scotch Game
+        "r1bqkbnr/pppp1ppp/2n5/8/3NP3/8/PPP2PPP/RNBQKB1R b KQkq - 0 4",
+        // Petroff Defence
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+        // Philidor Defence
+        "rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
+        // Vienna Game
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 2 3",
+    ];
+
+    /// The PVS scout searches with the null window (-alpha-1, -alpha), so the score it
+    /// returns for a move is a BOUND. A move that is not searched first must therefore
+    /// be re-searched with the full window before its score is used.
+    ///
+    /// If the bound is used as the move's score, the root's score is lower than the
+    /// value of the move the engine actually prefers, and the engine can pick a move
+    /// that is worse than one it already evaluated.
+    ///
+    /// Depth 2 is used on purpose: late move reductions only start at depth 3, so at
+    /// depth 2 the root score must be exactly the value of the best single move.
+    #[test]
+    fn root_score_equals_best_single_move_score() {
+        for fen in POSITIONS {
+            let mut pos = Position::from_fen(fen).expect("test FEN");
+            let root = run(&mut pos, 2);
+            let mut best = i32::MIN;
+            let mut best_move = Move::NULL;
+            let legal = generate_legal_fast(&mut pos)
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            for mv in legal {
+                let mut p = pos.clone();
+                let r = run_restricted(&mut p, mv, 2);
+                if r.score_cp > best {
+                    best = r.score_cp;
+                    best_move = mv;
+                }
+            }
+            assert_eq!(
+                root.score_cp, best,
+                "root score {} is not the value of the best move {} ({}); \
+                 the PVS scout bound was used as a move score",
+                root.score_cp, best, best_move
+            );
+        }
+    }
+
+    /// The chosen move must be the move with the highest value. With the PVS bound
+    /// promoted to a score, the root can select a move that is worse than another
+    /// move it already evaluated.
+    #[test]
+    fn root_move_is_the_best_move() {
+        for fen in POSITIONS {
+            let mut pos = Position::from_fen(fen).expect("test FEN");
+            let root = run(&mut pos, 2);
+            let mut best = i32::MIN;
+            let mut best_move = Move::NULL;
+            let legal = generate_legal_fast(&mut pos)
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            for mv in legal {
+                let mut p = pos.clone();
+                let r = run_restricted(&mut p, mv, 2);
+                if r.score_cp > best {
+                    best = r.score_cp;
+                    best_move = mv;
+                }
+            }
+            assert_eq!(
+                root.best_move, best_move,
+                "root chose {} but the best move is {}",
+                root.best_move, best_move
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    use super::*;
+    use crate::movegen::generate_legal_fast;
+    use std::sync::atomic::AtomicBool;
+
+    /// Positions taken from the Batch A rating opening list (after the listed moves).
+    const POSITIONS: [&str; 8] = [
+        "r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        "r1bqkbnr/pppp1ppp/2n5/8/3NP3/8/PPP2PPP/RNBQKB1R b KQkq - 0 4",
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+        "rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 2 3",
+        "rnbqkb1r/1p2pppp/p2p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
+        "4k3/8/8/8/8/8/4P3/4K2R w K - 0 1",
+    ];
+
+    fn searcher() -> Searcher<'static> {
+        // The tables live for the whole test; the borrow is discharged by the caller
+        // through `Box::leak`, which keeps the helper free of lifetimes.
+        let tt: &'static mut TranspositionTable = Box::leak(Box::new(TranspositionTable::new(4)));
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let limits = Arc::new(Mutex::new(SearchLimits::default()));
+        Searcher::new(tt, stop, limits)
+    }
+
+    /// The ordering bands must be disjoint: a sound capture is always ranked above
+    /// every quiet move and a losing capture always below every quiet move, no
+    /// matter what the history tables hold.
+    #[test]
+    fn ordering_bands_are_disjoint() {
+        for fen in POSITIONS {
+            let mut pos = Position::from_fen(fen).expect("test FEN");
+            for hist_fill in [HISTORY_MAX, -HISTORY_MAX] {
+                for cap_fill in [HISTORY_MAX, -HISTORY_MAX] {
+                    let mut s = searcher();
+                    for side in 0..2 {
+                        for i in 0..64 * 64 {
+                            s.history[side][i] = hist_fill;
+                            s.cont_history[side][i] = hist_fill;
+                            s.cont_history2[side][i] = hist_fill;
+                        }
+                    }
+                    for p in 0..6 {
+                        for i in 0..64 * 64 {
+                            s.capture_history[p][i] = cap_fill;
+                        }
+                    }
+                    let legal = generate_legal_fast(&mut pos)
+                        .iter()
+                        .copied()
+                        .collect::<Vec<_>>();
+                    // At ply 0 the continuation-history tables do not contribute, so
+                    // the quiet band is at its narrowest. At ply 2 they do, and the
+                    // quiet band is at its widest. Both are checked.
+                    if legal.len() >= 2 {
+                        s.path[0] = legal[0];
+                        s.path[1] = legal[1];
+                    }
+                    for ply in [0usize, 2] {
+                        let mut quiet_min = i32::MAX;
+                        let mut quiet_max = i32::MIN;
+                        let mut sound_min = i32::MAX;
+                        let mut losing_max = i32::MIN;
+                        for m in &legal {
+                            let sc = s.move_order_score(&pos, *m, None, ply);
+                            if is_capture(&pos, *m) {
+                                if static_exchange_eval(&pos, *m) >= 0 {
+                                    sound_min = sound_min.min(sc);
+                                } else {
+                                    losing_max = losing_max.max(sc);
+                                }
+                            } else if m.promo == PROMO_NONE {
+                                quiet_min = quiet_min.min(sc);
+                                quiet_max = quiet_max.max(sc);
+                            }
+                        }
+                        if quiet_min == i32::MAX {
+                            continue; // no quiet move in this position
+                        }
+                        assert!(
+                            losing_max < quiet_min,
+                            "{fen}: losing capture band reaches {losing_max}, \
+                         quiet band starts at {quiet_min}"
+                        );
+                        assert!(
+                            sound_min > quiet_max,
+                            "{fen}: sound capture band starts at {sound_min}, \
+                         quiet band ends at {quiet_max}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// The quiet band must not reach into the capture bands either: a quiet move
+    /// with the worst possible history still outranks a losing capture and still
+    /// loses to a sound capture.
+    #[test]
+    fn quiet_band_stays_between_the_capture_bands() {
+        let pos = Position::from_fen(POSITIONS[0]).expect("test FEN");
+        let mut s = searcher();
+        for side in 0..2 {
+            for i in 0..64 * 64 {
+                s.history[side][i] = -HISTORY_MAX;
+                s.cont_history[side][i] = -HISTORY_MAX;
+                s.cont_history2[side][i] = -HISTORY_MAX;
+            }
+        }
+        let quiet = s.move_order_score(&pos, Move::new(4, 12), None, 0);
+        assert!(
+            quiet >= QUIET_BASE - 3 * HISTORY_MAX,
+            "quiet score {quiet} is below the quiet band floor"
+        );
+    }
+}
+
+#[cfg(test)]
+mod quiescence_path_tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    fn searcher() -> Searcher<'static> {
+        let tt: &'static mut TranspositionTable = Box::leak(Box::new(TranspositionTable::new(4)));
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let limits = Arc::new(Mutex::new(SearchLimits::default()));
+        Searcher::new(tt, stop, limits)
+    }
+
+    /// White to move with two captures available, so the quiescence has a choice to
+    /// make and its ordering can be observed.
+    const CAPTURES: &str = "4k3/8/8/1p6/8/2n5/8/1Q2K3 w - - 0 1";
+
+    /// The quiescence must record the capture it plays on the search path, so that
+    /// the next quiescence level orders its replies with the move that was actually
+    /// played. Without it the counter-move table and the continuation-history tables
+    /// are consulted with a stale previous move.
+    #[test]
+    fn quiescence_records_the_capture_on_the_search_path() {
+        let mut pos = Position::from_fen(CAPTURES).expect("test FEN");
+        let mut s = searcher();
+        s.quiesce(&mut pos, -INF_SCORE, INF_SCORE, 0);
+        assert!(
+            !s.quiesce_path_log.is_empty(),
+            "the quiescence played no capture, so the test proves nothing"
+        );
+        for m in &s.quiesce_path_log {
+            assert_ne!(
+                m.from, m.to,
+                "the quiescence recorded a null move on the search path"
+            );
+        }
+    }
+
+    /// The quiescence must not leave the search path of the main search modified.
+    #[test]
+    fn quiescence_restores_the_search_path() {
+        let mut pos = Position::from_fen(CAPTURES).expect("test FEN");
+        let mut s = searcher();
+        let marker = Move::new(4, 12);
+        s.path[0] = marker;
+        s.path[1] = marker;
+        s.quiesce(&mut pos, -INF_SCORE, INF_SCORE, 0);
+        assert_eq!(s.path[0], marker, "the quiescence overwrote path[0]");
+        assert_eq!(s.path[1], marker, "the quiescence overwrote path[1]");
     }
 }
