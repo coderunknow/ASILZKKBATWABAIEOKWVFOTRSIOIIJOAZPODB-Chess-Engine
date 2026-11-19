@@ -187,7 +187,7 @@ registration specifies the candidate's perspective. The raw JSONL was never modi
 the registered estimator was re-run on the same records with `--focus <candidate>`, and
 the runner now takes the candidate name explicitly. See `FAILURE_LEDGER.md`.
 
-## 2026-11-18 — EVAL-1 evaluation ablation (registered before dispatch)
+## 2026-11-18 — EVAL-2 evaluation ablation (registered before dispatch)
 
 Seven matched pairs, each played against the **same** control (EVAL-NONE, the parent
 tree with every evaluation flag off), so that the seven estimates are directly
@@ -196,10 +196,16 @@ comparable and no evaluation change can hide inside an aggregate.
 Control validity was verified **before** any game was played: EVAL-NONE reproduces the
 parent tree's bench signature `8370f143c3b76fb4` and node count 2,697,573 exactly.
 
+These are the **EVAL-2** identities, pinned before dispatch and taken verbatim from
+`PREREGISTRATION.md` § "EVAL-2". The earlier EVAL-1 set was withdrawn and its binaries
+must not be mixed in: the outpost pawn-attack tables were found to be inverted in both
+directions, the fix changes the evaluation values, and every EVAL-1 binary therefore
+measured a different program from the one in the tree.
+
 | Variant | Flags disabled | SHA-256 | Bench signature | Depth-10 nodes |
 |---|---|---|---|---|
-| EVAL-NONE | all six | `1fa874d2…` | `8370f143c3b76fb4` | 2,697,573 |
-| EVAL-ALL | none | `7fddfc05…` | `03e46bba31f35591` | 3,445,466 |
+| EVAL-NONE | all six | `a4695a7c…` | `8370f143c3b76fb4` | 2,697,573 |
+| EVAL-ALL | none | `0ab1d0cb…` | `b58979ca90492208` | 3,666,233 |
 | EVAL-NO-MOBILITY-TAPER | `FEAT_MOBILITY_TAPER` | `b4cb1dfd…` | `ef9410f8cce0da89` | 3,161,626 |
 | EVAL-NO-PAWN-STRUCTURE | `FEAT_PAWN_STRUCTURE` | `2e3bfdd0…` | `c164bbabc73cfc45` | 3,335,879 |
 | EVAL-NO-PASSER | `FEAT_PASSER` | `511e6d65…` | `ef9410f8cce0da89` | 3,590,574 |
@@ -207,11 +213,7 @@ parent tree's bench signature `8370f143c3b76fb4` and node count 2,697,573 exactl
 | EVAL-NO-OUTPOSTS | `FEAT_OUTPOSTS` | `7eb2c79e…` | `906fe14c58ff639f` | 4,278,204 |
 | EVAL-NO-KING-SAFETY | `FEAT_KING_SAFETY` | `85331959…` | `acf066a921c1dde1` | 3,080,004 |
 
-These identities supersede the EVAL-1 set above, which was withdrawn: the
-outpost pawn-attack tables were found to be inverted in both directions, the
-fix changes the evaluation values, and every EVAL-1 binary therefore measured
-a different program from the one in the tree. See `PREREGISTRATION.md`
-§ "EVAL-2" and `FAILURE_LEDGER.md`.
+See `PREREGISTRATION.md` § "EVAL-2" and `FAILURE_LEDGER.md`.
 
 Note that the ablation builds differ in *node count* as well as in score: changing the
 evaluation changes which lines the search follows. That is why a node-count comparison
@@ -274,11 +276,19 @@ runs summed over the four positions on an otherwise idle machine.
 
 ### How a performance change is verified here
 
-A change that alters no value can be verified *exactly*: the fixed-depth-10
-bench signature and node count pin the searched tree. Both stayed at
-`b58979ca90492208` and 3,666,233 nodes, which is the proof that the
-evaluation values did not change and that the tree is identical. That check
-is used instead of a hand-written equivalence test.
+The fixed-depth-10 bench signature and node count are a **regression signal**,
+not a proof of evaluation equivalence. The bench visits 12 fixed positions;
+an identical signature and an identical node count mean that the search
+behaved identically *on those positions* (the node count pins the search
+paths, and the signature pins the values the search returned). It cannot rule
+out a changed evaluation on a position the bench never visits.
+
+For the refactor in question both stayed at `b58979ca90492208` and 3,666,233
+nodes, which is strong evidence that the evaluation values did not change on
+the bench positions. To *claim* evaluation equivalence, compare the two
+builds directly instead: dump `flawless eval <fen>` for a set of positions
+from each build and diff the values. That direct comparison, not the bench
+signature, is what supports an equivalence claim.
 
 An attempt to also flatten the piece-square tables and fold the material
 total out of the per-square loop was measured and **reverted**: it was a

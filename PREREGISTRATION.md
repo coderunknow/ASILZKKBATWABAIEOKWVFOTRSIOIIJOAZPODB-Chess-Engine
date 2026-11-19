@@ -944,16 +944,35 @@ identical to the current tree's, but whose binary hashes are not.
 This is checked two ways rather than asserted:
 
 - the depth-10 bench signature and node count are unchanged at
-  `b58979ca90492208` / 3,666,233 nodes, so the **searched tree is identical**;
+  `b58979ca90492208` / 3,666,233 nodes, so the **searched tree is identical
+  on the 12 bench positions**;
 - the full per-component breakdown was compared between the campaign's binary
   and the current tree's binary over ten positions — including the four the
   outpost regression test uses — with **zero differences**.
 
-Because the searched tree is identical and the search is deterministic, the
-games the campaign produced are the games the current tree produces. The
-binary identities in the table above are the ones the campaign used; the
-current tree's binaries have different SHA-256 values and the same bench
-signature and node count.
+### EVAL-2 — correction to the note above (2026-11-19, review finding)
+
+The claim that the campaign's games *are* the games the current tree produces
+is **not** established and is withdrawn. The campaign ran under a fixed
+`movetime 100 ms` budget, so the search is budget-limited rather than
+deterministic across builds: a build that computes the same values in less
+time searches more nodes before the deadline, and a different compiler changes
+throughput. An unchanged bench signature at a *fixed depth* does not imply an
+unchanged game under a *fixed time* budget.
+
+What the measurements do establish, and what may be claimed:
+
+- the **evaluation values** are unchanged — verified directly by the
+  per-component breakdown comparison over ten positions with zero differences,
+  not inferred from the bench;
+- the **searched tree is unchanged on the 12 bench positions** — an
+  unchanged fixed-depth bench signature and node count are a regression signal
+  over those positions only, and cannot rule out a changed evaluation on a
+  position the bench does not visit;
+- the **binary identities stay separate**. The campaign's SHA-256 values are
+  the ones the campaign used; the current tree's binaries have different
+  SHA-256 values. No claim of identical games, identical search paths, or
+  identical play is made beyond the two points above.
 
 ### EVAL-2 — compute environment note
 
@@ -963,13 +982,18 @@ benchmarks and test runs). A fixed `movetime` budget means a busier CPU
 searches fewer nodes within that budget, so the absolute depth reached varied
 during the campaign.
 
-This does not bias the comparison *within* a pair: both engines in a game
-face the same machine at the same time, and the schedule pairs them
-game-for-game with exact AB/BA colour reversal. It does mean the absolute
-scores are not comparable to a campaign run on an idle machine, and it is one
-more reason the result is screening evidence and not a rating. A confirmatory
-run on a quiet machine would be required before any claim beyond the
-registered screening decision rules.
+The engines in a game take **alternating turns**, so they do not necessarily
+face the same CPU load at the same moment: a build or test that runs during
+one engine's turn but not during the other's changes only that engine's
+throughput. Exact AB/BA colour reversal pairs the *schedule*, but it does not
+establish that the load was balanced. Load-related bias is therefore carried
+as an **uncertainty** in this screening result, not asserted away; no
+measurement in this campaign establishes load balance.
+
+It does mean the absolute scores are not comparable to a campaign run on an
+idle machine, and it is one more reason the result is screening evidence and
+not a rating. A confirmatory run on a quiet machine would be required before
+any claim beyond the registered screening decision rules.
 
 The STRENGTH-1 campaign has the same property and was run the same way.
 

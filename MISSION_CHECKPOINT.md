@@ -402,3 +402,28 @@ measured, and all timings come from the ENGINE-1 binary — both recorded as ass
 No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
 exists, PR #2 stays Draft, and the candidate-specific controls + candidate-specific power PASS +
 three unrounded Elo lower bounds > 2,000 remain required before any dispatch.
+
+## 2026-11-19 — CodeRabbit findings addressed (head `92ae065`)
+
+Two real tooling defects and five documentation/packaging claims were corrected; see AGENTS_LOG.md
+for the item-by-item record. The two that mattered most:
+
+- `scripts/audit_pair.py` passed a schedule that reversed **no opening** (global AB/BA balance is
+  not a per-slot colour-reversal check). It now validates the actual
+  `(opening, repetition, color_pair)` slots and requires a uniform repetition set across openings.
+  The real EVAL-3 evidence still passes.
+- `scripts/collect_eval_results.py` could print a registered `KEPT` decision on evidence that had
+  **failed its audit**. Both decision paths now require `audit == "PASS"`.
+
+The Windows release build now links the C runtime statically and the workflow *verifies* the PE
+import table, so the "no extra runtime DLLs" packaging claim is true rather than asserted. The
+Windows artefact's bytes change, so the owner's pending Windows acceptance must be redone against
+the new artefact.
+
+The Linux candidate binary is unaffected — `src/`, `tests/`, `Cargo.toml` and `Cargo.lock` are
+untouched, so candidate SHA-256 `0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5`
+and bench signature `c64d148d39181140` still identify the same program.
+
+No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
+exists, PR #2 stays Draft, and candidate-specific controls + a reviewed candidate-specific power
+PASS + three unrounded Elo lower bounds > 2,000 all remain required before any dispatch.

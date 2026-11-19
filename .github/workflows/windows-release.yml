@@ -6,6 +6,8 @@ name: Windows Release Artifact
 # Target: Windows 10 LTSC 2021, x86-64, Intel i5-7300U (4 threads), 8 GB RAM.
 # The default `x86_64-pc-windows-msvc` target uses the baseline x86-64 feature set
 # (SSE2), so no CPU-specific flags are used and the binary runs on the target CPU.
+# The C runtime is linked statically so the package needs no redistributable;
+# the produced executable's PE import table is verified before publishing.
 
 on:
   workflow_dispatch:
@@ -43,8 +45,15 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: ${{ runner.os }}-cargo-release-
 
-      - name: Release build (baseline x86-64, no CPU-specific flags)
+      # The Rust MSVC target links the C runtime DYNAMICALLY by default, so the
+      # delivered flawless.exe would import VCRUNTIME140.dll and a recipient
+      # without the Visual C++ Redistributable could not start it. Link the CRT
+      # statically so the package really is self-contained, and verify the
+      # produced PE imports below rather than asserting it.
+      - name: Release build (baseline x86-64, static CRT, no CPU-specific flags)
         run: cargo build --release --locked
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
 
       - name: Verify no CPU-specific codegen flags were injected
         shell: bash
@@ -55,6 +64,21 @@ jobs:
             exit 1
           fi
           echo "no target-cpu override found"
+
+      # Verify the packaging claim instead of asserting it: the delivered
+      # executable must not import a C runtime the recipient would have to
+      # install separately.
+      - name: Verify the executable has no external C-runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/pe_imports.py target/release/flawless.exe | tee dist-imports.txt
+          if grep -Ei '^(vcruntime|msvcp|msvcr|ucrtbase|api-ms-win-crt)' dist-imports.txt; then
+            echo "::error::the executable imports a C runtime DLL; the package is not self-contained"
+            exit 1
+          fi
+          echo "no C-runtime DLL import: the package is self-contained"
 
       - name: Stage executable and package metadata
         shell: bash
@@ -83,9 +107,10 @@ jobs:
             "cargo_toolchain": "$CARGO_V",
             "target_triple": "$TARGET",
             "profile": "release (lto=fat, codegen-units=1, debug=false, panic=unwind)",
-            "codegen_flags": "none (baseline x86-64; no target-cpu / no target-feature overrides)",
+            "codegen_flags": "baseline x86-64; no target-cpu override; C runtime linked statically via -C target-feature=+crt-static",
             "build_date_utc": "$BUILD_DATE",
             "external_dependencies": [],
+            "imported_dlls": $(python -c "import json,sys;print(json.dumps([l.strip() for l in open('../dist-imports.txt') if l.strip()]))" 2>/dev/null || echo '[]'),
             "uci_features": [
               "uci", "isready", "ucinewgame", "position", "position fen", "position moves",
               "go depth", "go nodes", "go movetime", "go wtime/btime/winc/binc/movestogo",
@@ -144,8 +169,10 @@ jobs:
           - Intel Core i5-7300U or newer (4 threads). The binary uses the baseline x86-64
             instruction set (SSE2); no AVX/AVX2/BMI2 code is emitted, so it also runs on
             older CPUs.
-          - No extra runtime DLLs are required (Rust MSVC target links the CRT statically
-            for the standard libraries in use).
+          - No extra runtime DLLs are required. The C runtime is linked statically
+            (`-C target-feature=+crt-static`), and the release workflow inspects the
+            produced executable's PE import table before publishing, so the package
+            starts on a clean Windows install with no Visual C++ Redistributable.
           - ~64 MB RAM for the default 64 MiB transposition table.
 
           ## Verify the download

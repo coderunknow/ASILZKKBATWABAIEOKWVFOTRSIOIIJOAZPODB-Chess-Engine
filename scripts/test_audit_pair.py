@@ -134,6 +134,35 @@ def main() -> int:
     check("openings        : 19 distinct" in out, "19 openings should be reported")
     check("verdict         : INCOMPLETE/FAIL" in out, "a missing opening must fail")
 
+    # --- a globally balanced but unreversed schedule is detected ----------
+    # Ten openings played AB only and ten BA only: the totals balance 40/40
+    # and every opening still has the registered multiplicity, yet no opening
+    # is colour-reversed at all. A global balance check alone passes this.
+    unreversed = []
+    for i, op in enumerate(OPENINGS):
+        for rep in range(4):
+            pair = "AB" if i < 10 else "BA"
+            unreversed.append(make_game(op, rep, pair, "1/2-1/2"))
+    out = run_audit(unreversed)
+    check("counted         : 80" in out, "the unreversed schedule still has 80 games")
+    check("colour balance  : {'AB': 40, 'BA': 40}" in out, "the totals really do balance")
+    check("unreversed slots: 80" in out, "every slot must be reported unreversed")
+    check("verdict         : INCOMPLETE/FAIL" in out, "an unreversed schedule must fail")
+
+    # --- a single missing colour leg is detected --------------------------
+    one_leg = [g for g in build_full_set() if not (g["opening"] == OPENINGS[3] and g["repetition"] == 1 and g["color_pair"] == "BA")]
+    out = run_audit(one_leg, expected=79)
+    check("unreversed slots: 1" in out, "the single unreversed slot must be reported")
+    check("verdict         : INCOMPLETE/FAIL" in out, "a missing colour leg must fail")
+
+    # --- inconsistent repetition sets across openings are detected -------
+    mixed = build_full_set()
+    mixed = [g for g in mixed if not (g["opening"] == OPENINGS[5] and g["repetition"] == 1)]
+    mixed += [make_game(OPENINGS[5], 2, "AB", "1/2-1/2"), make_game(OPENINGS[5], 2, "BA", "1/2-1/2")]
+    out = run_audit(mixed)
+    check("repetition sets : 2 distinct across 20 openings" in out, "the mixed repetition sets must be reported")
+    check("verdict         : INCOMPLETE/FAIL" in out, "mixed repetition sets must fail")
+
     # --- the score is computed from the candidate's perspective -----------
     scored = build_full_set()
     for i, g in enumerate(scored):

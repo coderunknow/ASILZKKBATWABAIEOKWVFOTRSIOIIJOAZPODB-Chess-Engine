@@ -207,3 +207,39 @@ regression test that was verified to fail against the pre-fix source.
   binary, no gate plan or dispatch is created, and candidate-specific controls, a reviewed
   candidate-specific power PASS, exact identity and suite hashes, exactly 600 counted games and
   three unrounded Elo lower bounds above 2,000 all remain required before dispatch.
+- **Address the CodeRabbit review findings at head `92ae065`.**
+  - `scripts/audit_pair.py` now validates the actual `(opening, repetition, color_pair)` slots
+    instead of only a global AB/BA balance. A schedule with ten AB-only and ten BA-only openings
+    balances 40/40 and previously passed the audit while reversing no opening at all; it now
+    fails. The audit also requires every opening to carry the same repetition set. The real
+    EVAL-3 evidence still passes unchanged (60.5/80 = 0.7562).
+  - `scripts/collect_eval_results.py` no longer lets a failed audit produce a registered decision.
+    The aggregate path printed `KEPT` on a positive Elo lower bound even when `audit=FAIL`, and a
+    failed ablation still drove the per-feature verdict. Both paths now require `audit == "PASS"`
+    and report `UNAVAILABLE (...)` otherwise; failed results are still kept for diagnostics.
+  - `BENCHMARKING.md`: the evaluation-ablation identity table carried two withdrawn EVAL-1
+    identities; it now carries the EVAL-2 identities pinned before dispatch and is labelled
+    EVAL-2.
+  - `BENCHMARKING.md`, `PREREGISTRATION.md`, `STATUS.md`: the fixed-depth bench signature is
+    described as a regression signal over the 12 bench positions, not as proof of evaluation
+    equivalence. The claim that the EVAL-2 campaign's games are the current tree's games is
+    withdrawn: the campaign ran under a fixed 100 ms/move budget, where the search is
+    budget-limited rather than deterministic across builds. The EVAL-3 result is attributed to the
+    binary it was played with. The shared-load assumption is now carried as an uncertainty rather
+    than asserted away.
+  - `.github/workflows/windows-release.yml`: the "no extra runtime DLLs" claim was false, because
+    the Rust MSVC target links the C runtime dynamically by default. The release build now links
+    the CRT statically (`-C target-feature=+crt-static`), and a new step verifies the produced
+    executable's PE import table — `scripts/pe_imports.py` is a new dependency-free PE import
+    parser — failing the build if any C-runtime DLL is imported. The package note and
+    `BUILD_MANIFEST.json` are corrected and the manifest now records the imported DLL list.
+  - New regression suites: `scripts/test_collect_eval_results.py` (15 checks) and
+    `scripts/test_pe_imports.py` (12 checks); `scripts/test_audit_pair.py` grows from 22 to 30
+    checks. CI runs all of them.
+  The Windows artefact's bytes change with the static-CRT link, so the pending owner Windows
+  acceptance must be redone against the new artefact. The Linux candidate binary is unaffected:
+  `src/`, `tests/`, `Cargo.toml` and `Cargo.lock` are untouched, so the candidate SHA-256
+  `0a9ddd91…` and bench signature `c64d148d39181140` still identify the same program. No gate
+  changed: the power report stays `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch exists,
+  PR #2 stays Draft, and the candidate-specific controls, the candidate-specific power PASS and the
+  three unrounded Elo lower bounds above 2,000 all remain required before any dispatch.

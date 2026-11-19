@@ -103,15 +103,24 @@ def main() -> int:
         )
 
     # --- the aggregate decision -----------------------------------------
+    # A registered decision may only be taken on evidence that passed its
+    # own audit. Failed audits stay in `results` for diagnostics, but they
+    # must not produce a decision: the registered rule is about a complete,
+    # correctly scheduled evidence set, not about whatever statistics happen
+    # to survive a failed audit.
     allr = results.get("EVAL-ALL")
     if allr:
-        if allr["elo_lo"] > 0:
-            decision = "KEPT"
-        elif allr["elo_hi"] <= 0:
-            decision = "REJECTED"
+        if allr.get("audit") != "PASS":
+            decision = "UNAVAILABLE (EVAL-ALL failed its audit)"
+            print(f"\nEVAL-ALL vs EVAL-NONE decision: {decision}")
         else:
-            decision = "INCONCLUSIVE"
-        print(f"\nEVAL-ALL vs EVAL-NONE decision: {decision}")
+            if allr["elo_lo"] > 0:
+                decision = "KEPT"
+            elif allr["elo_hi"] <= 0:
+                decision = "REJECTED"
+            else:
+                decision = "INCONCLUSIVE"
+            print(f"\nEVAL-ALL vs EVAL-NONE decision: {decision}")
 
         # --- the per-feature decisions -----------------------------------
         print("\nPer-feature comparison (EVAL-ALL point estimate vs the ablation):")
@@ -121,6 +130,12 @@ def main() -> int:
             r = results.get(label)
             if not r:
                 print(f"  {label:26s} (no evidence)")
+                continue
+            if allr.get("audit") != "PASS":
+                print(f"  {label:26s} UNAVAILABLE (EVAL-ALL failed its audit)")
+                continue
+            if r.get("audit") != "PASS":
+                print(f"  {label:26s} UNAVAILABLE (ablation failed its audit)")
                 continue
             delta = allr["elo"] - r["elo"]
             if delta < -HARMFUL_MARGIN:

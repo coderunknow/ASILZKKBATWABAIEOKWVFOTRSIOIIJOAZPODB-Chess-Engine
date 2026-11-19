@@ -5,7 +5,10 @@ Checks, for one pair:
   * the number of counted games, and that it equals the registered 80;
   * that there are no engine errors and no uncounted/duplicate games;
   * exact AB/BA colour balance (40/40);
-  * that all 20 openings are covered, each with the registered multiplicity;
+  * that every (opening, repetition) slot carries BOTH colours, so each
+    opening is genuinely colour-reversed and not merely balanced in total;
+  * that all 20 openings are covered, each with the registered multiplicity
+    and the same repetition set;
   * the score from the candidate's perspective.
 
 Usage: audit_pair.py <games.jsonl> <candidate-name> [expected-games]
@@ -39,6 +42,19 @@ def main() -> int:
     )
     duplicates = {k: v for k, v in slots.items() if v > 1}
 
+    # The registered schedule requires an exact colour reversal for every
+    # (opening, repetition) slot. A global AB/BA balance is NOT sufficient:
+    # ten openings played AB-only and ten BA-only balance globally while
+    # reversing no opening at all. Check the actual slots, not the totals.
+    slot_colours = collections.defaultdict(set)
+    opening_reps = collections.defaultdict(set)
+    for g in counted:
+        slot_colours[(g.get("opening"), g.get("repetition"))].add(g.get("color_pair"))
+        opening_reps[g.get("opening")].add(g.get("repetition"))
+
+    unreversed = {k: v for k, v in slot_colours.items() if v != {"AB", "BA"}}
+    rep_sets = {frozenset(v) for v in opening_reps.values()}
+
     colours = collections.Counter(g.get("color_pair") for g in counted)
     openings = collections.Counter(g.get("opening") for g in counted)
 
@@ -59,8 +75,10 @@ def main() -> int:
     print(f"engine errors   : {len(errors)}")
     print(f"uncounted       : {len(uncounted)}")
     print(f"duplicate slots : {len(duplicates)}")
+    print(f"unreversed slots: {len(unreversed)}")
     print(f"colour balance  : {dict(colours)}")
     print(f"openings        : {len(openings)} distinct, counts {sorted(set(openings.values()))}")
+    print(f"repetition sets : {len(rep_sets)} distinct across {len(openings)} openings")
     print(f"score ({focus}) : {score}/{len(counted)} = {score / len(counted):.4f}")
 
     # The registered schedule requires an exact AB/BA colour reversal, so a
@@ -74,6 +92,8 @@ def main() -> int:
         and not uncounted
         and not duplicates
         and balanced
+        and not unreversed
+        and len(rep_sets) == 1
         and len(openings) == 20
         and set(openings.values()) == {expected // 20}
     )

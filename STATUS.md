@@ -480,9 +480,14 @@ This is **screening evidence on a shared 2-vCPU sandbox at a fixed 100 ms/move t
 is not a rating, it is not comparable to a campaign run on an idle machine or under the 40/15
 clock, and it does not substitute for the >2,000 Elo gate.
 
-**Consequence for the campaign.** The searched tree is unchanged by the mate-distance fix (identical
-bench signature and node count, and a depth-10 search cannot reach a mate 100 plies away), so the
-EVAL-3 result carries over to the current tree unchanged. `benches/rating-100-power-assessment.json`
+**Consequence for the campaign.** The EVAL-3 result is evidence for the binary it was
+played with. The mate-distance fix changes search behaviour outside the ordinary depth-10
+benchmark — an unchanged bench signature and node count is a regression signal over the 12
+bench positions only, and cannot rule out a changed evaluation or a changed search path on
+positions the bench does not visit. EVAL-3 was played at a fixed 100 ms/move budget, where
+the search is budget-limited rather than deterministic across builds, so the current tree is
+not shown to produce the same games. The candidate's strength must therefore be re-established
+on the frozen candidate binary before any confirmatory claim. `benches/rating-100-power-assessment.json`
 remains BLOCKED, PR #2 remains Draft, and `OWNER_TEST_PENDING` remains in force.
 
 ## 2026-11-19 — confirmatory campaign compute-cost estimate (planning only)
