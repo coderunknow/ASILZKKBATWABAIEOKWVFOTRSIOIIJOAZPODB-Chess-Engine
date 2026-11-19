@@ -689,10 +689,23 @@ impl<'a> Searcher<'a> {
                     -alpha,
                     ply + 1,
                 );
-                if reduction > 0 && s > alpha {
-                    // The reduced search failed high: re-search at full depth with the
-                    // FULL window. A null-window re-search returns a fail-low bound,
-                    // which is a pessimistic estimate of the move's true value.
+                if s > alpha && (reduction > 0 || s < beta) {
+                    // The scout search used the null window (-alpha-1, -alpha), so the
+                    // score it returns is a BOUND, not the move's value.
+                    //
+                    //  * `reduction > 0`: the reduced search failed high, so re-search at
+                    //    full depth. A null-window re-search returns a fail-low bound,
+                    //    which is a pessimistic estimate of the move's true value, so the
+                    //    re-search uses the FULL window.
+                    //  * `s < beta`: standard PVS verification. The move beats alpha, so
+                    //    its exact value is needed for the node's best_score, for the
+                    //    alpha update and for the score the root reports. Re-searching
+                    //    with the full window yields that value.
+                    //
+                    // Without this re-search the scout bound is used as the move's score:
+                    // the node's best_score, the alpha update and the root's reported
+                    // score are all too low, and the engine can pick a move that is worse
+                    // than one it already evaluated.
                     s = -self.search(pos, depth - 1 + extension, -beta, -alpha, ply + 1);
                 }
                 s
@@ -1213,5 +1226,122 @@ mod draw_rule_tests {
             "claim value below draw: {}",
             r.score_cp
         );
+    }
+}
+
+#[cfg(test)]
+mod pvs_tests {
+    use super::*;
+    use crate::movegen::generate_legal_fast;
+    use std::sync::atomic::AtomicBool;
+
+    /// Root search over every legal move, with a fresh table per call.
+    fn run(pos: &mut Position, depth: i32) -> SearchResult {
+        let mut tt = TranspositionTable::new(4);
+        let stop = AtomicBool::new(false);
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: depth,
+            ..SearchLimits::default()
+        }));
+        let mut s = Searcher::new(&mut tt, &stop, limits);
+        s.search_root(pos, None, 1, &mut |_| {})
+    }
+
+    /// Root search restricted to a single move. The restricted move is the first
+    /// (and only) move of the root, so it is searched with the full window and its
+    /// score is the exact value of that move.
+    fn run_restricted(pos: &mut Position, mv: Move, depth: i32) -> SearchResult {
+        let mut tt = TranspositionTable::new(4);
+        let stop = AtomicBool::new(false);
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: depth,
+            ..SearchLimits::default()
+        }));
+        let mut s = Searcher::new(&mut tt, &stop, limits);
+        s.search_root(pos, Some(vec![mv]), 1, &mut |_| {})
+    }
+
+    /// Positions taken from the Batch A rating opening list (after the listed moves).
+    const POSITIONS: [&str; 6] = [
+        // Ruy Lopez Berlin
+        "r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        // Italian Game
+        "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+        // Scotch Game
+        "r1bqkbnr/pppp1ppp/2n5/8/3NP3/8/PPP2PPP/RNBQKB1R b KQkq - 0 4",
+        // Petroff Defence
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+        // Philidor Defence
+        "rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3",
+        // Vienna Game
+        "rnbqkb1r/pppp1ppp/5n2/4p3/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 2 3",
+    ];
+
+    /// The PVS scout searches with the null window (-alpha-1, -alpha), so the score it
+    /// returns for a move is a BOUND. A move that is not searched first must therefore
+    /// be re-searched with the full window before its score is used.
+    ///
+    /// If the bound is used as the move's score, the root's score is lower than the
+    /// value of the move the engine actually prefers, and the engine can pick a move
+    /// that is worse than one it already evaluated.
+    ///
+    /// Depth 2 is used on purpose: late move reductions only start at depth 3, so at
+    /// depth 2 the root score must be exactly the value of the best single move.
+    #[test]
+    fn root_score_equals_best_single_move_score() {
+        for fen in POSITIONS {
+            let mut pos = Position::from_fen(fen).expect("test FEN");
+            let root = run(&mut pos, 2);
+            let mut best = i32::MIN;
+            let mut best_move = Move::NULL;
+            let legal = generate_legal_fast(&mut pos)
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            for mv in legal {
+                let mut p = pos.clone();
+                let r = run_restricted(&mut p, mv, 2);
+                if r.score_cp > best {
+                    best = r.score_cp;
+                    best_move = mv;
+                }
+            }
+            assert_eq!(
+                root.score_cp, best,
+                "root score {} is not the value of the best move {} ({}); \
+                 the PVS scout bound was used as a move score",
+                root.score_cp, best, best_move
+            );
+        }
+    }
+
+    /// The chosen move must be the move with the highest value. With the PVS bound
+    /// promoted to a score, the root can select a move that is worse than another
+    /// move it already evaluated.
+    #[test]
+    fn root_move_is_the_best_move() {
+        for fen in POSITIONS {
+            let mut pos = Position::from_fen(fen).expect("test FEN");
+            let root = run(&mut pos, 2);
+            let mut best = i32::MIN;
+            let mut best_move = Move::NULL;
+            let legal = generate_legal_fast(&mut pos)
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            for mv in legal {
+                let mut p = pos.clone();
+                let r = run_restricted(&mut p, mv, 2);
+                if r.score_cp > best {
+                    best = r.score_cp;
+                    best_move = mv;
+                }
+            }
+            assert_eq!(
+                root.best_move, best_move,
+                "root chose {} but the best move is {}",
+                root.best_move, best_move
+            );
+        }
     }
 }
