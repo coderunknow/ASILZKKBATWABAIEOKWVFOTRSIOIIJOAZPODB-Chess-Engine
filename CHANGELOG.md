@@ -151,3 +151,38 @@ regression test that was verified to fail against the pre-fix source.
 - `bench` signature `b58979ca90492208` → `c64d148d39181140`, nodes 3,666,233 →
   3,413,723. The `anchor-verify` workflow pins the signature and was updated
   to the new value.
+
+## [Unreleased] — 2026-11-19 (mate-distance fix + EVAL-3 screening result; no release authorized)
+
+- **Fixed:** the mate-score band was `MATE_SCORE - 100`, narrower than the search's
+  own ply limit `MAX_PLY` (128). A mate 100 plies or more from the root fell outside
+  the band, and two things went wrong at once:
+  (1) the transposition table did not recognise it as a mate score, so it stored it in
+  root-relative form and returned it unchanged when the entry was probed at a
+  different ply — the mate distance was silently wrong by exactly the ply difference
+  (a mate 101 plies away, re-used at ply 50, was reported as 101 plies away instead of
+  151); and
+  (2) the UCI layer printed it as a centipawn score (`cp 29899`) instead of a mate.
+  The band is now `MATE_SCORE - MAX_PLY`, derived from the search's ply limit rather
+  than an arbitrary constant, and lives in one place (`eval::MATE_BOUND`) that the
+  search, the transposition table and the UCI layer all use. The deepest checkmate
+  node the search can reach is at `MAX_PLY - 1`, so the new band covers every
+  reachable mate score. Commit `32ad8ab`.
+  This is **behaviour-neutral for ordinary positions**: the depth-10 bench signature
+  and node count are unchanged at `c64d148d39181140` / 3,413,723. The only reachable
+  change is in the deep-mate case, where the null-move guard now correctly refuses to
+  run with a mate beta.
+- **Tests:** `tests/mate_distance.rs` adds 8 regressions (four of which fail against
+  the pre-fix source): exhaustive mate-distance normalisation over the whole reachable
+  range, the concrete cross-ply transposition case, the UCI score format at the band
+  edge, the width of the band itself, plus end-to-end checks that the real engine
+  reports `mate 1` / `mate 2` through the protocol and that the mate distance is
+  stable when the table is reused. Rust test count 67 → 75.
+- **EVAL-3 (registered before dispatch, screened after):** the audited tree beat the
+  pre-audit tree **60.5/80 = 0.756**, 95% CI [0.662, 0.838], Elo difference **+197**,
+  95% CI **[+117, +285]** — 80 games, 20 opening clusters, exact AB/BA colour
+  reversal, zero engine errors, audit verdict PASS. The registered decision rule
+  (95% CI lower bound > 0 Elo) is met. This is screening evidence on a shared
+  2-vCPU sandbox at a fixed 100 ms/move time control; it is not a rating and does
+  not substitute for the >2,000 Elo gate. Raw evidence:
+  `benches/evidence/screening-eval3/`.

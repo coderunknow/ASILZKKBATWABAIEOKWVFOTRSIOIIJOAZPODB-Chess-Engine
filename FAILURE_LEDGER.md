@@ -763,3 +763,22 @@ confirmatory dispatch.
 - Result: fixed in `018e920`. The quiescence records the capture it plays and restores the
   previous entry afterwards. The bench node count moves from 3413870 to 3413723.
 - Lesson: the path is an input to the ordering, so every level of the search has to maintain it.
+
+## 2026-11-19 — Phase C audit: the mate-score band was narrower than the reachable mate range
+
+- Attempt: complete the TT mate-distance normalisation trace and decide whether the mate-distance handling was sound.
+- What happened: the mate-score band was `MATE_SCORE - 100` in three places (the transposition table, the UCI score formatter and the search's pruning guards), while the search's ply limit is `MAX_PLY = 128`. The search returns a static evaluation at `ply >= MAX_PLY` *before* it looks for mate, so the deepest checkmate node it can reach is at ply `MAX_PLY - 1` and the longest mate it can report is 127 plies from the root. A mate 100 plies or more from the root therefore fell **outside** the band, and the band was 28 plies too narrow in each direction.
+- Classification: **correctness defect**, not a quality defect. Two distinct failures:
+  (1) the transposition table did not recognise such a score as a mate score, so it stored it in root-relative form and returned it unchanged when the entry was probed at a different ply. The mate distance was then wrong by exactly the ply difference — a mate 101 plies away, stored at ply 0 and re-used at ply 50, was reported as 101 plies away instead of 151. Reproduced directly against the table's public API.
+  (2) the UCI layer printed such a mate as a centipawn score (`cp 29899`), which is not a score the format can represent and which a GUI would render as a nonsensical evaluation rather than a mate.
+  The search's own pruning guards shared the same band, so a null move could be attempted with a mate beta (a mate 100–127 plies away yields a beta in `[MATE_SCORE - 127, MATE_SCORE - 100]`). That is a third consequence of the same root cause.
+- Result: fixed in `32ad8ab`. The band is now `MATE_SCORE - MAX_PLY`, derived from the search's ply limit rather than from an arbitrary constant, and it is defined once in `eval::MATE_BOUND` and used by the search, the table and the UCI layer. The fix is **behaviour-neutral for ordinary positions**: the depth-10 bench signature and node count are unchanged at `c64d148d39181140` / 3,413,723, because a depth-10 search can never reach a mate 100 plies away. `tests/mate_distance.rs` adds eight regressions, four of which fail against the pre-fix source.
+- Lesson: a threshold that classifies a *kind of score* must be derived from the range the producer can actually emit. `MATE_SCORE - 100` looks like a safe margin; it was in fact a band 28 plies narrower than the reachable range, and the same constant was duplicated in three modules, so the three copies agreed with each other and were all wrong together.
+
+## 2026-11-19 — EVAL-3 screening: the audited tree is measurably stronger than the pre-audit tree
+
+- Attempt: measure whether the three audited search fixes also make the engine stronger, not merely correct.
+- What happened: with the identities pinned before dispatch (candidate `540a10df…` / bench `c64d148d39181140`; control `2b41a8e6…` / bench `b58979ca90492208`), the candidate scored **60.5/80 = 0.756**, 95% CI [0.662, 0.838], Elo difference **+197**, 95% CI **[+117, +285]**, over 80 games on 20 opening clusters with exact AB/BA reversal and zero engine errors.
+- Classification: not a failure. The registered decision rule (95% CI lower bound > 0 Elo) is met with a wide margin, and the result was reproduced by two independent code paths (`scripts/stats.py` and a separate recomputation against the raw JSONL).
+- Result: recorded in `PREREGISTRATION.md` (EVAL-3 result record) and the raw evidence is preserved under `benches/evidence/screening-eval3/`. The result is screening evidence on a shared 2-vCPU sandbox at a fixed 100 ms/move time control; it is not a rating and it does not substitute for the >2,000 Elo gate.
+- Lesson: the mechanical root-consistency measurements of the audit (root score below the value of the chosen move in 5/12 and 8/12 positions; MultiPV best understated in 7/12) predicted a real strength gap. A correctness audit that measures the *symptom* it fixed gives a falsifiable strength prediction, which the screening campaign then tested.
