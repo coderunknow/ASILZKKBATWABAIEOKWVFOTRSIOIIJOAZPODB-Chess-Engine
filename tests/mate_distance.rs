@@ -321,7 +321,7 @@ fn mate_distance_is_stable_when_the_table_is_reused() {
     assert!(first > MATE_BOUND, "expected a mate score, got {first}");
     assert_eq!(
         format_score(first),
-        format!("mate 2"),
+        "mate 2".to_string(),
         "the mate distance must survive the table re-use"
     );
 }
