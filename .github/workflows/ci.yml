@@ -40,10 +40,32 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --release --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo clippy --release --all-targets -- -D warnings 2>&1 | tee clippy-out.txt; then
+            echo "::error::cargo clippy --release --all-targets -- -D warnings FAILED"
+            # Surface the REAL diagnostic through annotations: the log channel is
+            # not readable from every environment, annotations always are.
+            { grep -nE "^(error|warning)(\[|:)" -A 8 clippy-out.txt | head -60; \
+              echo "--- tail ---"; tail -c 2000 clippy-out.txt; } \
+              | tr '\n' '%0A' | sed 's/^/::error::out: /'
+            exit 1
+          fi
+          tail -1 clippy-out.txt | sed 's/^/::notice::ok: /'
 
       - name: Tests (release)
-        run: cargo test --release --locked
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo test --release --locked 2>&1 | tee test-out.txt; then
+            echo "::error::cargo test --release --locked FAILED"
+            { grep -nE "panicked at|^failures:|^test .* FAILED|^test result: FAILED|^error(\[:)" -A 4 test-out.txt | head -60; \
+              echo "--- tail ---"; tail -c 2500 test-out.txt; } \
+              | tr '\n' '%0A' | sed 's/^/::error::out: /'
+            exit 1
+          fi
+          tail -1 test-out.txt | sed 's/^/::notice::ok: /'
 
       - name: Python harness + estimator regression tests
         shell: bash
@@ -118,7 +140,11 @@ jobs:
       - name: UCI bestmove smoke test (search depth 2)
         shell: bash
         run: |
-          out=$(printf 'uci\nisready\nposition startpos\ngo depth 2\nquit\n' | ./target/release/flawless uci)
+          # Keep stdin open until the search has answered. Sending `quit` straight
+          # after `go` races the search: the engine stops an in-flight search and
+          # answers `bestmove 0000`, which is not a legal move and made this step
+          # flaky on slow runners.
+          out=$( { printf 'uci\nisready\nposition startpos\ngo depth 2\n'; sleep 5; } | ./target/release/flawless uci)
           echo "$out"
           echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8]([qrbn])?' || { echo "no legal bestmove"; exit 1; }
 
