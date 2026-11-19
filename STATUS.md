@@ -531,3 +531,63 @@ requirements stand unchanged: candidate-specific controls and a reviewed candida
 PASS must exist before dispatch, exact identity and suite hashes are enforced by the dispatcher and
 the resolver, exactly 600 counted games on 50 opening clusters are required, all three unrounded
 Elo lower bounds must exceed 2,000, and PR #2 remains Draft and is never merged automatically.
+
+## 2026-11-19 — CodeRabbit findings addressed; Windows packaging now verified
+
+Head `ab690a9` (branch `arena/8259ce1c-flawlesschess`). Exact-head workflow state, API-verified:
+
+| Workflow | Run | Outcome |
+|---|---|---|
+| CI | 44507672695 | success |
+| anchor-verify | 44507672491 | success |
+| evidence-bridge | 44507672786 | success |
+| Windows Release Artifact | 44507672251, 44507655514 | success |
+| rating-gate | 44507672468 | failure — **expected**: it fails closed while `benches/gate-plan.json` does not exist |
+
+**What the review found.** CodeRabbit's eight findings at head `92ae065` were all on pre-existing
+files; none touched the new cost estimator. Two were real defects in the tooling and are now fixed:
+
+- `scripts/audit_pair.py` accepted a schedule that reversed **no opening**. The old check was a
+  global AB/BA balance, a total game count and a per-opening multiplicity — ten AB-only and ten
+  BA-only openings satisfy all three (40/40) while reversing nothing. Reproduced: the old audit
+  printed `verdict: PASS` on exactly that evidence. The audit now validates the actual
+  `(opening, repetition, color_pair)` slots against the registered schedule, requires every slot to
+  carry both colours, and requires contiguous repetition indices `0..n-1` for every opening. The
+  registered 20 × 2 × 2 schedule is still accepted; the real EVAL-3 evidence still passes at
+  60.5/80 = 0.7562. `scripts/test_audit_pair.py`: 22 → 34 checks.
+- `scripts/collect_eval_results.py` could print a registered `KEPT` decision on evidence that had
+  **failed its audit**. Both decision paths now require `audit == "PASS"` and report `UNAVAILABLE`
+  otherwise; failed results are still kept for diagnostics. New suite
+  `scripts/test_collect_eval_results.py` (15 checks).
+
+The remaining findings were over-claims and one data-integrity error, all corrected:
+`BENCHMARKING.md` now carries the EVAL-2 identities pinned before dispatch rather than two
+withdrawn EVAL-1 ones and is labelled EVAL-2; the fixed-depth bench signature is described as a
+regression signal over the 12 bench positions rather than proof of evaluation equivalence; the
+claim that the EVAL-2 campaign's games are the current tree's games is withdrawn (that campaign ran
+under a fixed 100 ms/move budget, where the search is budget-limited, not deterministic across
+builds); the shared-load assumption is carried as an uncertainty rather than asserted; and the
+EVAL-3 result is attributed to the binary it was played with.
+
+**Windows packaging is now true rather than asserted.** The "no extra runtime DLLs" claim was
+false: the Rust MSVC target links the C runtime dynamically by default. The release build now
+links the CRT statically (`-C target-feature=+crt-static`) and a new step *verifies* it —
+`scripts/pe_imports.py` parses the produced PE import table and the workflow fails the build if
+any C-runtime DLL is imported. The Windows run above confirms it: the static-CRT build succeeds,
+the import check reports no C-runtime dependency, and the UCI handshake, bestmove, perft and bench
+checks all still pass. `scripts/test_pe_imports.py` (12 checks) exercises the parser against a
+synthetic but structurally valid PE32+ image and against non-PE and truncated inputs.
+
+**Consequences.** The Windows artefact's bytes change with the static-CRT link, so the owner's
+pending Windows acceptance must be redone against the new artefact. The **Linux candidate binary is
+unaffected**: `src/`, `tests/`, `Cargo.toml` and `Cargo.lock` are untouched and `RUSTFLAGS` is set
+only in the Windows workflow, so candidate SHA-256
+`0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5` and bench signature
+`c64d148d39181140` still identify the same program.
+
+**No gate changed.** `benches/rating-100-power-assessment.json` is still `BLOCKED` and still guarded
+to the ENGINE-1 binary; no gate plan and no confirmatory dispatch exist; `benches/dispatch.json` is
+untouched. Candidate-specific controls, a reviewed candidate-specific power PASS, exact identity and
+suite hashes, exactly 600 counted games on 50 opening clusters, and three unrounded Elo lower bounds
+above 2,000 all remain required before any dispatch. PR #2 remains Draft and is never merged
+automatically.
