@@ -116,3 +116,38 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   off is 70 Elo worse than keeping it on — the only comparison outside the
   40-Elo indeterminate band. This is screening evidence at a fixed 100 ms/move
   clock, not a rating.
+
+## [Unreleased] — 2026-11-19 (search audit on PR #2; no release authorized)
+
+Three search defects were found by auditing `src/search.rs` against the PVS
+algorithm and the documented move-ordering bands, and by measuring the root
+score against the exact value of the best single move. Each fix ships with a
+regression test that was verified to fail against the pre-fix source.
+
+- **Fixed:** the PVS scout result was used as a move score. The scout searches
+  with the null window `(-alpha-1, -alpha)`, so its result is a bound, and the
+  re-search that turns the bound into a value was guarded by `reduction > 0`.
+  An unreduced non-first move therefore kept its bound as its score, which
+  lowered the node's best score, the alpha update and the score the root
+  reports, and could make the root pick a move worse than one it had already
+  evaluated. At depth 2, where late move reductions are off, the old code
+  reported a root score below the best move's value in 7 of the first 8 Batch A
+  positions, with gaps up to 172 centipawns; the fixed code is exact in every
+  position, as the pre-PR-2 baseline is. The same defect made the engine claim
+  `score mate 15` for a position that is not a forced mate. Commit `708d53c`.
+- **Fixed:** the move-ordering bands overlapped. A quiet move can score as low
+  as 25_424 and a losing capture as high as 42_047, so a losing capture could
+  be ordered above a quiet move — the opposite of the documented intent — and
+  the promotion bonus pushed losing capture-promotions into the middle of the
+  quiet band. The bands are now laid out so that they cannot overlap whatever
+  the history tables hold, and the layout is documented next to the constants.
+  Commit `61dd642`.
+- **Fixed:** the quiescence never recorded the captures it played on the
+  search path, so from the second quiescence level on the counter-move and
+  continuation-history lookups were made for a move from an unrelated branch.
+  The effect is confined to the ordering inside the quiescence — the returned
+  value is the maximum over the captures searched and stays a valid bound.
+  Commit `018e920`.
+- `bench` signature `b58979ca90492208` → `c64d148d39181140`, nodes 3,666,233 →
+  3,413,723. The `anchor-verify` workflow pins the signature and was updated
+  to the new value.

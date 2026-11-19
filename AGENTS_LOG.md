@@ -600,3 +600,37 @@
 - Added `evaluation_total_matches_the_trait_for_both_sides_to_move` and
   `evaluation_is_antisymmetric_over_random_playouts` to the evaluation gate
   suite (7/7 pass).
+
+## 2026-11-19 — Phase B audit continued: three search defects found and fixed
+
+- Environment: the sandbox had been restored to the initial clone state. The PR #2 history was
+  recovered with `git fetch` and the branch pointer was moved to `adda48e` with `git reset --mixed`
+  after verifying that every restored file was byte-identical to its `adda48e` blob. The pinned
+  Rust toolchain (1.97.0) was restored from the PyPI mirror with `tc/fetch.py` and the Python
+  environment with `python-chess` 1.11.2.
+- Audit of `src/search.rs` against the PVS algorithm found that the full-window re-search was
+  guarded by `reduction > 0`, so an unreduced non-first move kept its null-window bound as its
+  score. Measured over the Batch A openings at depth 2 (where late move reductions are off): the
+  old code reports a root score below the best move's value in 7 of the first 8 positions, with
+  gaps up to 172 centipawns; the fixed code is exact in every position. The pre-PR-2 baseline is
+  exact as well, so this is a regression of the search rework. The same defect produced a bogus
+  `score mate 15` for a non-mate position in the Batch A suite.
+- Fixed in `708d53c` together with two regression tests that were verified to fail against the old
+  code. Bench signature b58979ca90492208 -> c64d148d39181140, nodes 3666233 -> 3413870.
+- Audit of the move-ordering bands found that the losing-capture band overlapped the quiet band
+  (27_952..42_047 against 25_424..74_576) and that the promotion bonus pushed losing
+  capture-promotions into the middle of the quiet band. Fixed in `61dd642` by laying the bands out
+  so that they cannot overlap, with two regression tests that fill the history tables with both
+  extremes and check the invariant. The bench signature and node count are unchanged.
+- Audit of the quiescence path bookkeeping found that the quiescence never wrote `self.path`, so
+  its counter-move and continuation-history lookups used a stale previous move from the second
+  quiescence level on. Classified as a quality defect (the returned value is the maximum over the
+  captures searched and stays a valid bound). Fixed in `018e920`; the quiescence now records the
+  capture and restores the entry afterwards.
+- Gates after the three fixes: `cargo fmt --all -- --check`, `cargo clippy --release --all-targets
+  -- -D warnings`, 67 Rust tests (26 lib + 3 + 21 + 7 + 5 + 5), `cargo build --release --locked`
+  and the bench all pass. The seven Python harness suites pass (111, 65, 7, 7, OK, all cases, 22)
+  and `verify_opening_subsets.py` and the power-analysis assertions pass unchanged.
+- Note for the reader: the local toolchain has no `rustdoc`, so `cargo test --doc` cannot run
+  here. The crate has no doc examples, so the doctest suite is empty and CI, which installs the
+  full toolchain, is unaffected.

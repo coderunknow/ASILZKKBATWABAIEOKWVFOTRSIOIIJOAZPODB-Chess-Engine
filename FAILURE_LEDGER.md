@@ -686,3 +686,80 @@ Run candidate-specific self-match and anchor-vs-anchor controls against the
 exact frozen V1 candidate binary, on the registered 40/15 control, with the
 registered AB/BA schedule and the registered bootstrap seed, before any
 confirmatory dispatch.
+
+## 2026-11-19 — Sandbox restore: commit history, toolchain and worktrees lost again
+
+- Attempt: continue the Phase B audit from the restored workspace.
+- What happened: the sandbox was restored to the initial clone state. `git log` showed only the base
+  commit `5e36b06`, the PR #2 commits (`adda48e` and its ancestors) were no longer in the local
+  object store, the extra worktrees (`wt-baseline`, `wt-fixed`, `wt-eval2`, `wt-mate`) were gone,
+  `/home/user/.toolchain`, `/home/user/.venv` and `/home/user/tc` were gone, and `/tmp` was empty.
+  The working tree still held the whole PR #2 change as uncommitted modifications.
+- Recovery: `git fetch origin arena/8259ce1c-flawlesschess` restored the history (`adda48e` and its
+  ancestors). Every file that the restore had left untracked was verified byte-identical to its
+  `adda48e` blob before the branch pointer was moved with `git reset --mixed adda48e`; the working
+  tree was not touched by the reset. The Rust toolchain was restored from the pinned PyPI mirror
+  (`arena-rust-toolchain` 1.97.0 plus the three data wheels) with `/home/user/tc/fetch.py`, and the
+  Python environment with `python-chess` 1.11.2 in `/home/user/.venv`.
+- Result: the workspace is back at the state the audit started from. The uncommitted PVS re-search
+  probe that had been in `/home/user/wt-fixed` was lost with the worktree and was rewritten from
+  scratch.
+- Lesson: the unpushed working tree is the only copy of an uncommitted change. Recreate the
+  toolchain from the pinned mirror before doing anything else, and verify byte identity of a
+  restored tree against the remote before trusting it.
+
+## 2026-11-19 — Phase B audit: the PVS scout bound was used as a move score
+
+- Attempt: audit `src/search.rs` against the PVS algorithm, then measure the root score against the
+  exact value of the best single move over the Batch A opening list.
+- What happened: the re-search that converts a scout bound into a move value was guarded by
+  `reduction > 0`, so an unreduced non-first move never got one and its null-window bound was used
+  as the move's score. At depth 2 the root score was below the best move's value in 7 of the first 8
+  Batch A positions, with gaps up to 172 centipawns, and the root chose a different move than the
+  best one in the same positions. The pre-PR-2 baseline satisfies the invariant exactly, so this
+  was introduced with the search rework.
+- The same defect also produced a bogus mate claim: the King's Gambit Accepted position of the
+  Batch A suite (after 1.e4 e5 2.f4 exf4) reported `score mate 15` at depth 3, which is not a
+  forced mate at all. The bound propagated into the mate range and was formatted as a mate
+  distance.
+- Result: fixed in `708d53c`. The full-window re-search is now performed for every non-first move
+  that beats alpha. Two regression tests were added and verified to fail against the old code.
+- Uncertainty: the residual differences between the root score and the value of the best single
+  move at depth 5 are the late-move-reduction and pruning approximations, not unverified bounds.
+  They are inherent to the search and are not treated as defects.
+- Lesson: a null-window scout result is a bound. Promoting it to a score is a correctness bug that
+  a score-consistency invariant catches immediately, and the invariant must be tested at a depth
+  where the deliberate approximations are switched off.
+
+## 2026-11-19 — Phase B audit: the move-ordering bands overlapped
+
+- Attempt: check that the documented ordering bands ("sound captures outrank killers, losing
+  captures are deliberately demoted below ordinary quiet moves") hold for every reachable value of
+  the history tables.
+- What happened: they did not. A quiet move scores `50_000 + history + cont_history +
+  cont_history2`, and each entry is clamped to `+/- 8192`, so the quiet band reaches down to
+  25_424. A losing capture scored `40_000 + see` with `see` in `[-10_000, -1]` plus the
+  capture-history refinement (at most `8192 / 4 = 2048`), so it could reach 27_952 and be ordered
+  above a quiet move. A capture-promotion was worse: the promotion bonus of up to 20_225 was added
+  to losing captures as well and pushed them to 48_177 .. 62_272, in the middle of the quiet band.
+- Result: fixed in `61dd642`. The bands are now laid out so that they cannot overlap whatever the
+  history tables hold, and the layout is documented next to the constants. Two regression tests
+  check the invariant directly and fail against the old bases.
+- Lesson: an ordering band described in prose is not a band. The bands must be derived from the
+  clamped value ranges of the tables that feed them, and the layout must be checked by a test that
+  fills the tables with both extremes.
+
+## 2026-11-19 — Phase B audit: the quiescence did not record its captures on the search path
+
+- Attempt: classify the open question "quiescence does not update `self.path`".
+- What happened: the search path is documented as "path[p] is the move made at ply p", but only the
+  main search wrote to it. From the second quiescence level on, the counter-move lookup and the
+  continuation-history lookup were made for a move from an unrelated earlier branch, so the
+  counter-move bonus could land on a capture that is not the counter move.
+- Classification: the effect is confined to the ordering inside the quiescence. The quiescence's
+  returned value is the maximum over the captures it searched and does not depend on the order, so
+  the value stays a valid bound; only the place of the beta cutoff moves. It is a quality defect,
+  not a correctness defect.
+- Result: fixed in `018e920`. The quiescence records the capture it plays and restores the
+  previous entry afterwards. The bench node count moves from 3413870 to 3413723.
+- Lesson: the path is an input to the ordering, so every level of the search has to maintain it.

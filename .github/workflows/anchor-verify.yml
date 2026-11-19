@@ -153,9 +153,11 @@ jobs:
           echo "signature=$SIG"
           # The bench signature is the FNV-1a hash of the fixed-depth-10 search
           # output. It pins the searched tree, so it changes whenever the
-          # evaluation values change. It was last updated at commit 815ca47,
-          # which fixed the outpost pawn-attack tables (see FAILURE_LEDGER.md).
-          [ "$SIG" = "b58979ca90492208" ] || { echo "::error::bench signature mismatch: got $SIG want b58979ca90492208"; exit 7; }
+          # evaluation values or the searched tree change. It was last updated
+          # at commit 018e920, which restored the PVS full-window re-search for
+          # unreduced non-first moves and made the move-ordering bands disjoint
+          # (see FAILURE_LEDGER.md, 2026-11-19).
+          [ "$SIG" = "c64d148d39181140" ] || { echo "::error::bench signature mismatch: got $SIG want c64d148d39181140"; exit 7; }
           SHA=$(sha256sum "./$BIN" | cut -d' ' -f1)
           echo "binary_sha256=$SHA"
           {
