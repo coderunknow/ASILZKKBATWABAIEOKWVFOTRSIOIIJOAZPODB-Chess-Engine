@@ -87,8 +87,9 @@ jobs:
           mkdir -p dist
           cp target/release/flawless.exe dist/flawless.exe
           cd dist
-          sha256sum flawless.exe > SHA256SUMS.txt
-          EXE_SHA=$(cut -d' ' -f1 SHA256SUMS.txt)
+          PY=$(command -v python3 || command -v python)
+          EXE_SHA=$("$PY" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' flawless.exe)
+          printf '%s  flawless.exe\n' "$EXE_SHA" > SHA256SUMS.txt
           RUSTC_V=$(rustc --version)
           CARGO_V=$(cargo --version)
           TARGET=$(rustc -vV | sed -n 's/^host: //p')
@@ -237,7 +238,8 @@ jobs:
           cd dist
           7z a -tzip ../flawless-windows-x86_64.zip flawless.exe SHA256SUMS.txt BUILD_MANIFEST.json TEST_README.md
           cd ..
-          sha256sum flawless-windows-x86_64.zip > flawless-windows-x86_64.zip.sha256
+          PY=$(command -v python3 || command -v python)
+          "$PY" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest() + "  " + sys.argv[1])' flawless-windows-x86_64.zip > flawless-windows-x86_64.zip.sha256
           ls -la dist/
           cat flawless-windows-x86_64.zip.sha256
 
