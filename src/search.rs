@@ -94,6 +94,9 @@ pub struct Searcher<'a> {
     /// Moves played on the current search path: `path[p]` is the move made at ply `p`.
     /// `path[ply - 1]` is therefore the move that produced the node at `ply`.
     path: [Move; MAX_PLY as usize],
+    /// Test-only: the moves the quiescence recorded on the search path, in order.
+    #[cfg(test)]
+    quiesce_path_log: Vec<Move>,
     lmr: [[i32; 256]; MAX_PLY as usize + 1],
     nodes: u64,
     seldepth: i32,
@@ -174,6 +177,8 @@ impl<'a> Searcher<'a> {
             counter_move: [None; 64 * 64],
             capture_history: [[0; 64 * 64]; 6],
             path: [Move::NULL; MAX_PLY as usize],
+            #[cfg(test)]
+            quiesce_path_log: Vec::new(),
             lmr: build_lmr_table(),
             nodes: 0,
             seldepth: 0,
@@ -974,7 +979,17 @@ impl<'a> Searcher<'a> {
                 }
             }
             let undo = pos.make_move(m);
+            // Record the capture on the search path. Without this the quiescence
+            // orders its captures with a stale previous move, so the counter-move
+            // table and the continuation-history tables are consulted for the
+            // wrong move. The previous value is restored afterwards, so the
+            // quiescence leaves the search path of the main search untouched.
+            let saved_path = self.path[ply as usize];
+            self.path[ply as usize] = m;
+            #[cfg(test)]
+            self.quiesce_path_log.push(m);
             let score = -self.quiesce(pos, -beta, -alpha, ply + 1);
+            self.path[ply as usize] = saved_path;
             pos.unmake_move(m, &undo);
             if self.stop.load(Ordering::Relaxed) {
                 return alpha;
@@ -1498,5 +1513,56 @@ mod ordering_tests {
             quiet >= QUIET_BASE - 3 * HISTORY_MAX,
             "quiet score {quiet} is below the quiet band floor"
         );
+    }
+}
+
+#[cfg(test)]
+mod quiescence_path_tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    fn searcher() -> Searcher<'static> {
+        let tt: &'static mut TranspositionTable = Box::leak(Box::new(TranspositionTable::new(4)));
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let limits = Arc::new(Mutex::new(SearchLimits::default()));
+        Searcher::new(tt, stop, limits)
+    }
+
+    /// White to move with two captures available, so the quiescence has a choice to
+    /// make and its ordering can be observed.
+    const CAPTURES: &str = "4k3/8/8/1p6/8/2n5/8/1Q2K3 w - - 0 1";
+
+    /// The quiescence must record the capture it plays on the search path, so that
+    /// the next quiescence level orders its replies with the move that was actually
+    /// played. Without it the counter-move table and the continuation-history tables
+    /// are consulted with a stale previous move.
+    #[test]
+    fn quiescence_records_the_capture_on_the_search_path() {
+        let mut pos = Position::from_fen(CAPTURES).expect("test FEN");
+        let mut s = searcher();
+        s.quiesce(&mut pos, -INF_SCORE, INF_SCORE, 0);
+        assert!(
+            !s.quiesce_path_log.is_empty(),
+            "the quiescence played no capture, so the test proves nothing"
+        );
+        for m in &s.quiesce_path_log {
+            assert_ne!(
+                m.from, m.to,
+                "the quiescence recorded a null move on the search path"
+            );
+        }
+    }
+
+    /// The quiescence must not leave the search path of the main search modified.
+    #[test]
+    fn quiescence_restores_the_search_path() {
+        let mut pos = Position::from_fen(CAPTURES).expect("test FEN");
+        let mut s = searcher();
+        let marker = Move::new(4, 12);
+        s.path[0] = marker;
+        s.path[1] = marker;
+        s.quiesce(&mut pos, -INF_SCORE, INF_SCORE, 0);
+        assert_eq!(s.path[0], marker, "the quiescence overwrote path[0]");
+        assert_eq!(s.path[1], marker, "the quiescence overwrote path[1]");
     }
 }
