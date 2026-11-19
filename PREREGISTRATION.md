@@ -1178,3 +1178,93 @@ all future registrations.
   controls have not been run.
 - It **does not** change any anchor's published rating, any suite hash, or
   any registered decision rule.
+
+---
+
+## EVAL-3 — search-audit fix screening (registered 2026-11-19, BEFORE any game)
+
+### Purpose
+
+The Phase B source audit of PR #2 found and fixed three defects in the search
+(`708d53c`, `61dd642`, `018e920`). The fixes are **correctness fixes** and
+are retained on that ground irrespective of this campaign: the PVS fix makes
+the engine report the value of the move it actually chose, the ordering fix
+makes the documented ordering bands true, and the quiescence fix makes the
+search path mean what it says.
+
+What this campaign measures is a different question: **do the three fixes
+also make the engine stronger at a fixed time control?** The pre-fix engine
+reports root scores that are below the value of the move it prefers and
+sometimes prefers the worse move, so it is a plausible source of lost Elo.
+This is screening evidence about a change that is already in the tree, and it
+is not a rating.
+
+### Identities (pinned before dispatch)
+
+Both binaries are release builds of the same tree with the same local
+toolchain (rustc/cargo 1.97.0, `lto = "fat"`, `codegen-units = 1`), so the
+comparison isolates the source change and not the compiler.
+
+| ID | Description | Source commit | Binary SHA-256 | Bench signature | Depth-10 nodes |
+|---|---|---|---|---|---|
+| EVAL-3-CANDIDATE | audited tree (PVS fix, disjoint ordering bands, quiescence path) | `b3dabc3` | `540a10df5f3617e156b289ec9c9475704b18596dd6ec3400c7a31c0f6f2f492f` | `c64d148d39181140` | 3,413,723 |
+| EVAL-3-CONTROL | pre-audit tree (the head this audit replaced) | `adda48e` | `2b41a8e6b21294eac87bc21698d27dc354e2e60593613ff1715da85efd4a41e5` | `b58979ca90492208` | 3,666,233 |
+
+**Identity to the hosted-runner candidate.** The hosted runner built the same
+source tree at the audited head and recorded bench signature
+`c64d148d39181140` and binary SHA-256
+`4daa6bcea2bac0e74dbfca748daaef4dc33340ae0321ff7ae6a106d790b4f549` (anchor-verify
+run 44491186467, merge commit `7800553637d27035a8803c59b45cf8a10e7363f7`, tree
+`b8494b3fbf7756563111f284922e4d08b39db85c`, identical to the head tree). The
+campaign binary's SHA differs from the runner's because the compilers differ
+(runner 1.99.0, sandbox 1.97.0); the **bench signature is identical**, which
+is the proof that the searched tree is identical and, the search being
+deterministic, that the campaign binary plays exactly the games the
+runner-built candidate would play. The confirmatory batches use the
+runner-built binary.
+
+**Control validity check (performed before dispatch):** the control binary
+reproduces the pre-audit bench signature `b58979ca90492208` and node count
+3,666,233 exactly, so it is the pre-audit engine and not a different build.
+
+### Hypotheses
+
+- **H-EVAL-3:** the audited candidate scores higher than the pre-audit control
+  at a fixed 100 ms/move time control.
+- Secondary, not a decision: the candidate searches fewer nodes for the same
+  bench signature work (3,413,723 against 3,666,233), i.e. the fix is not
+  bought with a slowdown.
+
+### Design
+
+- Harness: `scripts/match.py`, unchanged.
+- Time control: **fixed movetime 100 ms per move** (screening only).
+- Hash: 16 MiB; single-threaded for both engines.
+- Openings: `benches/openings-20.txt` (20 openings, SHA-256
+  `97f991eb3b827ffe5e3cb378ad7699a8d1dc860bec08ec939d08e611743fb23d`).
+- Schedule: opening-major, repetition-minor, exact AB/BA colour reversal;
+  20 openings x 2 repetitions x 2 colours = **80 counted games**, run as two
+  shards of 40 games each.
+- Analysis: `scripts/stats.py --focus EVAL-3-CANDIDATE` — logistic Elo
+  difference and 95% bootstrap CI resampled over **openings** (clusters),
+  seed 20261118, 10,000 resamples.
+- Integrity: `scripts/audit_pair.py` re-audits the raw records independently of
+  the analysis path (counted-game count, engine errors, uncounted records,
+  duplicate schedule slots, AB/BA balance, opening coverage).
+- Compute budget: **<= 1.5 compute-hours** of sandbox match time.
+
+### Decision rules (registered before dispatch)
+
+- **EVAL-3-CANDIDATE vs EVAL-3-CONTROL:** the change is a *strength
+  improvement* only if the candidate's 95% CI lower bound is > 0 Elo
+  difference. It is *significantly worse* if the 95% CI upper bound is <= 0.
+  Otherwise the result is INCONCLUSIVE.
+- **The three fixes are not reverted on an INCONCLUSIVE result.** They are
+  correctness fixes and stay in the tree; an INCONCLUSIVE screening result
+  means that no strength claim may be made, not that the defects may be
+  restored. A *significantly worse* result is a red flag that must be
+  investigated before the candidate is frozen, not an automatic revert.
+- No strength claim may be made from node counts, bench signatures or NPS.
+- This campaign is screening evidence on a shared 2-vCPU sandbox. It is not a
+  rating and it is not gate evidence.
+
