@@ -29,6 +29,15 @@ class PreregistrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "LF line-ending rule"):
                 cq.verify_suite_files(directory)
 
+    def test_missing_self_control_suite_lf_rule_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with open(os.path.join(directory, ".gitattributes"), "w", encoding="utf-8") as handle:
+                handle.write("/benches/evidence/candidates/** text eol=lf\n")
+                handle.write("/benches/rating-openings-100-batchA.txt text eol=lf\n")
+                handle.write("/benches/rating-openings-100-batchB.txt text eol=lf\n")
+            with self.assertRaisesRegex(ValueError, "opening suites require committed LF"):
+                cq.verify_suite_files(directory)
+
     def test_exact_screening_count_and_identity_are_registered(self):
         design = cq.load_design(os.path.join(ROOT, cq.DESIGN_PATH))
         screening = design["screening"]

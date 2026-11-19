@@ -131,6 +131,11 @@ def verify_suite_files(repo_root: str = ".") -> None:
         raise ValueError("candidate evidence requires committed LF line-ending rules") from exc
     if "/benches/evidence/candidates/** text eol=lf" not in attributes:
         raise ValueError("candidate evidence must have a committed LF line-ending rule for stable raw hashes")
+    suite_rules = {f"/{path} text eol=lf" for path, _expected, _seed in SUITES.values()}
+    suite_rules.add(f"/{SELF_SUITE[0]} text eol=lf")
+    if not suite_rules.issubset(attributes):
+        missing = sorted(suite_rules - attributes)
+        raise ValueError(f"candidate opening suites require committed LF line-ending rules: {missing!r}")
     for path, expected, _seed in SUITES.values():
         if sha256_file(os.path.join(repo_root, path)) != expected:
             raise ValueError(f"{path}: SHA-256 differs from candidate preregistration")

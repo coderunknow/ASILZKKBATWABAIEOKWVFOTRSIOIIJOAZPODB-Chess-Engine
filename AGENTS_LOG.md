@@ -851,3 +851,9 @@
 - Added regression tests for missing adjudication, non-boolean fields, boolean repetition values,
   non-final counted results, and target-commit mismatch. Focused suites pass: aggregation 16/16,
   candidate power/cost 9/9, self-control certification 8/8.
+
+## 2026-11-19 — Hosted CI caught Windows opening-suite newline drift
+
+- Pushed commit `ec4a89e2840501a324b6c6427c607bf1a352b827` as requested. On that exact head, Ubuntu CI and MSRV passed, but Windows CI failed in `test_candidate_qualification.py`; the Windows release package verification step also failed before artifact upload. GitHub's run-log download returned EOF, so the package-step cause is not yet verified.
+- Root cause for the Python failure: `benches/rating-openings-batchA.txt`, the candidate self-control suite, had a preregistered raw-byte SHA-256 but no LF checkout rule. Added the missing `.gitattributes` rule and made candidate preregistration validation require LF rules for all three registered suite files. Added a regression for missing self-control-suite LF configuration; focused suite passes 10/10.
+- No Windows ZIP artifact was uploaded by the failed package step; continue diagnosing the package verification failure before claiming delivery.
