@@ -4,6 +4,11 @@
   "engine_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
   "anchor_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
   "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+  "time_control": {
+    "mode": "clock",
+    "period_moves": 40,
+    "period_seconds": 900.0
+  },
   "shard_ids": [
     "control-CTRL-flawless-self-0",
     "control-CTRL-flawless-self-1",

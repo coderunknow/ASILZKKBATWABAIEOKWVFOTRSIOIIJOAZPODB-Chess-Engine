@@ -4,6 +4,11 @@
   "engine_sha256": "db75d4d816710b77810fb3b5d544b0f6f025542ff992a1c12301d7dffad5ffac",
   "anchor_sha256": "c5443e6f81aef3bfa033ee6233e2064c9fcc50c64cd41f74adbbf66d61c38ac6",
   "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+  "time_control": {
+    "mode": "clock",
+    "period_moves": 40,
+    "period_seconds": 900.0
+  },
   "shard_ids": [
     "control-CTRL-topple-0.1.1-vs-topple-0.2.1-0",
     "control-CTRL-topple-0.1.1-vs-topple-0.2.1-1",

@@ -4,6 +4,11 @@
   "engine_sha256": "fd75726dd3166640ddec75d94c416320b47c83e8d14bfa6309aed398d55b8e1d",
   "anchor_sha256": "c5443e6f81aef3bfa033ee6233e2064c9fcc50c64cd41f74adbbf66d61c38ac6",
   "opening_suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+  "time_control": {
+    "mode": "clock",
+    "period_moves": 40,
+    "period_seconds": 900.0
+  },
   "shard_ids": [
     "pilot-A-topple-0.2.1-0",
     "pilot-A-topple-0.2.1-1"
