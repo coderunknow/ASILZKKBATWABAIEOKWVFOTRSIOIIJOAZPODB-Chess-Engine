@@ -439,3 +439,48 @@ about the candidate. EVAL-3 must run against the exact frozen candidate
 binary under a newly registered campaign, as `docs/RATING_PROTOCOL.md`
 already requires. `benches/rating-100-power-assessment.json` remains BLOCKED
 and PR #2 remains Draft with `OWNER_TEST_PENDING` in force.
+
+## 2026-11-19 — Phase C audit: mate-distance fix, and EVAL-3 confirms the audited tree is stronger
+
+**The mate-distance defect (`32ad8ab`).** The mate-score band was `MATE_SCORE - 100` in three
+modules while the search's ply limit is `MAX_PLY = 128`, so a mate 100 plies or more from the
+root fell outside the band entirely. The transposition table then failed to recognise it as a
+mate score, stored it in root-relative form, and returned it unchanged when the entry was probed
+at a different ply — reporting the mate distance wrong by exactly the ply difference (a mate 101
+plies away, re-used at ply 50, was reported as 101 plies away instead of 151). The UCI layer
+printed the same class of score as `cp 29899` instead of a mate, and the search's null-move guard
+shared the band and could attempt a null move with a mate beta.
+
+The band is now `MATE_SCORE - MAX_PLY`, derived from the search's own ply limit and defined once
+in `eval::MATE_BOUND`. The deepest checkmate node the search can reach is at `MAX_PLY - 1`, so the
+new band covers every reachable mate score. The fix is behaviour-neutral for ordinary positions:
+the depth-10 bench signature and node count are unchanged at `c64d148d39181140` / 3,413,723.
+`tests/mate_distance.rs` adds eight regressions, four of which were verified to fail against the
+pre-fix source. Rust test count 67 → 75.
+
+**EVAL-3 (registered before dispatch).** The audited tree was screened against the pre-audit
+tree, with both binary hashes, bench signatures and node counts pinned before any game:
+
+| | Result |
+|---|---|
+| Games / counted / engine errors | 80 / 80 / 0 |
+| Colour balance / openings | 40 AB / 40 BA / 20 distinct, 4 each |
+| Audit verdict | PASS |
+| Score | **60.5/80 = 0.756** |
+| 95% CI for the score | **[0.662, 0.838]** |
+| Elo difference | **+197** |
+| 95% CI for the Elo difference | **[+117, +285]** |
+
+The registered decision rule (95% CI lower bound > 0 Elo) is met with a wide margin: the three
+search fixes are not only correctness fixes, they are worth roughly +197 Elo at a fixed 100 ms/move.
+The numbers were reproduced by two independent code paths, and the raw evidence is preserved under
+`benches/evidence/screening-eval3/`.
+
+This is **screening evidence on a shared 2-vCPU sandbox at a fixed 100 ms/move time control**. It
+is not a rating, it is not comparable to a campaign run on an idle machine or under the 40/15
+clock, and it does not substitute for the >2,000 Elo gate.
+
+**Consequence for the campaign.** The searched tree is unchanged by the mate-distance fix (identical
+bench signature and node count, and a depth-10 search cannot reach a mate 100 plies away), so the
+EVAL-3 result carries over to the current tree unchanged. `benches/rating-100-power-assessment.json`
+remains BLOCKED, PR #2 remains Draft, and `OWNER_TEST_PENDING` remains in force.

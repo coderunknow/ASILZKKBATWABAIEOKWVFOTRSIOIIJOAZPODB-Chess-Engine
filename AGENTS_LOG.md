@@ -634,3 +634,47 @@
 - Note for the reader: the local toolchain has no `rustdoc`, so `cargo test --doc` cannot run
   here. The crate has no doc examples, so the doctest suite is empty and CI, which installs the
   full toolchain, is unaffected.
+
+## 2026-11-19 — Phase C: mate-distance trace, mate-band fix, and the EVAL-3 screening campaign
+
+- Completed the mate-distance normalisation trace that Phase B left open. The mate-score band
+  was `MATE_SCORE - 100` in three modules (transposition table, UCI score formatter, search
+  pruning guards), while the search's ply limit is `MAX_PLY = 128`. The search returns a static
+  evaluation at `ply >= MAX_PLY` before it looks for mate, so the deepest checkmate node it can
+  reach is at ply `MAX_PLY - 1` and the longest mate it can report is 127 plies from the root. A
+  mate 100 plies or more away therefore fell **outside** the band, which is 28 plies too narrow.
+- Reproduced the defect directly against the table's public API: a mate 101 plies from the root,
+  stored at ply 0 and re-used at ply 50, was reported as 101 plies away instead of 151 — wrong by
+  exactly the ply difference. The UCI formatter printed the same class of score as `cp 29899`.
+  The search's own null-move guard shared the band, so a null move could be attempted with a mate
+  beta.
+- Fixed in `32ad8ab`: the band is now `MATE_SCORE - MAX_PLY`, derived from the search's ply limit
+  rather than from an arbitrary constant, and defined once in `eval::MATE_BOUND` for the search,
+  the table and the UCI layer to share. The fix is behaviour-neutral for ordinary positions — the
+  depth-10 bench signature and node count are unchanged at `c64d148d39181140` / 3,413,723 —
+  because a depth-10 search can never reach a mate 100 plies away.
+- `tests/mate_distance.rs` adds eight regressions. Four of them were verified to fail against the
+  pre-fix source (exhaustive normalisation over the reachable range, the concrete cross-ply
+  transposition case, the UCI format at the band edge, and the width of the band), and four are
+  end-to-end checks that the real binary reports `mate 1` and `mate 2` through the protocol and
+  that the mate distance survives a table re-use. Rust test count 67 -> 75.
+- Registered **EVAL-3** in `PREREGISTRATION.md` *before* dispatching any game, with both binary
+  SHA-256 hashes, both bench signatures and both node counts pinned. The candidate is the audited
+  tree; the control is the pre-audit tree (`adda48e`), rebuilt from the same source tree with the
+  same local toolchain so the comparison isolates the source change and not the compiler. The
+  hosted-runner candidate identity was recorded alongside it: the runner built the same tree and
+  reported bench signature `c64d148d39181140` and binary SHA-256
+  `4daa6bcea2bac0e74dbfca748daaef4dc33340ae0321ff7ae6a106d790b4f549` (anchor-verify run
+  44491186467 at merge commit `78005536…`; run 44491236384 at the exact head `b3dabc3`, merge
+  commit `fe915cd9…`). The SHA differs from the sandbox build because the compilers differ
+  (runner 1.99.0, sandbox 1.97.0); the identical bench signature is the proof that the searched
+  tree is identical.
+- Ran EVAL-3 as two shards of 40 games each: **80 games, 20 opening clusters, exact AB/BA colour
+  reversal, zero engine errors, audit verdict PASS**. The candidate scored **60.5/80 = 0.756**,
+  95% CI [0.662, 0.838], Elo difference **+197**, 95% CI **[+117, +285]**. The numbers were
+  reproduced by two independent code paths (`scripts/stats.py` and a separate recomputation against
+  the raw JSONL). The registered rule — 95% CI lower bound > 0 Elo — is met with a wide margin.
+- Note for the reader: EVAL-3 is screening evidence on a shared 2-vCPU sandbox at a fixed
+  100 ms/move time control. It is not a rating, it is not comparable to a campaign run on an idle
+  machine or under the 40/15 clock, and it does not substitute for the >2,000 Elo gate in
+  `docs/RATING_PROTOCOL.md`.
