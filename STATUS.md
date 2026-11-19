@@ -402,3 +402,40 @@ value-identical commits (1219 ns → 996 ns per evaluation), each verified by
 an unchanged bench signature and node count. PR #2 stays Draft and
 `OWNER_TEST_PENDING` remains. `benches/rating-100-power-assessment.json`
 remains BLOCKED.
+
+## 2026-11-19 — Phase B source audit of PR #2: three search defects fixed
+
+The audit of `src/search.rs` against the PVS algorithm and the documented
+move-ordering bands found three defects. Each fix ships with a regression
+test that was verified to fail against the pre-fix source.
+
+- **The PVS scout bound was used as a move score** (`708d53c`). The re-search
+  that turns the null-window bound into a value was guarded by `reduction > 0`,
+  so an unreduced non-first move kept its bound. The root score was then below
+  the value of the best move in 7 of the first 8 Batch A positions at depth 2
+  (gaps up to 172 centipawns) and the root could pick a worse move; the same
+  defect made the engine claim `score mate 15` for a position that is not a
+  forced mate. After the fix the root score is exact at depth 2 in every
+  position, as it is in the pre-PR-2 baseline.
+- **The move-ordering bands overlapped** (`61dd642`). A quiet move can score
+  as low as 25_424 and a losing capture as high as 42_047, so a losing
+  capture could outrank a quiet move; the promotion bonus pushed losing
+  capture-promotions into the quiet band. The bands are now disjoint by
+  construction.
+- **The quiescence did not record its captures on the search path**
+  (`018e920`), so its counter-move and continuation-history lookups used a
+  stale previous move from the second quiescence level on.
+
+Bench signature `b58979ca90492208` → `c64d148d39181140`; nodes 3,666,233 →
+3,413,723. The `anchor-verify` workflow pins the signature and was re-pinned
+in `50ec354`. Gates at `018e920`: fmt clean, clippy `-D warnings` clean, 67
+Rust tests green, release build and bench green, the seven Python harness
+suites green, CI and the Windows release artifact green.
+
+**Consequence for the campaign.** The searched tree changed, so every binary
+built from the pre-fix source is a different program. ENGINE-1 and the
+CTRL-2-R / SCREEN-3 evidence describe the old source and are not evidence
+about the candidate. EVAL-3 must run against the exact frozen candidate
+binary under a newly registered campaign, as `docs/RATING_PROTOCOL.md`
+already requires. `benches/rating-100-power-assessment.json` remains BLOCKED
+and PR #2 remains Draft with `OWNER_TEST_PENDING` in force.

@@ -6,18 +6,25 @@ Facts here are verified state, not plans. Historical records: AGENTS_LOG.md, DES
 
 - Mission status: **ACTIVE / INCOMPLETE**
 - Current milestone: **V1 (strictly above 2,000 Elo)**. V2 (>3,000) not started.
-- Current work item: validate and commit the RATING-100 / exact-slot-recovery / SEE-ordering implementation, then run final-head CI and fresh review. Separately recover the skipped aggregate evidence from the completed CTRL-2-R and SCREEN-3 shard artifacts; do not apply the anchor rule until those artifacts are strictly re-aggregated and committed.
+- Current work item: the Phase B source audit of PR #2 found and fixed three search
+  defects (the PVS scout bound used as a move score, overlapping move-ordering bands,
+  and the quiescence not recording its captures on the search path). The next items are
+  to freeze the exact candidate binary, obtain the exact-SHA CodeRabbit review and the
+  owner's Windows acceptance, and then run EVAL-3, the candidate controls, the
+  candidate-specific power assessment and Batch A/B.
 
 ## Identity
 
 - PR: PR #1 (https://github.com/coderunknow/FlawLessChess/pull/1) was **merged** on
   2026-11-14 by the repository owner; it is closed and is not the vehicle for this work.
   A new **Draft** PR is required for the 2026-11-18 branch and is not yet open.
+- PR #2 (https://github.com/coderunknow/FlawLessChess/pull/2) is **open**, **draft**,
+  mergeable, base `main` @ `5e36b06`, head `50ec354` (API-verified 2026-11-19).
 - Branch: `arena/8259ce1c-flawlesschess`
 - Base: `main` @ `5e36b06a7b0d7417d57205e52010ea98529b2a4f` (re-verified against the
   remote on 2026-11-18)
-- Local head at this checkpoint: `6078322` (the commit series is rewritten locally; the
-  exact head must be re-verified after pushing).
+- Local head at this checkpoint: `50ec354` (the audit fixes `708d53c`, `61dd642`,
+  `018e920` plus the workflow re-pin `50ec354`).
 - **The Windows artifact has not been produced and the owner has not tested a binary:
   `OWNER_TEST_PENDING` remains in force.**
 
@@ -246,3 +253,46 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
   test suite green (including 5 evaluation gates and 5 fast-legality tests),
   all 23 fast-perft counts matching, CI green on Linux/Windows/Rust 1.80, and
   anchor verification passing 13/13 with the corrected signature.
+
+## Latest validated checkpoint — 2026-11-19 (Phase B source audit)
+
+- The sandbox had been restored to the initial clone state: the PR #2 history, the extra
+  worktrees, the Rust toolchain and the Python environment were gone, and the working tree
+  held the whole PR #2 change as uncommitted modifications. The history was recovered with
+  `git fetch`; every restored file was verified byte-identical to its `adda48e` blob
+  before the branch pointer was moved with `git reset --mixed adda48e`. The pinned Rust
+  toolchain (1.97.0) was restored from the PyPI mirror with `tc/fetch.py`; the Python
+  environment is `/home/user/.venv` with python-chess 1.11.2. The local toolchain has no
+  `rustdoc`, so `cargo test --doc` cannot run here; the crate has no doc examples, so the
+  doctest suite is empty and CI (full toolchain) is unaffected.
+- **Three search defects were found and fixed.** Each fix has a regression test that was
+  verified to fail against the pre-fix source.
+  - `708d53c` — the PVS scout bound was used as a move score. The re-search that turns the
+    bound into a value was guarded by `reduction > 0`, so an unreduced non-first move kept
+    its null-window bound. At depth 2 (late move reductions off) the old code reports a root
+    score below the best move's value in 7 of the first 8 Batch A positions, with gaps up to
+    172 centipawns; the fixed code is exact in every position, as the pre-PR-2 baseline is.
+    The same defect made the engine claim `score mate 15` for a non-mate position.
+  - `61dd642` — the move-ordering bands overlapped: a losing capture could be ordered
+    above a quiet move (27_952..42_047 against 25_424..74_576) and the promotion bonus
+    pushed losing capture-promotions into the quiet band. The bands are now disjoint by
+    construction and documented next to the constants.
+  - `018e920` — the quiescence did not record its captures on the search path, so from the
+    second quiescence level on the counter-move and continuation-history lookups used a
+    stale previous move. Classified as a quality defect: the returned value is the maximum
+    over the captures searched and stays a valid bound.
+- Bench signature `b58979ca90492208` → `c64d148d39181140`; nodes 3,666,233 → 3,413,723.
+  The `anchor-verify` workflow pins that signature and was re-pinned in `50ec354`.
+- Gates at `018e920`: `cargo fmt --all -- --check` clean, `cargo clippy --release
+  --all-targets -- -D warnings` clean, 67 Rust tests green (26 lib + 3 + 21 + 7 + 5 + 5),
+  release build and bench green. The seven Python harness suites pass (111, 65, 7, 7, OK,
+  all cases, 22) and `verify_opening_subsets.py` plus the power-analysis assertions pass
+  unchanged. CI run 44490892522 (Linux/Windows/MSRV) succeeded, evidence-bridge 44490892665
+  succeeded, the Windows release artifact 44490892622 succeeded, and `rating-gate`
+  44490892498 failed closed for the expected reason (no `benches/gate-plan.json`).
+- **What the audit changed for the campaign.** Every binary produced from the old source is
+  now a different program: the search tree changed, so the bench signature, the node count
+  and the binary hashes all moved. ENGINE-1 (SHA `9663697d…`) and the CTRL-2-R / SCREEN-3
+  evidence belong to the pre-fix source and are not evidence about the candidate. EVAL-3
+  must be dispatched against the exact frozen candidate binary with a newly registered
+  campaign, as the protocol already requires.
