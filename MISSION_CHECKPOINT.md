@@ -6,12 +6,14 @@ Facts here are verified state, not plans. Historical records: AGENTS_LOG.md, DES
 
 - Mission status: **ACTIVE / INCOMPLETE**
 - Current milestone: **V1 (strictly above 2,000 Elo)**. V2 (>3,000) not started.
-- Current work item: the Phase B source audit of PR #2 found and fixed three search
-  defects (the PVS scout bound used as a move score, overlapping move-ordering bands,
-  and the quiescence not recording its captures on the search path). The next items are
-  to freeze the exact candidate binary, obtain the exact-SHA CodeRabbit review and the
-  owner's Windows acceptance, and then run EVAL-3, the candidate controls, the
-  candidate-specific power assessment and Batch A/B.
+- Current work item: the Phase C audit of PR #2 found and fixed a fourth defect (the
+  mate-score band was narrower than the reachable mate range, so the transposition
+  table reported the wrong mate distance for long mates and the UCI layer printed
+  them as centipawn scores), and the registered EVAL-3 screening campaign confirmed
+  that the audited tree is about **+197 Elo** (95% CI [+117, +285]) stronger than the
+  pre-audit tree. The next items are to freeze the exact candidate binary, obtain the
+  exact-SHA CodeRabbit review and the owner's Windows acceptance, and then run the
+  candidate controls, the candidate-specific power assessment and Batch A/B.
 
 ## Identity
 
@@ -19,12 +21,13 @@ Facts here are verified state, not plans. Historical records: AGENTS_LOG.md, DES
   2026-11-14 by the repository owner; it is closed and is not the vehicle for this work.
   A new **Draft** PR is required for the 2026-11-18 branch and is not yet open.
 - PR #2 (https://github.com/coderunknow/FlawLessChess/pull/2) is **open**, **draft**,
-  mergeable, base `main` @ `5e36b06`, head `50ec354` (API-verified 2026-11-19).
+  mergeable, base `main` @ `5e36b06`, head `6755cc1` (API-verified 2026-11-19).
 - Branch: `arena/8259ce1c-flawlesschess`
 - Base: `main` @ `5e36b06a7b0d7417d57205e52010ea98529b2a4f` (re-verified against the
   remote on 2026-11-18)
-- Local head at this checkpoint: `50ec354` (the audit fixes `708d53c`, `61dd642`,
-  `018e920` plus the workflow re-pin `50ec354`).
+- Local head at this checkpoint: `6755cc1` (the audit fixes `708d53c`, `61dd642`,
+  `018e920`, the workflow re-pin `50ec354`, the mate-band fix `32ad8ab`, and the EVAL-3
+  registration, result and documentation `96e7ca8`, `16f6826`, `521a605`, `6755cc1`).
 - **The Windows artifact has not been produced and the owner has not tested a binary:
   `OWNER_TEST_PENDING` remains in force.**
 
@@ -296,3 +299,91 @@ Both runs have shard artifacts, but neither produced a canonical committed aggre
   evidence belong to the pre-fix source and are not evidence about the candidate. EVAL-3
   must be dispatched against the exact frozen candidate binary with a newly registered
   campaign, as the protocol already requires.
+
+## Latest validated checkpoint — 2026-11-19 (Phase C mate-distance audit and EVAL-3)
+
+### The fourth defect: the mate band was narrower than the reachable mate range
+
+The mate-score band was `MATE_SCORE - 100` in three modules — the transposition table, the
+UCI score formatter and the search's pruning guards — while the search's ply limit is
+`MAX_PLY = 128`. The search returns a static evaluation at `ply >= MAX_PLY` *before* it looks
+for mate, so the deepest checkmate node it can reach is at ply `MAX_PLY - 1` and the longest
+mate it can report is 127 plies from the root. A mate 100 plies or more from the root
+therefore fell **outside** the band, which was 28 plies too narrow.
+
+Two consequences, both reproduced directly:
+
+- **The transposition table reported the wrong mate distance.** Not recognising the score as
+  a mate score, the table stored it in root-relative form and returned it unchanged when the
+  entry was probed at a different ply. A mate 101 plies away, stored at ply 0 and re-used at
+  ply 50, was reported as 101 plies away instead of 151 — wrong by exactly the ply difference.
+- **The UCI layer printed long mates as centipawn scores** (`cp 29899` instead of a mate).
+
+The search's own null-move guard shared the band, so a null move could also be attempted with
+a mate beta. Fix: `32ad8ab` — the band is now `MATE_SCORE - MAX_PLY`, derived from the
+search's ply limit rather than an arbitrary constant, defined once in `eval::MATE_BOUND` and
+used by the search, the table and the UCI layer.
+
+The fix is **behaviour-neutral for ordinary positions**: the depth-10 bench signature and node
+count are unchanged at `c64d148d39181140` / 3,413,723, because a depth-10 search can never
+reach a mate 100 plies away. `tests/mate_distance.rs` adds eight regressions; **four of them
+were verified to fail against the pre-fix source**.
+
+### EVAL-3 — registered before dispatch, screened after
+
+| | |
+|---|---|
+| Candidate | audited tree, `540a10df5f3617e156b289ec9c9475704b18596dd6ec3400c7a31c0f6f2f492f`, bench `c64d148d39181140`, 3,413,723 nodes |
+| Control | pre-audit tree (`adda48e`), `2b41a8e6b21294eac87bc21698d27dc354e2e60593613ff1715da85efd4a41e5`, bench `b58979ca90492208`, 3,666,233 nodes |
+| Design | 80 games, 20 openings, 2 repetitions, exact AB/BA, fixed movetime 100 ms, hash 16 MiB, opening-clustered bootstrap (seed 20261118, 10,000 resamples) |
+| Integrity | 80/80 counted, **0 engine errors**, 0 uncounted, 0 duplicate slots, 40 AB / 40 BA, 20 distinct openings — audit verdict **PASS** |
+| Score | **60.5 / 80 = 0.756**, 95% CI **[0.662, 0.838]** |
+| Elo difference | **+197**, 95% CI **[+117, +285]** |
+| Decision | the registered rule (95% CI lower bound > 0 Elo) is met: the audited tree is **stronger** than the pre-audit tree |
+
+Reproduced twice by independent code paths (`scripts/stats.py` and a separate recomputation
+against the raw JSONL). Raw evidence preserved under `benches/evidence/screening-eval3/`
+(`games.jsonl` SHA-256 `a336d82543feccb741df6b0364d9511fb4667e4d2bfe2c9aa5cf273f211a47df`).
+
+**This is screening evidence on a shared 2-vCPU sandbox at a fixed 100 ms/move time control.**
+It is not a rating, it is not comparable to a campaign run on an idle machine or under the
+40/15 clock, and it does not substitute for the >2,000 Elo gate.
+
+### Validation at this checkpoint
+
+- `cargo fmt --all -- --check` clean; `cargo clippy --release --all-targets -- -D warnings`
+  clean; `cargo build --release --locked` green; bench green.
+- **75 Rust test cases** pass (26 lib + 3 clock_smoke + 21 correctness + 7 eval_quality +
+  5 fast_legality + 8 mate_distance + 5 uci_smoke), up from 67. The doctest suite remains
+  unrunnable locally because the restored toolchain has no `rustdoc`; the crate has no doc
+  examples, so that suite is empty.
+- The seven Python harness suites, the opening-subset verification and the power-analysis
+  assertions all still pass.
+- Bench signature `c64d148d39181140`, node count 3,413,723 — **unchanged** by the mate-band
+  fix, so the `anchor-verify` pin is still correct and does not need re-pinning.
+- Hosted-runner candidate identity at the exact head `b3dabc3` (anchor-verify run
+  `44491236384`, merge commit `fe915cd9e590b59043abbfdfe27b62e476a07eb7`, tree identical to
+  the head tree): bench signature `c64d148d39181140`, binary SHA-256
+  `4daa6bcea2bac0e74dbfca748daaef4dc33340ae0321ff7ae6a106d790b4f549`, built with rustc
+  1.99.0. The sandbox build differs in SHA only because of the compiler version; the identical
+  bench signature is the proof that the searched tree is identical.
+
+### Workflow state at `b3dabc3` (API-verified)
+
+| Workflow | Run | Outcome |
+|---|---|---|
+| CI | 44491236462 | success |
+| anchor-verify | 44491236384 | success |
+| Windows Release Artifact | 44491236340, 44491228676 | success |
+| evidence-bridge | 44491236403 | success |
+| rating-gate | 44491236401 | failure — **expected**: it fails closed while `benches/gate-plan.json` does not exist |
+
+### Remaining blockers, in priority order
+
+1. Re-query the workflow outcomes at the new head after the Phase C commits are pushed.
+2. Freeze the exact candidate binary and record its SHA-256 in the checkpoint and the status file.
+3. Exact-SHA CodeRabbit review; owner Windows acceptance (`OWNER_TEST_PENDING`).
+4. Candidate controls, the candidate-specific power assessment (still `BLOCKED` and
+   candidate-SHA guarded), and Batch A/B.
+5. All three unrounded Elo lower-bound gates above 2,000 Elo.
+6. **PR #2 must never be merged automatically.** It stays Draft until the owner decides.
