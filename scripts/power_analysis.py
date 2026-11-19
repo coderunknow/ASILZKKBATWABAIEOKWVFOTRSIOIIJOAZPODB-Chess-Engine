@@ -199,42 +199,68 @@ def scenario(
     first_two_corr: float,
     clusters: int,
     replicates: int,
+    cluster_sd_override: list[float] | None = None,
+    correlation_override: list[list[float]] | None = None,
+    score_covariances: list[list[list[float]]] | None = None,
 ) -> dict:
     scores = [1.0 / (1.0 + 10.0 ** ((rating - theta) / 400.0)) for rating in ratings]
     slopes = [400.0 / (math.log(10.0) * p * (1.0 - p)) for p in scores]
-    cluster_sd = [first_two_sd[0], first_two_sd[1], max(first_two_sd)] 
+    cluster_sd = cluster_sd_override or [first_two_sd[0], first_two_sd[1], max(first_two_sd)]
+    if len(cluster_sd) != 3:
+        raise ValueError("power scenario requires exactly three anchor cluster SDs")
     cluster_sd = [x * inflation for x in cluster_sd]
-    corr = [
+    corr = correlation_override or [
         [1.0, first_two_corr, third_corr],
         [first_two_corr, 1.0, third_corr],
         [third_corr, third_corr, 1.0],
     ]
-    match = [
-        [corr[i][j] * cluster_sd[i] * cluster_sd[j] * slopes[i] * slopes[j] / clusters
-         for j in range(3)]
-        for i in range(3)
-    ]
+    if len(corr) != 3 or any(len(row) != 3 for row in corr):
+        raise ValueError("power scenario requires a 3x3 opening-correlation matrix")
+    if score_covariances is not None:
+        if len(score_covariances) != 2 or any(
+            len(matrix) != 3 or any(len(row) != 3 for row in matrix)
+            for matrix in score_covariances
+        ):
+            raise ValueError("candidate power requires separate 3x3 score covariance matrices for both batches")
+        match_batches = [[
+            [score_covariances[batch][i][j] * slopes[i] * slopes[j]
+             * inflation * inflation / clusters for j in range(3)]
+            for i in range(3)
+        ] for batch in range(2)]
+    else:
+        match = [
+            [corr[i][j] * cluster_sd[i] * cluster_sd[j] * slopes[i] * slopes[j] / clusters
+             for j in range(3)]
+            for i in range(3)
+        ]
+        match_batches = [match, match]
+    match_average = [[(match_batches[0][i][j] + match_batches[1][i][j]) / 2.0
+                      for j in range(3)] for i in range(3)]
     calibration = [
         [calibration_sd[i] ** 2 if i == j else 0.0 for j in range(3)]
         for i in range(3)
     ]
-    total = [[match[i][j] + calibration[i][j] for j in range(3)] for i in range(3)]
+    total = [[match_average[i][j] + calibration[i][j] for j in range(3)] for i in range(3)]
     inv_total = invert(total)
     row_sums = [sum(row) for row in inv_total]
     denominator = sum(row_sums)
     weights = [x / denominator for x in row_sums]
-    var_match = quadratic(weights, match)
+    var_match_a = quadratic(weights, match_batches[0])
+    var_match_b = quadratic(weights, match_batches[1])
     var_cal = quadratic(weights, calibration)
     z95 = 1.959963984540054
-    se_batch = math.sqrt(var_match + var_cal)
-    se_combined = math.sqrt(var_match / 2.0 + var_cal)
-    half_batch = z95 * se_batch
+    se_batch_a = math.sqrt(var_match_a + var_cal)
+    se_batch_b = math.sqrt(var_match_b + var_cal)
+    se_combined = math.sqrt((var_match_a + var_match_b) / 4.0 + var_cal)
+    half_batch_a = z95 * se_batch_a
+    half_batch_b = z95 * se_batch_b
     half_combined = z95 * se_combined
 
     seed = (20261116 + round(theta * 10) + round(inflation * 100)
             + round(third_corr * 100)) & 0xFFFFFFFF
     rng = DeterministicRng(seed)
-    sd_match = math.sqrt(var_match)
+    sd_match_a = math.sqrt(var_match_a)
+    sd_match_b = math.sqrt(var_match_b)
     sd_cal = math.sqrt(var_cal)
     passed_all = 0
     passed_batch_a = 0
@@ -242,10 +268,10 @@ def scenario(
     passed_combined = 0
     for _ in range(replicates):
         common_cal = sd_cal * rng.normal()
-        noise_a = sd_match * rng.normal()
-        noise_b = sd_match * rng.normal()
-        a_pass = theta + common_cal + noise_a - half_batch > 2000.0
-        b_pass = theta + common_cal + noise_b - half_batch > 2000.0
+        noise_a = sd_match_a * rng.normal()
+        noise_b = sd_match_b * rng.normal()
+        a_pass = theta + common_cal + noise_a - half_batch_a > 2000.0
+        b_pass = theta + common_cal + noise_b - half_batch_b > 2000.0
         c_pass = theta + common_cal + (noise_a + noise_b) / 2.0 - half_combined > 2000.0
         passed_batch_a += a_pass
         passed_batch_b += b_pass
@@ -257,9 +283,13 @@ def scenario(
         "cluster_sd_inflation": inflation,
         "third_anchor_opening_correlation": third_corr,
         "assumed_scores_vs_anchors": scores,
-        "batch_match_se_elo": math.sqrt(var_match),
-        "shared_calibration_se_elo": math.sqrt(var_cal),
-        "batch_95_half_width_elo": half_batch,
+        "assumed_cluster_score_sd": cluster_sd,
+        "assumed_opening_correlation_matrix": corr,
+        "batch_a_match_se_elo": sd_match_a,
+        "batch_b_match_se_elo": sd_match_b,
+        "shared_calibration_se_elo": sd_cal,
+        "batch_a_95_half_width_elo": half_batch_a,
+        "batch_b_95_half_width_elo": half_batch_b,
         "combined_95_half_width_elo": half_combined,
         "power_batch_a": passed_batch_a / replicates,
         "power_batch_b": passed_batch_b / replicates,
@@ -403,6 +433,336 @@ def analyze(
     }
 
 
+def read_candidate_screening_cell(
+    games_path: str, *, batch: str, anchor: str, suite_path: str,
+    suite_sha256: str, dispatch_seed: int, pool: dict[str, dict], candidate_sha256: str,
+) -> dict:
+    """Verify one exact candidate-qualified 100-game screening cell."""
+    from candidate_qualification import candidate_evidence_path
+
+    expected_relative = candidate_evidence_path(
+        candidate_sha256, "candidate-screening", batch=batch, anchor=anchor
+    )
+    normalized = os.path.normpath(games_path)
+    if not normalized.endswith(os.path.join(expected_relative, "games.jsonl")):
+        raise ValueError(f"{games_path}: not at its candidate-qualified screening path")
+    manifest_path = os.path.join(os.path.dirname(games_path), "manifest.json")
+    with open(manifest_path, encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    anchor_entry = pool.get(anchor)
+    if anchor_entry is None:
+        raise ValueError(f"{anchor}: absent from the frozen anchor pool")
+    expected_fields = {
+        "batch": batch,
+        "anchor": anchor,
+        "engine_sha256": candidate_sha256,
+        "anchor_sha256": anchor_entry["sha256"],
+        "opening_suite_sha256": suite_sha256,
+        "time_control": {"mode": "clock", "period_moves": 40, "period_seconds": 900.0},
+        "evidence_purpose": "candidate-screening",
+        "candidate_sha256": candidate_sha256,
+        "dispatch_seed": dispatch_seed,
+        "repetitions": 1,
+        "evidence_class": "selection-only",
+        "n_counted": 100,
+        "n_shards": 50,
+    }
+    observed = {key: manifest.get(key) for key in expected_fields}
+    if observed != expected_fields:
+        raise ValueError(f"{manifest_path}: candidate screening identity/count mismatch: {observed!r}")
+    target = manifest.get("target_commit", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", target):
+        raise ValueError(f"{manifest_path}: missing full frozen target commit")
+    if manifest.get("merged_sha256") != sha256_file(games_path):
+        raise ValueError(f"{manifest_path}: merged_sha256 does not match games.jsonl")
+
+    names = read_suite_names(suite_path)
+    if sha256_file(suite_path) != suite_sha256:
+        raise ValueError(f"{suite_path}: suite hash differs from candidate preregistration")
+    expected_shards = {f"candidate-screening-{batch}-{anchor}-{i}" for i in range(50)}
+    shard_ids = manifest.get("shard_ids")
+    if not isinstance(shard_ids, list) or set(shard_ids) != expected_shards or len(shard_ids) != 50:
+        raise ValueError(f"{manifest_path}: candidate screening shard IDs are incomplete or unexpected")
+
+    records = []
+    with open(games_path, encoding="utf-8") as handle:
+        for line_no, raw in enumerate(handle, 1):
+            if not raw.strip():
+                continue
+            try:
+                records.append(json.loads(raw))
+            except ValueError as exc:
+                raise ValueError(f"{games_path}:{line_no}: malformed JSON record") from exc
+    if manifest.get("n_attempts") != len(records):
+        raise ValueError(f"{manifest_path}: n_attempts does not match raw games")
+    if manifest.get("n_engine_errors") != sum(bool(g.get("engine_error")) for g in records):
+        raise ValueError(f"{manifest_path}: n_engine_errors does not match raw games")
+    if manifest.get("n_unadjudicated") != sum(g.get("adjudicated") is False for g in records):
+        raise ValueError(f"{manifest_path}: n_unadjudicated does not match raw games")
+
+    counted: dict[int, dict] = {}
+    attempts: dict[int, dict[int, dict]] = {}
+    for game in records:
+        index = game.get("schedule_index")
+        replay = game.get("replay_depth")
+        if type(index) is not int or not 0 <= index < 100 or type(replay) is not int or replay not in (0, 1):
+            raise ValueError(f"{games_path}: invalid candidate screening schedule/replay identity")
+        if (type(game.get("counted")) is not bool
+                or type(game.get("engine_error")) is not bool
+                or type(game.get("adjudicated")) is not bool):
+            raise ValueError(f"{games_path}: attempt at slot {index} lacks boolean counted/error/adjudication provenance")
+        per_slot = attempts.setdefault(index, {})
+        if replay in per_slot:
+            raise ValueError(f"{games_path}: duplicate candidate screening attempt {(index, replay)}")
+        per_slot[replay] = game
+        replay_of = game.get("replay_of_schedule_index")
+        if ((replay == 0 and replay_of is not None)
+                or (replay == 1 and (type(replay_of) is not int or replay_of != index))):
+            raise ValueError(f"{games_path}: inconsistent replay provenance at schedule index {index}")
+        expected_pair = "AB" if index % 2 == 0 else "BA"
+        expected_white, expected_black = (("flawless", anchor) if expected_pair == "AB"
+                                          else (anchor, "flawless"))
+        if type(game.get("repetition")) is not int:
+            raise ValueError(f"{games_path}: attempt at slot {index} has non-integer repetition identity")
+        if (game.get("color_pair") != expected_pair or game.get("repetition") != 0
+                or str(game.get("white", "")).casefold() != expected_white
+                or str(game.get("black", "")).casefold() != expected_black):
+            raise ValueError(f"{games_path}: attempt at slot {index} has incorrect seat or engine identity")
+        if game.get("opening") != names[index // 2]:
+            raise ValueError(f"{games_path}: attempt at slot {index} does not match the registered suite order")
+        if game.get("_shard_id") != f"candidate-screening-{batch}-{anchor}-{index // 2}":
+            raise ValueError(f"{games_path}: attempt at slot {index} has incorrect shard identity")
+        if game.get("counted") is not True:
+            if not game.get("engine_error"):
+                raise ValueError(f"{games_path}: uncounted non-error attempt in candidate screening")
+            continue
+        if index in counted or game.get("engine_error") or game.get("adjudicated") is not True:
+            raise ValueError(f"{games_path}: duplicate or not-explicitly-adjudicated counted schedule index {index}")
+        if game.get("result") not in ("1-0", "0-1", "1/2-1/2"):
+            raise ValueError(f"{games_path}: counted slot {index} has invalid result")
+        counted[index] = game
+    if set(counted) != set(range(100)):
+        raise ValueError(f"{games_path}: expected exactly 100 counted schedule slots")
+    for index in range(100):
+        initial = attempts.get(index, {}).get(0)
+        replay = attempts.get(index, {}).get(1)
+        if initial is None:
+            raise ValueError(f"{games_path}: slot {index} has no initial attempt")
+        if initial.get("engine_error"):
+            if initial.get("counted") is True or replay is None:
+                raise ValueError(f"{games_path}: failed initial attempt at slot {index} lacks a valid replay")
+            if replay.get("engine_error") or replay.get("counted") is not True:
+                raise ValueError(f"{games_path}: replay at slot {index} did not yield the counted result")
+        elif initial.get("counted") is not True or replay is not None:
+            raise ValueError(f"{games_path}: slot {index} has an invalid or unnecessary replay")
+
+    clusters: dict[str, list[float]] = {name: [] for name in names}
+    for index, game in counted.items():
+        if game["color_pair"] == "AB":
+            score = 1.0 if game["result"] == "1-0" else 0.0 if game["result"] == "0-1" else 0.5
+        else:
+            score = 1.0 if game["result"] == "0-1" else 0.0 if game["result"] == "1-0" else 0.5
+        clusters[game["opening"]].append(score)
+    if any(len(scores) != 2 for scores in clusters.values()):
+        raise ValueError(f"{games_path}: every registered opening needs exactly one AB/BA pair")
+    return {
+        "manifest": manifest,
+        "cluster_scores": {name: sum(scores) / len(scores) for name, scores in clusters.items()},
+        "n_attempts": len(records),
+        "n_counted": len(counted),
+        "target_commit": target,
+    }
+
+
+def analyze_candidate(
+    *, evidence_root: str, pool_path: str, suite_a: str, suite_b: str,
+    self_control_report: str, candidate_sha256: str, replicates: int,
+) -> dict:
+    """Candidate-specific empirical sensitivity; always non-authorizing.
+
+    It requires all six preregistered screening cells and a robust candidate
+    self-control certificate. Screening estimates remain selection-only; the
+    result is a prospective sensitivity diagnostic and is BLOCKED pending the
+    separately registered decision rule and independent review.
+    """
+    from candidate_qualification import CANDIDATE_SHA256, SCREENING_ANCHORS, SUITES, load_design
+
+    if candidate_sha256 != CANDIDATE_SHA256:
+        raise ValueError("candidate power analysis SHA differs from preregistered candidate")
+    design = load_design("benches/candidate-qualification.json")
+    with open(pool_path, encoding="utf-8") as handle:
+        pool_obj = json.load(handle)
+    pool = {entry["key"]: entry for entry in pool_obj["engines"]}
+    suite_paths = {"A": suite_a, "B": suite_b}
+    names_a = read_suite_names(suite_a)
+    names_b = read_suite_names(suite_b)
+    if set(names_a) & set(names_b):
+        raise ValueError("candidate Batch A and Batch B opening suites are not disjoint")
+    cells: dict[tuple[str, str], dict] = {}
+    target_commits: set[str] = set()
+    for batch, (registered_suite, suite_sha, dispatch_seed) in SUITES.items():
+        if os.path.normpath(suite_paths[batch]) != os.path.normpath(registered_suite):
+            # Allow absolute paths for tests and local workflows, but require
+            # the exact bytes and basename of the registered suite.
+            if os.path.basename(suite_paths[batch]) != os.path.basename(registered_suite):
+                raise ValueError(f"candidate Batch {batch} suite path differs from preregistration")
+        for anchor in SCREENING_ANCHORS:
+            games_path = os.path.join(evidence_root, "batch" + batch, anchor, "games.jsonl")
+            cell = read_candidate_screening_cell(
+                games_path, batch=batch, anchor=anchor, suite_path=suite_paths[batch],
+                suite_sha256=suite_sha, dispatch_seed=dispatch_seed, pool=pool,
+                candidate_sha256=candidate_sha256,
+            )
+            cells[(batch, anchor)] = cell
+            target_commits.add(cell["target_commit"])
+    if len(target_commits) != 1:
+        raise ValueError("candidate screening cells do not share one exact frozen target commit")
+
+    with open(self_control_report, encoding="utf-8") as handle:
+        control = json.load(handle)
+    from candidate_qualification import candidate_evidence_path, SELF_BOOTSTRAP_SEEDS
+    expected_control_path = os.path.join(
+        candidate_evidence_path(candidate_sha256, "candidate-self-control"), "games.jsonl"
+    )
+    certificate_path = os.path.normpath(control.get("evidence_path", ""))
+    certificate_seed_rows = control.get("registered_seed_results", {}).get("per_seed", [])
+    control_games_path = control.get("evidence_path", "")
+    control_manifest_path = os.path.join(os.path.dirname(control_games_path), "manifest.json")
+    if not os.path.isfile(control_games_path) or not os.path.isfile(control_manifest_path):
+        raise ValueError("candidate self-control certificate points to missing committed evidence")
+    if (control.get("games_sha256") != sha256_file(control_games_path)
+            or control.get("evidence_manifest_sha256") != sha256_file(control_manifest_path)):
+        raise ValueError("candidate self-control certificate hashes do not match its committed evidence")
+    if (control.get("status") != "PASS"
+            or control.get("candidate_sha256") != candidate_sha256
+            or control.get("seed_robust") is not True
+            or control.get("all_registered_seeds_pass") is not True
+            or control.get("counted_games") != 240
+            or control.get("eligible_for_confirmatory_dispatch") is not False
+            or not certificate_path.endswith(os.path.normpath(expected_control_path))
+            or control.get("registered_seed_results", {}).get("seeds") != list(SELF_BOOTSTRAP_SEEDS)
+            or len(certificate_seed_rows) != len(SELF_BOOTSTRAP_SEEDS)
+            or not all(row.get("pass") is True for row in certificate_seed_rows)
+            or not re.fullmatch(r"[0-9a-f]{64}", control.get("games_sha256", ""))
+            or not re.fullmatch(r"[0-9a-f]{64}", control.get("evidence_manifest_sha256", ""))):
+        raise ValueError("candidate self-control certificate is absent, non-robust, or not a unanimous PASS")
+    if control.get("target_commit") != next(iter(target_commits)):
+        raise ValueError("candidate self-control and screening target commits differ")
+
+    with open(pool_path, encoding="utf-8") as handle:
+        pool_obj = json.load(handle)
+    wanted = list(SCREENING_ANCHORS)
+    anchors = [next(entry for entry in pool_obj["engines"] if entry["key"] == key) for key in wanted]
+    ratings = [float(entry["published_elo"]) for entry in anchors]
+    calibration_sd = [float(entry["published_error"]) / 1.96 for entry in anchors]
+    pooled_scores: dict[str, list[float]] = {key: [] for key in wanted}
+    batch_statistics = {}
+    cell_summaries = {}
+    correlations = []
+    score_covariances = []
+    batch_means = {}
+    for batch in ("A", "B"):
+        names = list(cells[(batch, wanted[0])]["cluster_scores"])
+        score_vectors = [[cells[(batch, key)]["cluster_scores"][name] for name in names] for key in wanted]
+        batch_means[batch] = [sum(vector) / len(vector) for vector in score_vectors]
+        batch_sd = [mean_sd(vector)[1] for vector in score_vectors]
+        if any(sd <= 0 for sd in batch_sd):
+            raise ValueError(f"candidate Batch {batch} has a zero-variance anchor; empirical covariance is not estimable")
+        for index, key in enumerate(wanted):
+            cell_summaries[f"{batch}/{key}"] = {
+                "opening_clusters": len(score_vectors[index]),
+                "cluster_score_mean": batch_means[batch][index],
+                "cluster_score_sd": batch_sd[index],
+            }
+            pooled_scores[key].extend(score_vectors[index])
+        corr = [[1.0 if i == j else sample_correlation(score_vectors[i], score_vectors[j])
+                 for j in range(3)] for i in range(3)]
+        covariance = [[
+            sum((score_vectors[i][k] - batch_means[batch][i])
+                * (score_vectors[j][k] - batch_means[batch][j]) for k in range(len(names)))
+            / (len(names) - 1)
+            for j in range(3)] for i in range(3)]
+        correlations.append(corr)
+        score_covariances.append(covariance)
+        batch_statistics[batch] = {
+            "cluster_score_mean": batch_means[batch],
+            "cluster_score_sd": batch_sd,
+            "opening_correlation_matrix": corr,
+        }
+    pooled_sd = [mean_sd(pooled_scores[key])[1] for key in wanted]
+    corr_matrix = [[sum(matrix[i][j] for matrix in correlations) / 2.0 for j in range(3)]
+                   for i in range(3)]
+    for i in range(3):
+        corr_matrix[i][i] = 1.0
+
+    scenarios = []
+    for theta in (2050.0, 2100.0, 2150.0, 2200.0):
+        for inflation in (1.0, 1.5, 2.0):
+            scenarios.append(scenario(
+                theta, inflation, corr_matrix[0][2], ratings=ratings,
+                calibration_sd=calibration_sd, first_two_sd=pooled_sd[:2],
+                first_two_corr=corr_matrix[0][1], clusters=50, replicates=replicates,
+                cluster_sd_override=pooled_sd, correlation_override=corr_matrix,
+                score_covariances=score_covariances,
+            ))
+
+    return {
+        "design": "rating-100-v1",
+        "date": "2026-11-18",
+        "engine_sha256": candidate_sha256,
+        "screening_engine_scope": "Candidate-specific screening distributions; selection-only and not gate evidence.",
+        "status": "BLOCKED",
+        "eligible_for_confirmatory_dispatch": False,
+        "opening_suites": {
+            "amended_a": suite_a,
+            "amended_b": suite_b,
+            "batch_a_sha256": SUITES["A"][1],
+            "batch_b_sha256": SUITES["B"][1],
+        },
+        "screening_inputs": {
+            "source": {f"{batch}/{anchor}": cells[(batch, anchor)]["manifest"]["merged_sha256"]
+                       for batch in ("A", "B") for anchor in wanted},
+            "candidate_engine_sha256": candidate_sha256,
+            "target_commit": next(iter(target_commits)),
+            "counted_games": 600,
+            "cells": cell_summaries,
+            "cross_anchor_statistics_by_batch": batch_statistics,
+            "batch_a_and_batch_b_opening_suites_disjoint": True,
+            "self_control_certificate_sha256": sha256_file(self_control_report),
+            "self_control_seed_robust": True,
+            "self_control_all_registered_seeds_pass": True,
+            "self_control_counted_games": 240,
+            "third_anchor_full_distribution_available": True,
+            "batch_b_new_suite_distribution_available": True,
+        },
+        "calibration": {
+            "anchors": wanted,
+            "published_elo": ratings,
+            "published_95_ci_half_width": [float(entry["published_error"]) for entry in anchors],
+            "sd_after_dividing_ci95_by_1.96": calibration_sd,
+            "shared_between_batches": True,
+        },
+        "model": {
+            "method": "candidate-evidence empirical cluster SD/correlation sensitivity with multivariate-normal GLS approximation",
+            "sample_units": 50,
+            "paired_games_per_cluster": 2,
+            "cluster_sd_inflation_grid": [1.0, 1.5, 2.0],
+            "assumed_true_rating_grid": [2050, 2100, 2150, 2200],
+            "bootstrap_method_for_final_evidence": "unchanged registered opening-cluster bootstrap + GLS",
+            "power_definition": "Both batch lower bounds and combined lower bound strictly exceed 2,000 Elo.",
+            "monte_carlo_replicates_per_cell": replicates,
+            "limitations": [
+                "The true candidate rating remains unknown and is evaluated over a sensitivity grid.",
+                "Normal-approximation power is a diagnostic, not an evidence-backed PASS.",
+                "An independently reviewed prospective decision rule and approval are required before dispatch.",
+            ],
+        },
+        "scenarios": scenarios,
+        "conclusion": "Candidate-specific empirical inputs are present, but this diagnostic never grants power PASS or dispatch authority; independent review and an explicit preregistered decision rule remain required.",
+        "approval": None,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--games-a", default="benches/evidence/screening-2/topple-0.1.1/games.jsonl")
@@ -411,16 +771,36 @@ def main() -> int:
     parser.add_argument("--suite-a", default="benches/rating-openings-100-batchA.txt")
     parser.add_argument("--suite-b", default="benches/rating-openings-100-batchB.txt")
     parser.add_argument("--replicates", type=int, default=250_000)
-    parser.add_argument("--out", default="benches/rating-100-power-assessment.json")
+    parser.add_argument("--candidate-specific", action="store_true",
+                        help="analyze the six preregistered candidate screening cells; never authorizes dispatch")
+    parser.add_argument("--candidate-sha256", default="0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5")
+    parser.add_argument("--candidate-evidence-root", default=(
+        "benches/evidence/candidates/0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5/screening"))
+    parser.add_argument("--self-control-report", default=(
+        "benches/evidence/candidates/0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5/self-control/certificate.json"))
+    parser.add_argument("--out", default=None)
     args = parser.parse_args()
     if args.replicates < 1000:
         parser.error("--replicates must be >= 1000")
-    report = analyze(args.games_a, args.games_b, args.pool, args.suite_a,
-                     args.suite_b, args.replicates)
-    with open(args.out, "w", encoding="utf-8") as handle:
+    if args.candidate_specific:
+        try:
+            report = analyze_candidate(
+                evidence_root=args.candidate_evidence_root, pool_path=args.pool,
+                suite_a=args.suite_a, suite_b=args.suite_b,
+                self_control_report=args.self_control_report,
+                candidate_sha256=args.candidate_sha256, replicates=args.replicates,
+            )
+        except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            parser.error(f"candidate-specific power analysis BLOCKED: {exc}")
+        output = args.out or "benches/candidate-rating-100-power-assessment.json"
+    else:
+        report = analyze(args.games_a, args.games_b, args.pool, args.suite_a,
+                         args.suite_b, args.replicates)
+        output = args.out or "benches/rating-100-power-assessment.json"
+    with open(output, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2)
         handle.write("\n")
-    print(f"power assessment: {report['status']} — wrote {args.out}; "
+    print(f"power assessment: {report['status']} — wrote {output}; "
           "confirmatory dispatch remains blocked")
     return 0
 

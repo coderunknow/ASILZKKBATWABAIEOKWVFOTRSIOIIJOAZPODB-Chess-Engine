@@ -230,6 +230,30 @@ jobs:
           ls -la dist/
           cat flawless-windows-x86_64.zip.sha256
 
+      - name: Verify and smoke-test the actual packaged ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          EXTRACT_DIR=$(mktemp -d)
+          "$PY" scripts/verify_windows_package.py \
+            --zip flawless-windows-x86_64.zip \
+            --source-commit "$(git rev-parse HEAD)" \
+            --staged-dir dist \
+            --extract-dir "$EXTRACT_DIR"
+          EXE="$EXTRACT_DIR/flawless.exe"
+          echo "== packaged UCI handshake =="
+          out=$(printf 'uci\nisready\nquit\n' | "$EXE" uci)
+          echo "$out"
+          echo "$out" | grep -q '^uciok$'
+          echo "$out" | grep -q '^readyok$'
+          echo "== packaged search =="
+          out=$(printf 'uci\nisready\nposition startpos\ngo depth 6\nquit\n' | "$EXE" uci)
+          echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8][qrbn]?'
+          echo "== packaged perft =="
+          "$EXE" perft 4 | grep -q '197281'
+          "$EXE" perft 3 | grep -q '8902'
+
       - name: Upload Windows delivery artifact
         uses: actions/upload-artifact@v4
         with:

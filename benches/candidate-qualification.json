@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "status": "PREREGISTERED_NOT_DISPATCHED",
+  "candidate": {
+    "engine_sha256": "0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5",
+    "bench_signature": "c64d148d39181140",
+    "identity_rule": "the release binary SHA-256 is authoritative; source and harness must be reverified at the exact dispatch commit"
+  },
+  "time_control": {
+    "mode": "clock",
+    "period_moves": 40,
+    "period_seconds": 900.0,
+    "increment_seconds": 0.0,
+    "tc_policy": "add",
+    "ponder": false
+  },
+  "screening": {
+    "purpose": "candidate-screening",
+    "evidence_class": "selection-only",
+    "anchors": ["topple-0.1.1", "topple-0.2.1", "akimbo-0.1.1"],
+    "batches": {
+      "A": {
+        "suite": "benches/rating-openings-100-batchA.txt",
+        "suite_sha256": "5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df",
+        "dispatch_seed": 20261119
+      },
+      "B": {
+        "suite": "benches/rating-openings-100-batchB.txt",
+        "suite_sha256": "ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253",
+        "dispatch_seed": 20261120
+      }
+    },
+    "opening_clusters_per_batch": 50,
+    "paired_repetitions_per_cluster": 1,
+    "games_per_cluster": 2,
+    "shards_per_anchor_batch": 50,
+    "counted_games_per_anchor_batch": 100,
+    "anchor_batch_cells": 6,
+    "total_counted_games": 600,
+    "schedule": "opening-major, repetition-minor, AB then BA exact color reversal; deterministic, no random opening sampling",
+    "dispatch_seed_semantics": "provenance labels only; match.py schedule is deterministic and does not consume RNG",
+    "evidence_path": "benches/evidence/candidates/<engine_sha256>/screening/batch<batch>/<anchor>/"
+  },
+  "self_control": {
+    "purpose": "candidate-self-control",
+    "evidence_class": "candidate-null-control",
+    "anchor_id": "candidate-self-control",
+    "white_engine": "flawless",
+    "black_engine": "flawless",
+    "suite": "benches/rating-openings-batchA.txt",
+    "suite_sha256": "2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96",
+    "opening_clusters": 60,
+    "paired_repetitions_per_cluster": 2,
+    "games_per_cluster": 4,
+    "shards": 60,
+    "total_counted_games": 240,
+    "dispatch_seed": 20261121,
+    "bootstrap_seeds": [20261114, 20261115, 20261116, 20261117, 20261118, 20261119, 20261120, 20261121, 20261122, 20261123, 20261124, 20261125, 20261126, 20261127, 20261128, 20261129],
+    "robustness_rule": "every registered seed must satisfy the registered self-control threshold; aggregate verdict must report seed_robust=true",
+    "evidence_path": "benches/evidence/candidates/<engine_sha256>/self-control/"
+  },
+  "separation": {
+    "screening_is_confirmatory": false,
+    "screening_may_be_reused_as_gate_evidence": false,
+    "historical_engine1_self_control_reusable": false,
+    "valid_anchor_vs_anchor_control_reusable": true,
+    "historical_generic_screening_roots_eligible": false
+  }
+}

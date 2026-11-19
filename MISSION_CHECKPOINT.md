@@ -1,46 +1,28 @@
 # MISSION_CHECKPOINT.md — authoritative resume document
 
-Facts here are verified state, not plans. Historical records: AGENTS_LOG.md, DESIGN_LOG.md, FAILURE_LEDGER.md (append-only).
+Facts in this current section are verified state, not plans. Historical records below are retained for provenance; they do not override the current snapshot. Append-only history: `AGENTS_LOG.md`, `DESIGN_LOG.md`, `FAILURE_LEDGER.md`.
 
-## Status
+## Current status — 2026-11-19 UTC
 
-- Mission status: **ACTIVE / INCOMPLETE**
-- Current milestone: **V1 (strictly above 2,000 Elo)**. V2 (>3,000) not started.
-- Current work item: the Phase C audit of PR #2 found and fixed a fourth defect (the
-  mate-score band was narrower than the reachable mate range, so the transposition
-  table reported the wrong mate distance for long mates and the UCI layer printed
-  them as centipawn scores), and the registered EVAL-3 screening campaign confirmed
-  that the audited tree is about **+197 Elo** (95% CI [+117, +285]) stronger than the
-  pre-audit tree. The next items are to freeze the exact candidate binary, obtain the
-  exact-SHA CodeRabbit review and the owner's Windows acceptance, and then run the
-  candidate controls, the candidate-specific power assessment and Batch A/B.
+- Mission: **ACTIVE / INCOMPLETE**. Release decision: **do not merge, tag, or publish v1.0.0**.
+- Current rating: **Absolute Elo not yet measurable from valid evidence.** Strict >2,000 Elo qualification has not passed.
+- PR #2: https://github.com/coderunknow/FlawLessChess/pull/2 is open and Draft; GitHub reports mergeable but `UNSTABLE`, with no review decision.
+- Base: `main` at `5e36b06a7b0d7417d57205e52010ea98529b2a4f`.
+- Remote PR head and local committed HEAD: `b9d3979d16d9ae5f7cf0ce596c1910622249fde8`.
+- Branch: `arena/8259ce1c-flawlesschess`. The worktree has uncommitted candidate evidence/power tooling, workflow, regression-test and documentation changes; hosted CI and fresh exact-head review have not run on these local changes.
+- Candidate SHA bound in the preregistration: `0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5`. No candidate games/evidence, candidate-specific independent power PASS, gate plan, or Batch A/B confirmatory evidence exists.
+- On exact remote head, Ubuntu/Windows/MSRV CI, Windows artifact workflow and anchor verification passed. The rating gate failed closed for absent qualifying evidence/gate plan. Evidence Bridge's collection/upload steps were skipped. Artifact download for independent package inspection ended in EOF; package contents are not independently verified here.
+- All 17 local Python test suites passed; six workflow YAML files parsed, all 7 unique embedded Python heredocs compiled, and the candidate design validator passed. Local `cargo`/`rustc` are absent; exact-head CI is the available Rust validation. The dirty Windows workflow now includes actual ZIP/package verification and packaged-binary UCI/search/perft checks, but that new runner step has not been executed.
+- Measured GitHub Actions job time for branch runs created since 2026-11-18 00:00 UTC: 281.3 runner-minutes across 136 runs / 481 jobs. This exceeds the 60-minute cumulative ceiling. Do not start more hosted execution or benchmarks without the user's explicit decision. The existing, non-authorizing cost report estimates 799.5 runner-hours for candidate screening/control plus 574.0 for confirmation (1,373.5 total), extrapolated from 360 ENGINE-1 games rather than this candidate; it is not a candidate-specific measurement.
+- Two current CodeRabbit threads (`scripts/audit_pair.py`, `scripts/collect_eval_results.py`) have source fixes, local regression tests, replies, and are resolved. The only formal review is still `COMMENTED` on an older commit; fresh exact-head review is outstanding.
 
-## Identity
+## Current continuation scope
 
-- PR: PR #1 (https://github.com/coderunknow/FlawLessChess/pull/1) was **merged** on
-  2026-11-14 by the repository owner; it is closed and is not the vehicle for this work.
-  A new **Draft** PR is required for the 2026-11-18 branch and is not yet open.
-- PR #2 (https://github.com/coderunknow/FlawLessChess/pull/2) is **open**, **draft**,
-  mergeable, base `main` @ `5e36b06`, head `6755cc1` (API-verified 2026-11-19).
-- Branch: `arena/8259ce1c-flawlesschess`
-- Base: `main` @ `5e36b06a7b0d7417d57205e52010ea98529b2a4f` (re-verified against the
-  remote on 2026-11-18)
-- Local head at this checkpoint: `6755cc1` (the audit fixes `708d53c`, `61dd642`,
-  `018e920`, the workflow re-pin `50ec354`, the mate-band fix `32ad8ab`, and the EVAL-3
-  registration, result and documentation `96e7ca8`, `16f6826`, `521a605`, `6755cc1`).
-- **The Windows artifact has not been produced and the owner has not tested a binary:
-  `OWNER_TEST_PENDING` remains in force.**
+The user has chosen to continue. **Absolute Elo: not yet measurable from valid evidence.** No valid candidate-specific absolute-rating interval exists to report. Screening estimates, relative A/B, self-play, node counts, bench signatures, and other binaries do not qualify. The registered protocol remains unchanged: candidate controls and independently reviewed candidate-specific power PASS before confirmation; Batch A, Batch B, and combined calibrated 95% lower bounds must each be strictly >2,000 without rounding. The required campaign exceeds the execution budget; do not dispatch or weaken it.
 
-## 2026-11-18 work item (supersedes the 2026-11-17 item above)
+Continue with local review and verification only. The audited runner usage already exceeds the 60-minute limit, so no further hosted CI, benchmarks, or release actions are authorized by the current instruction. The new Windows package acceptance step also needs a future authorized runner execution before claiming actual package acceptance.
 
-- Current work item: finish the EVAL-1 ablation campaign, apply the registered
-  decision rules per evaluation feature, push the resulting series, open the Draft PR,
-  run CI at the exact head SHA, and produce the Windows x86-64 delivery ZIP.
-- STRENGTH-1 screening is COMPLETE and its result is recorded:
-  SPEED-1 **KEPT** (+89 Elo, CI [+13, +168]); HIST-1 **INCONCLUSIVE**
-  (−66 Elo, CI [−142, +9]).
-- EVAL-1 (evaluation ablation, seven matched pairs against one control) is
-  **RUNNING**; the decision rules were registered before dispatch.
+## Historical records (superseded by the current snapshot above)
 
 ## 2026-11-18 frozen identities
 
@@ -455,3 +437,32 @@ total 799.5 runner-hours; grand total 1,373.5 runner-hours / 1,440 counted games
 No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
 exists, PR #2 stays Draft, and the candidate-specific controls + a reviewed candidate-specific
 power PASS + three unrounded Elo lower bounds > 2,000 all remain required before any dispatch.
+
+## 2026-11-18 continuation — preregistered candidate evidence design completed
+
+The candidate-specific screen/control design is now committed in the working tree before any
+candidate execution: `benches/candidate-qualification.json` and the append-only amendment in
+`PREREGISTRATION.md` pin candidate SHA `0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5`,
+bench signature `c64d148d39181140`, three anchors, disjoint Batch A/B 50-opening suites, 40/15
+clock, deterministic AB/BA schedule, six 100-game screening cells (600 games), and a separate
+240-game self-control evaluated over all 16 registered seeds. Screening cannot become gate evidence;
+ENGINE-1 self-control cannot be reused; the valid anchor-vs-anchor null control remains reusable.
+
+`rating-run.yml` and `aggregate_shards.py` now enforce binary-qualified candidate evidence roots,
+exact dispatch parameters, no-overwrite-before-run, full candidate commit/binary identity, exact
+count/schedule/seat/suite validation and candidate identity in manifests. Added a fail-closed
+candidate self-control verifier/certifier and CI regressions. Validation: all 15 Python suites
+passed; YAML and embedded workflow Python parsed/compiled; diff whitespace check passed. No
+candidate games, evidence, gate plan, or dispatch were created; the historical dispatch marker was
+not touched.
+
+Candidate-aware power and cost analysis are now implemented in `scripts/power_analysis.py`
+(`--candidate-specific`) and `scripts/estimate_candidate_campaign_cost.py`. They validate all six
+candidate-qualified screening manifests and the unanimous 240-game self-control certificate; power
+reports stay `BLOCKED`/non-authorizing pending an independent review and explicit decision rule, and
+cost reports remain planning-only. The committed historical power report is still ENGINE-1-bound.
+
+Still open: actual screening and self-control execution; candidate-specific independent power
+review/PASS; rule-derived selection and exact gate-plan keys/§2-span interpretation; confirmatory
+Batch A/B; and owner Windows acceptance plus exact-head CodeRabbit review. PR #2 stays Draft and must
+not be merged automatically.

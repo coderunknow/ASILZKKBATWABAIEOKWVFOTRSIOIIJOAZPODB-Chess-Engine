@@ -636,3 +636,25 @@ bench signature pins the searched tree. Two of the three cost commits were
 also *rejected* by measurement — flattening the piece-square tables and
 popcount-based material were a consistent 3 % regression — and the bench
 signature is what made it safe to try them at all.
+
+## 2026-11-19 — candidate attempt provenance and campaign-cost accounting
+
+A local audit of candidate qualification exposed two integrity details worth enforcing before any future experiment. First, schedule validation previously accepted an engine-error retry attempt without proving that the initial attempt for that exact slot had failed, and did not apply every seat/opening/shard identity check to uncounted attempts. Candidate screening and self-control validation now require every attempt (counted or failed) to match the registered schedule and shard; a retry is valid only after its initial engine-error attempt, and a successful base attempt may not have an unnecessary retry. The sample size and retry policy are unchanged.
+
+Second, the candidate runtime estimator used only counted games, omitting wall time spent on uncounted engine-error attempts. Its cluster-duration inputs now sum all attempts after strict provenance validation, so retries are included both in measured prerequisite cost and in resampling the confirmatory shard-time distribution. Added regressions for a valid retry, an unnecessary retry, and accounting for failed-attempt time. During implementation the self-control test caught an ordering error in the new validator (suite names were used before loading); this was fixed before the full local test run.
+
+No experiment or hosted workflow was dispatched. All 16 local Python test suites, six workflow YAML parses, candidate preregistration validation, Python compilation of changed tooling, and `git diff --check` pass. The candidate cost report remains planning-only and cannot authorize dispatch.
+
+## 2026-11-19 — portable evidence hashes and Windows package acceptance
+
+Candidate evidence and its manifests are byte-hashed, so Windows checkout line-ending conversion could otherwise make a correct committed LF file appear tampered. Added a candidate-root LF rule in `.gitattributes` and made the candidate preregistration validator enforce its presence; `git check-attr` confirms LF for candidate JSONL and manifests.
+
+The prior Windows release job tested the built PE and generated a ZIP, but did not inspect the ZIP after creation. Added a platform-independent package verifier for exact archive contents, ZIP and executable checksums, manifest/source identity, binary size, PE import table/runtime dependencies, and staged-vs-packaged bytes. The Windows workflow now runs it on the produced ZIP and runs UCI handshake, search, and perft against the extracted packaged executable before upload. Six synthetic package regressions pass locally. The added runner step has not been executed because the measured Actions budget is already exceeded; no real package is claimed accepted until that step runs under future authorized capacity.
+
+### Follow-up — AMD64 package format regression
+
+The package validator also now checks the executable's PE machine and optional-header type are AMD64/PE32+ (not merely that the build manifest claims an x86-64 target). The package suite has seven tests, including a wrong-machine synthetic PE regression. The previously recorded six-test count above was accurate before this follow-up.
+
+## 2026-11-19 — candidate cost report distinguishes observations from estimates
+
+The candidate-specific cost planner now separates observed per-attempt game wall time from transferred per-shard job overhead and labels the resulting runner totals and confirmation distribution as estimates. This avoids implying that game elapsed time plus an overhead transferred from historical Actions runs is a measured runner-minute total. The output remains planning-only and non-authorizing; the candidate evidence required to populate it does not exist.

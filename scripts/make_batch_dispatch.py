@@ -85,6 +85,15 @@ def validate_power(path: str, suite_a_sha: str, suite_b_sha: str, engine_sha: st
         die("power assessment opening-suite hashes differ from the dispatch suites")
     if power.get("engine_sha256") != engine_sha:
         die("power assessment was computed from a different engine binary SHA-256")
+    screening = power.get("screening_inputs", {})
+    if (screening.get("candidate_engine_sha256") != engine_sha
+            or screening.get("counted_games") != 600
+            or screening.get("self_control_seed_robust") is not True
+            or screening.get("self_control_all_registered_seeds_pass") is not True
+            or screening.get("self_control_counted_games") != 240
+            or screening.get("third_anchor_full_distribution_available") is not True
+            or screening.get("batch_b_new_suite_distribution_available") is not True):
+        die("power assessment lacks the complete candidate-specific screening and robust self-control evidence")
     approval = power.get("approval")
     if not isinstance(approval, dict) or not all(
         isinstance(approval.get(field), str) and approval[field].strip()
@@ -198,7 +207,7 @@ def main() -> int:
     parser.add_argument("--revision", required=True, type=int)
     parser.add_argument("--recovery", action="store_true",
                         help="schedule only shards missing from committed per-run evidence")
-    parser.add_argument("--power-assessment", default="benches/rating-100-power-assessment.json")
+    parser.add_argument("--power-assessment", default="benches/candidate-rating-100-power-assessment.json")
     parser.add_argument("--pool", default="benches/anchor-pool.json")
     parser.add_argument("--out", default="benches/dispatch.json")
     args = parser.parse_args()

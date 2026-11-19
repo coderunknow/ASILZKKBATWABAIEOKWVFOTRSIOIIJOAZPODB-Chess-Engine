@@ -1,137 +1,53 @@
-# MERGE_READINESS checklist — PR #1 (Flawless V1)
+# MERGE_READINESS — PR #2 / v1.0.0 qualification checkpoint
 
-Policy (mission §7): an item is checked ONLY with verifiable evidence. Unmet items stay
-unchecked; the mission stays `ACTIVE / INCOMPLETE` until every applicable item is verified.
-Never merge/tag/release without explicit user authorization (§9).
+**Verified state as of 2026-11-19 UTC. This replaces the stale PR #1 checklist below; it is not a release authorization.**
 
-Current PR head: see `git log --oneline -1` / `gh pr view 1 --json headRefOid`.
+## Decision
 
-## Correctness & reliability
+- **Mission: ACTIVE / INCOMPLETE. PR #2 is not merge-ready. Do not merge, tag, or release.**
+- **Absolute Elo: not yet measurable from valid evidence.** The strict requirement is Batch A, Batch B, and combined calibrated 95% lower bounds each strictly greater than 2,000 without rounding. None exists for the current candidate.
+- v1.0.0 is **not authorized**. No release artifact or release notes may be published as stable. Live GitHub verification found no tags or Releases.
 
-- [x] Project correctness and reliability audit complete — engine audit pass recorded in
-      DESIGN_LOG.md (2026-11-14 adversarial review entry + TT clock-unsafety verification);
-      differential perft 76,240 positions 0 mismatches (BENCHMARKING.md / AGENTS_LOG.md);
-      full Rust suite 35/35, match.py 104/104, rating_estimator 65/65 at `2e46fc9`
-      (evidence-push regression 10/10; ENGINE-1 clock regression included; bench signature
-      unchanged fc907eba40b7869f).
-- [x] Critical/major findings fixed or technically dispositioned — CodeRabbit review 5903125228
-      (13 findings) dispositioned in AGENTS_LOG.md; TT halfmove-clock finding verified FIXED in
-      src/tt.rs (clock-safe flag + probe suppression + regression test
-      `clock_unsafe_entries_suppress_score_but_keep_move`).
-- [x] Regression tests added for repaired defects — TT clock test (src/tt.rs), clock smoke
-      (tests/clock_smoke.rs), shard partition + e2e manifest (scripts/test_match.py),
-      estimator degenerate-Σ_m + covariances (scripts/test_rating_estimator.py).
-- [ ] Full CI matrix green on the exact FINAL head SHA — new sample, recovery and SEE tests have not yet run on the implementation commit; final-head CI remains pending.
-- [ ] No known unresolved correctness or security blockers — the earlier audit findings remain dispositioned, but the new SEE ordering candidate and RATING-100 workflow/recovery code still require hosted CI and exact-head review. Prior 5 review findings remain dispositioned; all 5 previously-open PR review
-      threads verified against current code, replied with evidence and resolved 2026-11-14:
-      covariance-between-anchors = valid/fixed (§9.6–8 + joint-cluster-bootstrap GLS estimator,
-      46/46), match.py Windows pipe reader = valid/fixed (reader-thread + Event, no select on
-      pipes), search.rs TT halfmove = valid/fixed (src/tt.rs clock-safe flag + probe suppression
-      + regression test), uci.rs:433 hold/output race = invalid as described (worker
-      hold-check+send and ponderhit clear+try_recv share one flush mutex; proven by analysis and
-      locked in by new jittered stress regression
-      `ponderhit_or_stop_racing_search_end_emits_exactly_one_bestmove`, 30 trials), uci_smoke
-      wait robustness = valid/fixed (post-exit `drain_reader` through channel disconnection +
-      full-line panic-marker scan in both tests).
+## Live identity and review
 
-## Rating methodology (docs/RATING_PROTOCOL.md §9)
+- PR: https://github.com/coderunknow/FlawLessChess/pull/2 — OPEN, DRAFT; GitHub says `MERGEABLE`, merge state `UNSTABLE`, no review decision.
+- Base: `main` at `5e36b06a7b0d7417d57205e52010ea98529b2a4f`.
+- Remote PR head: `b9d3979d16d9ae5f7cf0ce596c1910622249fde8`.
+- Local branch: `arena/8259ce1c-flawlesschess`, same committed HEAD as remote, with uncommitted changes in workflows, qualification/power/aggregation scripts, tests and docs. These worktree changes have not been pushed or checked by hosted CI.
+- The only formal CodeRabbit review is `COMMENTED` at older commit `6f8c5b61e06d07340d4be66b9df21649bd967cdf`; it is not an approval or an exact-head review. Two still-current findings on `audit_pair.py` and `collect_eval_results.py` were fixed in source, regression-tested locally, replied to, and resolved in GitHub. A fresh exact-final-head review remains outstanding.
 
-- [x] Rating methodology fully implemented and independently tested — scripts/rating_estimator.py
-      (65/65 re-run locally 2026-11-16) + scripts/aggregate_shards.py + match.py harness v2 (104/104).
-- [x] Official anchor provenance verified — CCRL 40/15 list 2026-11-13 captured with HTTP 200,
-      3,912,738 bytes, SHA-256 ce365c55b2869502de6addeada4c261d3bd2f50a5a9aef484db9f571aabe15f0;
-      uncertainty convention = 95% CI (list text); record in benches/anchor-research-20261114.md.
-- [x] ≥3 exact-version anchor binaries rebuilt and hash-verified on hosted runners — 6/6 anchors
-      in anchor-verify.yml run 43597866181 (image ubuntu24 20261111.370.1, gcc 13.3.0):
-      Wowl 1.3.7, Topple 0.1.1, Topple 0.2.1, akimbo 0.1.1, WyldChess 1.2, WyldChess 1.1.
-- [x] Real `benches/anchor-pool.json` frozen and verified — 6 anchors, span 1849–2474, all
-      runner SHA-256 + source SHA-256 + licenses + ci95 conventions; passes match.py
-      fail-closed schema validation; exclusions recorded with reasons in the pool file.
-- [x] SF10 hardware calibration complete — SF10 (official sf_10) bench on ubuntu-24.04 runner:
-      3 runs 1998/1984/1996 ms vs i7-4770K reference 2054 ms for 3,939,338 nodes
-      (Tors3/CCRL_ScirptsTests ccrl_bench.py) → factor k=1.0291, equivalent TC 40/14.58 min;
-      batches play 40/15 wall-clock with the ~3% deviation documented (pool `calibration` block).
-- [x] Throughput pilots complete — PILOT-1 (run 43602273258) + duplicate pilot (43603558950)
-      both executed and RECOVERED: raw evidence committed via evidence-bridge rev 3
-      (run 43683839993 SUCCESS, commit 2ec762e) and independently re-aggregated from the
-      original shard artifacts (byte-identical, merged_sha256 aeb4d5a0… / a811d9d1…).
-      Throughput re-verified from committed per-game records: 29.43 / 29.53 min/game
-      (8-game batch shard ≈ 236 min < 330-min cap). Exploratory only, never gate evidence.
-- [ ] Both null controls pass for the gate candidate (ENGINE-1, engine_sha256 9663697d…). CTRL-1 PASS (candidate-independent; −10.32 Elo calibration error within ±75; 240/240 counted). CTRL-2 PASS applies only to the pre-fix binary. CTRL-2-R run 43820392119 completed resolver + 120/120 successful shard jobs, but aggregate-and-commit-evidence was SKIPPED; no self-match estimate is available.
-- [ ] Anchor selection finalized on ENGINE-1 candidate — SCREEN-2R remains selection-only (2176.8 / 2236.4 / mean 2206.6). SCREEN-3 run 43820645420 completed resolver + 60/60 successful shard jobs, but aggregate-and-commit-evidence was SKIPPED; no canonical third-anchor estimate or gate plan exists.
-- [ ] RATING-100 prospective power gate — BLOCKED. The proposed design is 100 counted games/anchor/batch over 50 disjoint opening clusters; near 2,100 Elo sensitivity power for all three lower-bound decisions is insufficient under reasonable variance stress, and third-anchor / Batch-B covariance is unmeasured. No confirmatory dispatch is permitted until a reviewed, evidence-backed PASS exists.
-- [ ] Batch A and Batch B independently pass the strict rating gate — NOT RUN.
-- [ ] Combined calibrated 95% CI independently passes — NOT RUN.
-- [ ] Every lower bound is strictly greater than 2,000, without rounding — NOT MEASURED.
-- [ ] Exactly 100 counted games over 50 registered openings per eligible anchor/batch, committed and reproducible — NOT COLLECTED.
-- [ ] Raw tournament evidence committed and reproducible — SCREEN-3 and CTRL-2-R shard artifacts have not been aggregated into canonical evidence; Batch A/B have not been run.
+## Exact-remote-head workflow state
 
-## Reviews & repository integrity
+For `b9d3979`:
 
-- [ ] CodeRabbit completed review on the exact final head SHA — last substantive review
-      5903125228 at f07c4633; manual re-review at final head to be requested (path previously
-      rate-limited: "manual review required for this OSS repository").
-- [x] All relevant CodeRabbit findings dispositioned — 13/13 of review 5903125228 dispositioned
-      (AGENTS_LOG.md) and all 11 of its review threads now carry evidence-based replies and are
-      resolved (6 earlier + 5 on 2026-11-14; per-thread dispositions in the checklist above).
-      Findings of the pending final-head review will be dispositioned the same way before merge.
-- [ ] Documentation and PR description match the final implementation — sample-size amendment, exact-slot recovery and blocked power analysis documented; final-head PR body refresh and review remain pending.
-- [ ] All mandatory GitHub branch-protection and review conditions satisfied — verify at merge
-      time (repository rules; required checks where permitted, else documented privileged action).
-- [ ] PR is no longer a draft and is genuinely ready for review/merge — PR #1 is currently
-      **Draft** by policy until every checklist item is verified.
+- CI run `44513810575`: Ubuntu, Windows, and Rust 1.80 MSRV jobs passed.
+- Windows Release Artifact run `44513810693` (the prior committed workflow): runner job passed; artifact `14523729486` exists. Its real-Windows build and pre-package binary checks passed (PE imports, UCI, bestmove, perft, stop, bench) and archive generation completed. The artifact download failed, so the ZIP contents and checksum/manifest equality were not verified.
+- The dirty worktree now adds `scripts/verify_windows_package.py` and a Windows workflow step to validate the actual ZIP members, archive checksum, packaged executable hash/PE imports, manifest, and to rerun UCI/search/perft from the extracted package. Its seven host-independent package regressions pass locally, but this new Windows-runner step has not run. No human GUI acceptance is claimed.
+- Anchor verification run `44513810723`: passed.
+- Rating gate run `44513810716`: failed closed because `benches/gate-plan.json` and qualifying canonical rating evidence are absent. This is expected and is not a passed rating gate.
+- Evidence Bridge run `44513810594`: job reports success, but its collection/upload steps were skipped by the top-commit marker gate; no evidence was collected or uploaded.
+- Attempted to download and inspect the Windows artifact; the artifact blob request ended with EOF. Therefore its packaged contents/checksums have not been independently inspected here. The workflow's Windows tests are not a substitute for that inspection.
 
-## Authorization record
+## Local checks on the current dirty worktree
 
-- No merge, tag, or release has been performed. Those require explicit user authorization
-  separate from merge-readiness (mission §9).
+- All 17 `scripts/test_*.py` suites passed locally with Python 3.11 and python-chess 1.11.2, including candidate qualification, aggregation, control certification, power/cost analysis, and seven Windows ZIP verifier regressions.
+- All six workflow YAML files parsed; all 7 unique embedded Python heredocs compiled; candidate preregistration validator passed; `git diff --check` passed. Git attribute checks confirm all candidate evidence paths retain LF line endings so raw evidence/certificate hashes remain stable across Windows checkouts.
+- Rust was unchanged by the current worktree patch. Local `cargo`/`rustc` are absent in this restored sandbox, so Rust checks were not rerun locally. The exact remote head's Linux/Windows/MSRV CI remains the available Rust validation, but does not validate the dirty Python/workflow changes.
+- The candidate validator accepts the design as `PREREGISTERED_NOT_DISPATCHED`; this validates the plan only, not evidence or gate authority.
 
-## 2026-11-17 validation checkpoint
+## Rating evidence — hard stop
 
-The first CI run for the SEE + RATING-100 implementation passed Rust formatting, Clippy and unit tests on Linux and Windows and passed all five Python test suites; both jobs were rejected by the newly added opening-subset verifier. This was a real selector-generation defect, caught before any confirmatory dispatch. Corrected suites, hashes, CI assertions and append-only preregistration/protocol notes are prepared for the next commit. The exact-head CI checklist remains UNCHECKED until both OS jobs pass after that correction.
+- Candidate binary SHA-256 designated by the plan: `0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5`.
+- No candidate screening, self-control, or confirmatory games/evidence exist under the candidate-qualified evidence root.
+- No candidate-specific independent power PASS, `benches/gate-plan.json`, or Batch A/B gate results exist. Historical screening, self-play, other engine binaries, fixed-time probes, bench nodes/signatures, and old controls cannot replace these.
+- Registered 600-game selection screen and separate 240-game self-control remain unrun. Existing cost planning places the required campaign far beyond the runner budget; neither the sample sizes nor any other registered condition may be weakened.
 
+## Runner budget accounting
 
-## 2026-11-17 — exact-head validation (commit 5b63e27)
+A measured GitHub Actions API audit of branch `arena/8259ce1c-flawlesschess` workflow runs created since 2026-11-18 00:00 UTC found **136 runs / 481 started-and-completed jobs / 16,878 seconds = 281.3 runner-minutes** summed across jobs. Parallel jobs are counted separately. This exceeds the user's 60-minute cumulative ceiling; it is not a campaign-runtime estimate. The user's continue instruction authorizes local review, not additional hosted work beyond the cap; do not launch another run unless the runner limit is explicitly changed.
 
-CI run 44066217195 passed on Ubuntu + Windows + Rust 1.80, including the corrected suite selector, all Python/Rust tests, power smoke, release, UCI and perft checks. Anchor verification run 44066217113 passed 13/13 and recorded the exact source-tree binary SHA-256. This check describes commit 5b63e27; a follow-up commit adds the engine-provenance guard and must receive its own exact-head CI before any readiness item is checked. Fresh CodeRabbit review at the eventual final HEAD remains pending. PR stays Draft.
+Cost context from the checked-in planning report `benches/confirmatory-cost-estimate.json`: **799.5 estimated runner-hours of prerequisite candidate screening/control** (571.1 screening + 228.4 self-control), plus **574.0 estimated runner-hours for confirmation**, or **1,373.5 estimated runner-hours total**. These are planning estimates transferred from 360 ENGINE-1 games, not measurements of the preregistered candidate; Batch B was modelled as exchangeable with Batch A, and no candidate-specific timing report can be produced until candidate evidence exists. The report authorizes no dispatch. This is far beyond the 60-minute ceiling even before considering the actual measured usage already above it.
 
-## 2026-11-17 — provenance test follow-up
+## Required to change this decision
 
-The first CI run after adding engine-SHA isolation (44067364552) failed the new power-manifest suite on one overly specific expected-error message; production code rejected the non-SCREEN-2 hash at the earlier allowlist. The test expectation is corrected in the next commit. Exact-head CI remains unchecked until the follow-up run is green. Anchor verification itself passed 13/13.
-
-## 2026-11-17 — Windows newline portability issue
-
-The c564c5c exact-head CI was not green: Ubuntu and MSRV passed, but Windows failed the power-report smoke because of CRLF checkout conversion of committed raw evidence. A targeted cross-platform JSONL hash normalization and tamper test are prepared. Keep full CI unchecked until the follow-up commit is green on Linux and Windows.
-
-## 2026-11-18 — exact-head validation for the throughput / evaluation work
-
-CI at the branch head passed on Ubuntu, Windows and Rust 1.80 MSRV, including
-the corrected suite selector, all Python and Rust test suites, the release
-build, the UCI handshake and the perft checks. Anchor verification passed
-13/13 and recorded `bench_signature=b58979ca90492208` on the runner, which
-matches the tree exactly. The Windows x86-64 release artifact was produced.
-
-The `anchor-verify` workflow had pinned the pre-fix bench signature
-`03e46bba31f35591`, which is why run 44327388368 failed; the workflow is
-corrected in this branch.
-
-**Still not merge-ready, and deliberately so:**
-
-- **The evaluation upgrade is INCONCLUSIVE.** EVAL-ALL vs EVAL-NONE is
-  +13 Elo with CI [−57, +84]. Under the registered rule the change is not
-  merged as a strength improvement and the six feature flags stay in the tree
-  as measurement scaffolding only.
-- **Only one screening result is KEPT** (SPEED-1, +89 Elo CI [+13, +168]).
-  HIST-1 and the evaluation work are both inconclusive.
-- **No absolute rating.** The strict 2,000 Elo gate is not met; the rating is
-  UNKNOWN. `benches/rating-100-power-assessment.json` remains BLOCKED with
-  `eligible_for_confirmatory_dispatch=false`.
-- **The owner has not tested the Windows binary.** `OWNER_TEST_PENDING`
-  remains.
-- **PR #2 stays Draft.** No merge, tag or release has been performed, and
-  those require explicit user authorization separate from merge-readiness.
-
-The branch is in a coherent and honest state: the correctness defect is
-fixed and regression-tested, the cost work is verified value-identical, the
-withdrawn campaign is withdrawn in the record rather than quietly replaced,
-and the inconclusive results are labelled inconclusive.
+A future authorized continuation must first reconcile the over-budget runner situation, complete exact-head review and CI of the currently uncommitted patch, validate packaged Windows and Linux binaries/checksums/manifests, and satisfy every registered candidate control, independent power, gate-plan, Batch A/B and combined-bound requirement. No threshold, sample size, clock, suite, anchor, seed, exclusion, or statistical method may be weakened.

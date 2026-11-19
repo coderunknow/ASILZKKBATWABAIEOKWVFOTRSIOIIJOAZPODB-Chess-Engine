@@ -815,3 +815,39 @@
     games). The candidate's own control must additionally report `seed_robust: true`.
   No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch
   exists, PR #2 stays Draft, and the three unrounded Elo lower bounds above 2,000 remain required.
+
+## 2026-11-19 — Candidate evidence validator review and local validation
+
+- Continued local-only review on `arena/8259ce1c-flawlesschess`; no hosted workflow, benchmark,
+  merge, tag, or release was started. Existing branch runner-minute cap remains exceeded.
+- Tightened `scripts/aggregate_shards.py` candidate schedule checks: each expected slot now has
+  exact initial/replay lineage, opening, color pair, engine seats, repetition, and expected shard
+  identity. A failed initial attempt must be an uncounted engine error with exactly one valid
+  counted replay; successful initial attempts may not have unnecessary retries. Updated the
+  synthetic candidate aggregation suite accordingly.
+- First focused test invocation exposed a test helper call passing an unsupported `batch=` keyword;
+  removed the erroneous argument and reran successfully: `scripts/test_aggregate_candidate.py`,
+  11/11 tests passed.
+- Ran all 17 `scripts/test_*.py` suites: all passed. The rating-estimator suite prints expected
+  failing null-control cases in a deliberately failing fixture; the suite itself reports 83 checks
+  passed, 0 failed. Candidate design validation passed and reports 600 screening + 240 self-control
+  games, status `PREREGISTERED_NOT_DISPATCHED`.
+- Static checks passed: all 7 workflow YAML files parsed; all 18 embedded Python heredoc blocks
+  compiled; changed Python scripts passed `py_compile`; `git diff --check` passed. PyYAML was
+  available under `/tmp/flawless-python-deps` and used via `PYTHONPATH`.
+- Absolute Elo remains unmeasurable from valid evidence; strict `>2,000` gate remains unpassed.
+  Windows package workflow verification still requires an authorized runner execution.
+
+## 2026-11-19 — Candidate evidence fail-closed provenance hardening
+
+- A deeper validator audit found two fail-open provenance cases: candidate counted records could
+  omit `adjudicated` (or use non-boolean provenance values), and aggregate did not compare each
+  shard's recorded `git_commit` with the frozen target commit. These could allow incomplete
+  provenance to survive aggregation even though the normal runner currently emits the fields.
+- Tightened aggregation plus downstream candidate-screening and self-control validators to require
+  boolean counted/error/adjudication fields, explicit `adjudicated: true` for counted results,
+  integer (not boolean) repetition identities, typed replay lineage, and final counted results.
+  Candidate aggregation now also rejects any shard whose `git_commit` differs from the frozen target.
+- Added regression tests for missing adjudication, non-boolean fields, boolean repetition values,
+  non-final counted results, and target-commit mismatch. Focused suites pass: aggregation 16/16,
+  candidate power/cost 9/9, self-control certification 8/8.

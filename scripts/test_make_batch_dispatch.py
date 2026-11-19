@@ -115,6 +115,15 @@ def main():
             "eligible_for_confirmatory_dispatch": True,
             "engine_sha256": IDENTITY["engine_sha256"],
             "opening_suites": {"batch_a_sha256": "a" * 64, "batch_b_sha256": "b" * 64},
+            "screening_inputs": {
+                "candidate_engine_sha256": IDENTITY["engine_sha256"],
+                "counted_games": 600,
+                "self_control_seed_robust": True,
+                "self_control_all_registered_seeds_pass": True,
+                "self_control_counted_games": 240,
+                "third_anchor_full_distribution_available": True,
+                "batch_b_new_suite_distribution_available": True,
+            },
             "approval": {
                 "reviewer": "test",
                 "reviewed_at": "2026-11-17",
@@ -129,12 +138,22 @@ def main():
         )
         assert accepted["engine_sha256"] == IDENTITY["engine_sha256"]
         print("PASS matching engine SHA is accepted by the power guard")
+        power["screening_inputs"]["counted_games"] = 599
+        with open(power_path, "w", encoding="utf-8") as handle:
+            json.dump(power, handle)
+        expect_system_exit(
+            lambda: validate_power(power_path, "a" * 64, "b" * 64, IDENTITY["engine_sha256"]),
+            "candidate power guard rejects incomplete six-cell evidence",
+        )
+        power["screening_inputs"]["counted_games"] = 600
+        with open(power_path, "w", encoding="utf-8") as handle:
+            json.dump(power, handle)
         expect_system_exit(
             lambda: validate_power(power_path, "a" * 64, "b" * 64, "d" * 64),
             "power assessment engine-SHA mismatch",
         )
 
-    print("make_batch_dispatch recovery tests: 7/7 PASS")
+    print("make_batch_dispatch recovery tests: 8/8 PASS")
 
 
 if __name__ == "__main__":

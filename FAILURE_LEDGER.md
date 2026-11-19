@@ -858,3 +858,9 @@ is reported as **NOT ROBUST** and treated by the gate as **unavailable** —
 never as PASS and never as FAIL. The amendment is a strengthening only, so it
 cannot rescue a failing control. `scripts/rating_estimator.py` now reports
 `seed_robust` for both null controls, and the gate requires it.
+
+## 2026-11-19 — current rating checkpoint: artifact retrieval and local environment
+
+- Attempted `gh run download 44513810693 --name flawless-windows-x86_64` to inspect the exact-head Windows release ZIP. GitHub Actions returned an artifact-blob download EOF. The runner workflow's success is verified, but artifact contents/checksums could not be independently checked in this session; do not claim package inspection.
+- Local restored environment lacked `cargo`/`rustc` and initially lacked `python-chess`/PyYAML. Installed Python test dependencies into a temporary `/tmp` target (not the repository); all 16 Python suites and six workflow YAML parses then passed. No Rust source changed in the local patch; exact remote head CI is the available Rust verification.
+- Measured cumulative branch Actions work during the observed period at 281.3 job-minutes. This is above the 60-minute mission cap; no further hosted execution should be initiated without user authorization.

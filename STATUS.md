@@ -1,6 +1,6 @@
 # STATUS — Flawless Chess Engine
 
-**Project state: `ACTIVE / INCOMPLETE`** (V1 NOT complete; absolute rating is UNKNOWN / NOT MEASURED and the strict 2,000 Elo gate is NOT MET. SCREEN-3 run 43820645420 ended with resolver + 60/60 shard jobs successful, but its aggregate-and-commit-evidence job was skipped. CTRL-2-R run 43820392119 ended with resolver + 120/120 shard jobs successful, but its aggregate-and-commit-evidence job was also skipped. These shard artifacts are not canonical committed gate evidence. The RATING-100 amendment is implemented as a candidate design but its prospective power report remains BLOCKED; no confirmatory batch or gate plan has been dispatched. The SEE ordering candidate and new tooling await CI and fresh review.)
+**Current project state (verified 2026-11-19 UTC): `ACTIVE / INCOMPLETE`.** V1 is NOT complete. **Absolute Elo: not yet measurable from valid evidence.** The strict 2,000 Elo gate is NOT passed. PR #2 is open and Draft; its remote head is `b9d3979d16d9ae5f7cf0ce596c1910622249fde8` (base `main` at `5e36b06a7b0d7417d57205e52010ea98529b2a4f`). The local worktree contains uncommitted candidate qualification, aggregation, power/cost tooling, workflow, test, and documentation changes; those changes have not received hosted CI or fresh exact-head review. Local Python tests pass, while local Rust tools are absent. Exact-remote-head CI Linux/Windows/MSRV and Windows artifact/anchor checks passed; the rating gate failed closed with no gate plan/evidence, and the Evidence Bridge's evidence steps were skipped. No candidate games/evidence, gate plan, confirmatory batches, merge, tag, or release exist. A measured branch workflow-job sum since 2026-11-18 00:00 UTC is 281.3 runner-minutes, above the 60-minute cumulative cap; the user's continue instruction authorizes local review, not hosted execution beyond the stated cap. No further hosted work is authorized unless the runner limit is explicitly changed. See `MERGE_READINESS.md` for the authoritative current checklist and exact evidence.
 
 **Current branch:** `arena/8259ce1c-flawlesschess`
 **Starting commit (re-verified 2026-11-18):** `5e36b06a7b0d7417d57205e52010ea98529b2a4f`
@@ -647,3 +647,41 @@ No gate changed: the power report is still `BLOCKED` and ENGINE-1-guarded, no ga
 exists, PR #2 remains Draft, and the candidate-specific controls, the reviewed candidate-specific
 power PASS and the three unrounded Elo lower bounds above 2,000 all remain required before any
 dispatch.
+
+## 2026-11-18 — candidate qualification design and evidence isolation implemented
+
+Registered the candidate-specific screen and self-control design before any candidate game in
+`benches/candidate-qualification.json` and appended the human-readable amendment to
+`PREREGISTRATION.md`. The registration binds binary SHA-256
+`0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5`, bench signature
+`c64d148d39181140`, both disjoint 50-opening RATING-100 suites, three anchors, the 40/15 `add`
+clock, deterministic AB/BA schedule and seed labels, exactly 600 screening games, plus a distinct
+240-game self-match and all 16 registered robustness seeds. Screening is selection-only and cannot
+be counted as gate evidence. Historical generic evidence roots and ENGINE-1 self-control are
+explicitly excluded; the valid anchor-vs-anchor control remains reusable at zero new games.
+
+The hosted rating workflow now recognizes candidate-only purposes, verifies the design and suite
+hashes, requires the exact candidate binary and full target commit, exact batch/anchor/sample/clock
+parameters, refuses an already-existing candidate evidence destination before starting a runner,
+and writes immutable evidence under the candidate-SHA-qualified paths. `aggregate_shards.py` now
+records candidate identity/provenance and checks exact counted schedule coverage, suite ordering,
+AB/BA seats, repetitions, engine seats and identities. Added
+`scripts/certify_candidate_control.py` to verify the self-control manifest and evidence before
+running the registered 16-seed estimator certification; it emits no dispatch authority and requires
+all seeds to PASS, not merely a `seed_robust` flag that can also represent unanimous failure.
+
+New regressions cover preregistration immutability, candidate path separation, exact counts, schedule
+identity, self-control manifest and seed robustness. All 15 Python suites passed locally; workflow
+YAML and three embedded Python blocks parsed/compiled; `git diff --check` passed. The current
+candidate dispatch marker remains historical SCREEN-3 and was not changed. No games were run and no
+evidence was created. The committed historical power report remains ENGINE-1-only and BLOCKED. Candidate-aware power
+and cost-analysis modes are now implemented: both fail closed until all six candidate screening
+cells and the unanimous candidate self-control certificate exist; their outputs are explicitly
+non-authorizing. No candidate evidence exists yet, so no candidate assessment has been produced.
+Independent power review, the pre-Batch-A gate plan and exact confirmatory keys/§2-span registration
+remain unfinished. No confirmatory dispatch is authorized.
+Owner Windows acceptance and exact-head CodeRabbit recheck remain outstanding; PR #2 remains Draft.
+
+## 2026-11-19 — continuation local audit
+
+Further local-only review tightened candidate evidence retry provenance: all attempts now need the registered slot/opening/seat/shard identity, and retries must follow a failed engine-error attempt. Candidate campaign cost accounting now includes failed-attempt wall time. The Windows release workflow now verifies the actual ZIP and smoke-tests the extracted executable; the seven package-verifier regression tests pass locally, but the new runner step is unverified. All 17 Python suites pass locally, six workflow YAML files parse, 7 unique embedded Python heredocs compile, and candidate-plan validation passes. No hosted workflows or experiments were launched. The rating remains **not yet measurable from valid evidence**; PR #2 remains Draft and no release gate is passed.

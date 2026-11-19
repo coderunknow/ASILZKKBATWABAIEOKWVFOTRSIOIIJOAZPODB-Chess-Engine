@@ -268,3 +268,29 @@ regression test that was verified to fail against the pre-fix source.
   committed CTRL-1 and CTRL-2-R numbers against silent drift.
   The gate-path budget is unchanged at 799.5 runner-hours. No gate changed: the power report stays
   `BLOCKED` and ENGINE-1-guarded, no gate plan or dispatch exists, PR #2 stays Draft.
+
+## 2026-11-18 — Candidate qualification preregistration and evidence separation
+
+Added a candidate-SHA-bound preregistration for exactly 600 selection-only screening games and a
+separate 240-game self-match null control, with the frozen suites, three anchors, 40/15 clock,
+AB/BA schedules, dispatch/bootstrap seed semantics and evidence-class separation recorded. The
+rating workflow now validates candidate identity and exact dispatch parameters and uses
+candidate-qualified immutable destinations; the strict aggregator checks complete candidate
+schedules and records identity/provenance. Added a verifier/certifier for the candidate self-control
+that requires unanimous PASS across all 16 registered bootstrap seeds and cannot authorize further
+dispatch. No games or evidence were produced. Candidate-specific empirical power sensitivity and runtime-cost
+analysis are now implemented as non-authorizing tools requiring all six cells and a robust self-control
+certificate; independent review remains a prerequisite. The existing power assessment remains
+ENGINE-1-bound and BLOCKED.
+
+## 2026-11-19 — stricter candidate attempt provenance and cost accounting
+
+Candidate evidence validation now verifies schedule and shard identity for failed attempts as well as counted games, and only accepts a replay after an engine-error initial attempt. Candidate cost projections now include wall time for uncounted retries rather than undercounting execution. Local regressions cover valid and unnecessary retries and their runtime cost. No benchmark or rating execution was run; this tooling remains non-authorizing.
+
+## 2026-11-19 — Windows archive verification and portable evidence hashes
+
+Candidate evidence trees now require LF line endings to preserve raw manifest/certificate hashes on Windows. The Windows release workflow now validates the actual ZIP contents, ZIP and executable hashes, build manifest, source identity, PE imports, and staged-file equality, then executes UCI/search/perft checks from the extracted package. This new acceptance step is implemented and locally regression-tested, not yet run on a Windows hosted runner.
+
+## 2026-11-19 — distinguish observed game time from runner-cost estimates
+
+The candidate cost report now labels observed attempt wall time separately from estimated runner hours, and explicitly identifies transferred per-shard overhead. It no longer presents candidate runtime estimates as measured Actions usage.

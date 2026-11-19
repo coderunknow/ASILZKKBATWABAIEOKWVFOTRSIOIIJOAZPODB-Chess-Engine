@@ -1449,3 +1449,77 @@ assessment is still `BLOCKED` and still guarded to the ENGINE-1 binary; no gate
 plan and no confirmatory dispatch exist. The candidate's own screening,
 controls and power assessment have still not been run, so this is a
 *prospective* registration made before the evidence it governs exists.
+
+---
+
+## Candidate-specific qualification design amendment (registered 2026-11-18, before any candidate game)
+
+The machine-readable, append-only design is `benches/candidate-qualification.json`.
+It binds qualification evidence to the candidate binary SHA-256
+`0a9ddd9151dcd810d768708ddad1af7a85b93eca727749fd65b5c9e7cbca71b5` and bench
+signature `c64d148d39181140`. The binary SHA-256 is authoritative. The exact
+source commit used by a later dispatch must be pinned in its dispatch config,
+be an ancestor of the branch head, and pass the hosted binary identity check;
+this preregistration does not authorize `freeze`, a different binary, or any
+execution by itself.
+
+### Candidate screening — selection only
+
+- **Purpose:** candidate-specific anchor selection only. These games and every
+  estimate derived from them are permanently ineligible as gate/confirmatory
+  evidence.
+- **Anchors:** `topple-0.1.1`, `topple-0.2.1`, and `akimbo-0.1.1` from the
+  frozen pool.
+- **Suites:** the disjoint, registered 50-opening suites
+  `benches/rating-openings-100-batchA.txt` (SHA-256
+  `5abdcdbddec0f22d7e6eff8974ee402363c8c3df318b8110d7204adf69f5c1df`) and
+  `benches/rating-openings-100-batchB.txt` (SHA-256
+  `ccb4901742eca25b0b10f1a3c9fdfc17b2967a1939c2d7e466c2c5495b6d4253`).
+- **Sample:** one paired repetition per opening cluster, exact AB/BA seat
+  reversal; 50 clusters × 2 games = 100 counted games per anchor and batch.
+  Three anchors × two batches = **exactly 600 counted games** in six cells.
+  Each cell is 50 deterministic shards (one opening cluster per shard).
+- **Clock:** 40 moves in 900 seconds, repeating with `add` semantics, zero
+  increment, ponder off. Engine errors are replayed under the harness policy;
+  uncounted attempts do not change the target of exactly 100 valid counted
+  games per cell.
+- **Dispatch seed fields:** Batch A `20261119`, Batch B `20261120`; these are
+  provenance labels only because `match.py` uses a deterministic fixed opening
+  schedule and does not consume an RNG seed. Estimator bootstrap seeds remain
+  the separately registered `20261114 … 20261129` where required.
+- **Evidence location:**
+  `benches/evidence/candidates/<candidate-sha256>/screening/batchA/<anchor>/`
+  or `.../batchB/<anchor>/`. Every committed manifest records candidate
+  SHA-256, purpose/evidence class, suite identity, batch, anchor, target commit,
+  dispatch seed, repetitions, clock, and raw evidence digest. No legacy generic
+  screening path is eligible.
+
+### Candidate self-match null control
+
+- **Purpose:** candidate-specific null control; not screening and not gate
+  evidence. Both seats use the exact candidate binary.
+- **Suite:** frozen historical 60-opening suite
+  `benches/rating-openings-batchA.txt`, SHA-256
+  `2c4a54d8a16f36d597cb2378ff74c1faafc636568647a257313274bd0969fc96`. This
+  reuses only the opening definitions, never historical game records.
+- **Sample:** two paired repetitions per opening, four games per cluster; 60
+  clusters = **exactly 240 counted games**, scheduled in 60 deterministic
+  four-game shards; exact AB/BA reversal within each repetition.
+- **Clock:** same registered 40/15 clock and settings as screening.
+- **Seed robustness:** evaluate the self-control verdict for every registered
+  bootstrap seed `20261114 … 20261129`. The control is usable only when the
+  registered estimator reports unanimous `seed_robust: true`; otherwise it is
+  unavailable, never PASS.
+- **Evidence location:**
+  `benches/evidence/candidates/<candidate-sha256>/self-control/`. This path is
+  disjoint from screening and all historical ENGINE-1 control roots.
+
+The valid anchor-vs-anchor null control remains reusable without new games.
+Historical ENGINE-1 self-match evidence is not reusable for this candidate.
+The candidate-specific screening and self-control paths, sizes, identities,
+and separation rules are enforced by `scripts/candidate_qualification.py`,
+`scripts/aggregate_shards.py`, and `.github/workflows/rating-run.yml`. The
+candidate-specific power sensitivity and cost tools require the complete
+candidate-qualified evidence set, keep screening selection-only, and are
+non-authorizing by construction. No games are dispatched by this amendment.
+It creates no power PASS, gate plan, or confirmatory dispatch authority.
