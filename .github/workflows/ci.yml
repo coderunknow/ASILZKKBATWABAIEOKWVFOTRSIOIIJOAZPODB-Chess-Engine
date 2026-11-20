@@ -154,8 +154,14 @@ jobs:
   windows-x64-artifact:
     name: windows x64 release artifact
     runs-on: windows-latest
+    env:
+      # For pull_request events GITHUB_SHA is GitHub's synthetic merge commit; the artifact
+      # must be labelled and built from the exact pushed PR head commit instead.
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Rust (pinned, x86_64-pc-windows-msvc)
         uses: dtolnay/rust-toolchain@master
@@ -193,7 +199,7 @@ jobs:
           python scripts/windows_artifact.py \
             --exe target/release/flawless.exe \
             --out-dir dist \
-            --commit "${GITHUB_SHA}" \
+            --commit "${SOURCE_SHA}" \
             --rustc-version-file rustc-version.txt \
             --run-id "${GITHUB_RUN_ID}" \
             --run-attempt "${GITHUB_RUN_ATTEMPT}"
@@ -201,7 +207,7 @@ jobs:
       - name: Upload Windows x64 artifact (mandatory)
         uses: actions/upload-artifact@v4
         with:
-          name: flawless-windows-x64-${{ github.sha }}
+          name: flawless-windows-x64-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             dist/flawless.exe
             dist/SHA256SUMS.txt
