@@ -1,10 +1,10 @@
 # FINAL_AUDIT_PROGRESS.md — FlawLessChess 0.1.0 release mission ledger
 
 Branch: `arena/f668bde4-flawlesschess` (branched from `c25e65e` of `arena/2d2d30b4-flawlesschess`)
-Base PR: #3 (`arena/2d2d30b4-flawlesschess`, OPEN, non-draft as of 2026-11-20, base `main`)
+Base PR: #3 (`arena/2d2d30b4-flawlesschess`, OPEN, DRAFT (title ends "(draft)"), base `main`). Its head is NOT this branch.
 Baseline HEAD at start: `c25e65efc0c6223f58701d529775726db13ebedd` (verified; remote PR head matches)
 Toolchain: Rust 1.99.0 installed from npm `@toolchain-bin/*` into `/home/user/.toolchain/sysroot` (`source /home/user/.toolchain/env`)
-Baseline: `cargo build --release` OK; `cargo test --release` OK (21 lib + 11 movetime + 11 uci_smoke + correctness/clock per log).
+Baseline (c25e65e): `cargo build --release` OK; `cargo test --release` OK. Correct counts from the post-fix run: lib 19 (base) / 22 (final), clock_smoke 3, correctness 21 (base), movetime_smoke 11, uci_smoke 11. The old "lib 21" baseline line was not a verified count and is superseded by the logs in `/tmp/gates/`.
 
 Status legend: NOT STARTED / IN PROGRESS / BLOCKED / COMPLETED / VERIFIED
 
@@ -15,23 +15,23 @@ Status legend: NOT STARTED / IN PROGRESS / BLOCKED / COMPLETED / VERIFIED
 | A1 | Branch/remote/PR state | VERIFIED | Branch == c25e65e == PR #3 head; PR #3 +10,609/-40 over main; 43 files. CodeRabbit (9336913 & c25e65e), Codex (c25e65e), Kilo ACTION_REQUIRED (billing) | — |
 | A2 | Toolchain install | VERIFIED | rustc/cargo 1.99.0, clippy 0.1.99, rustfmt 1.10.0 | — |
 | A3 | Read src/search.rs, uci.rs, position.rs, movegen.rs, types.rs, tt.rs, attack.rs | COMPLETED | see suspect list S-* below | probe each suspect |
-| A4 | Read src/eval.rs, src/main.rs | IN PROGRESS | main.rs CLI reviewed; eval.rs skimmed (constants fine) | eval symmetry probe (Phase E) |
-| A5 | Read tests/*, scripts/windows_artifact.py, CI workflows | NOT STARTED | | |
+| A4 | Read src/eval.rs, src/main.rs | COMPLETED | main.rs CLI reviewed; eval colour symmetry tested directly (303 pairs, `static_evaluation_is_colour_symmetric`) | — |
+| A5 | Read tests/*, scripts/windows_artifact.py, CI workflows | COMPLETED | CI: ci.yml has 3 jobs (test ubuntu/windows, msrv 1.80, windows-x64-artifact). CodeRabbit PR #3 items on 9336913 were fixed in c25e65e (BESTMOVE_RE ponder, finish(eof=False), selfplay --only, ENGINE_ERROR record); the CI `persist-credentials` nitpick is fixed here | — |
 
 ## Suspect list (from audit, to be reproduced in Phase B)
 
-- S-01 `setoption name Hash value 4096` is accepted, but `TranspositionTable::resize` clamps to 2^27 entries = 1 GiB. Effective size silently capped (tt.rs:98).
+- S-01 (FIXED, F-04) `setoption name Hash value 4096` is accepted, but `TranspositionTable::resize` clamps to 2^27 entries = 1 GiB. Effective size silently capped (tt.rs:98).
 - S-02 `clock_limits`: `usable / mtg + inc / 2` can overflow u64 for huge wtime + increment (release wraps silently) (uci.rs:608).
 - S-03 `go wtime N` without `btime` (or vice versa) → no clock limit, search runs to depth 64 (uci.rs:305/308).
 - S-04 UCI stdin loop terminates on the first non-UTF-8 line (`while let Some(Ok(line))`) — engine silently exits (uci.rs:92).
 - S-05 `MoveList::push` bound is only `debug_assert!` (types.rs:228); pseudo-legal move count >256 would panic in release via index OOB → reproduce with dense FEN.
-- S-06 `searchmoves` with only illegal moves — code falls back to all legal moves (search.rs:249). Regression test exists. VERIFY at process level.
-- S-07 `go ponder nodes N` node cap after ponderhit (uci.rs:456). VERIFY at process level.
-- S-08 `go nodes N` checked only every 1024 nodes → overshoot up to ~1023 nodes (search.rs:133). LOW.
+- S-06 `searchmoves` with only illegal moves (NOT REPRODUCED; process test `illegal_only_searchmoves_still_returns_a_legal_move`).
+- S-07 `go ponder nodes N` node cap after ponderhit (NOT REPRODUCED with ponderhit sent immediately: 4,559 nodes for cap 5,000; process test `ponder_node_cap_is_enforced_after_ponderhit`).
+- S-08 `go nodes N`: NO overshoot observed (stops at or below N). Observed UNDERSHOOT: 651 nodes for N=1000, 4,126 for 5,000, 17,024 for 20,000, 81,210 for 100,000. Cause not analysed. Not a defect in the cap (upper bound holds). LOW.
 - S-09 `is_repetition` scans whole history per node (position.rs:746). LOW perf.
 - S-10 Aspiration loop termination: relies on invariant score > -INF. VERIFY (LOW).
-- S-11 `Threads` option advertised min 1 max 1; non-1 values ignored with stderr note. Documentation must be explicit (LOW).
-- S-12 FEN accepts castling rights without rook/king (movegen guards it; verify no corruption).
+- S-11 (FIXED, F-06) `Threads` non-1 values now reported on stdout. Test `threads_other_than_one_is_reported_on_stdout`.
+- S-12 (VERIFIED, no defect) FEN castling rights are not checked against placement; stale rights generate no castling move; correct rights generate exactly the castles. Tests `stale_castling_rights_without_rooks_generate_no_castling`, `castling_rights_with_rooks_generate_exactly_the_castles`, `castling_right_is_ignored_when_king_is_off_its_home_square`.
 - S-13 `resize` / `setoption Hash` allocation peak (old+new table both live) and `ucinewgame` clears full table each call (perf, LOW).
 
 ## Phase B/C — reproduced findings and fixes (batch 1)
@@ -50,3 +50,24 @@ Verified unchanged: `bench` signature `141943aa23b3fc68` and node count 2,530,88
 Verified: perft CPW references (startpos d1–d4, Kiwipete d1–d3, pos3 d1–d4, pos4 d1–d3, pos5 d1–d3, pos6 d1–d3) — all match; now permanent tests in tests/correctness.rs.
 Verified (process level, unchanged behaviour): illegal-only `searchmoves` returns a legal move; `go ponder nodes N` honours the node cap after ponderhit.
 Local gates after batch 1: `cargo fmt --check` OK; `cargo clippy --all-targets -- -D warnings` OK; `cargo test --release` all green (22 lib, 3 clock, 30 correctness, 11 movetime, 11 uci_smoke, 6 protocol_regressions).
+
+## Phase B/C — batch 2 (differential testing, checker validation, process tests)
+
+Commit 49fdecf holds batch 1. Batch 2 is the next commit on this branch.
+
+| Finding | Severity | Evidence | Root cause | Fix | Verification |
+|---|---|---|---|---|---|
+| F-08 Positions with two checkers on one line through the king, or with three checkers, were ACCEPTED (e.g. `1b4NQ/8/7R/3q4/3P1bn1/3k1K1P/3p4/2B1bN1q w - - 0 1`, queens d5 and h1 both checking Kf3 along one diagonal) | LOW–MEDIUM (unreachable input accepted; no crash) | Found by differential fuzzing against python-chess `Status.IMPOSSIBLE_CHECK` / `TOO_MANY_CHECKERS`: 14 oracle-invalid positions were accepted before the fix; 0 after | `from_fen` checked only that the side not to move is not in check | Reject >2 checkers and 2 checkers aligned with the king between them (`king_between_aligned`) | tests `fen_rejects_two_checkers_on_one_line_through_the_king`, `fen_rejects_more_than_two_checkers`, `fen_accepts_a_legal_double_check_from_knight_and_queen` |
+| NOTE (not a defect) The material rule (F-01) rejects some positions that python-chess accepts | — | Each of the 3–26 rejections per seed is justified by the independent necessary condition (≤16 pieces, ≤8 pawns, excess over start counts ≤ missing pawns); no unjustified rejection in any seed | — | — | `scripts/fuzz_legal_differential.py` "justified by material bound" count |
+| EP-01 Full game with en passant was NOT verified in batch 1 | — | Saved self-play games contain 0 en passant captures (checked with python-chess) | — | New referee-based probe `scripts/fullgame_en_passant_probe.py`: forced `e5f6` via `go searchmoves`, then engine-vs-engine to the rule end | runs: 91 plies, 1 ep, threefold (seed-free, 20 ms/move); 47 plies, 1 ep, 2 castles (150 ms/move); 70 plies, 1 ep, 1 castle (final gate run); CI step added |
+| S-14 Search is not colour-symmetric at depth 4 for 2 of 40 random positions (e.g. `3r1rn1/pb2kpp1/Bppp4/3p2pP/P2KP1P1/1RQ2N2/1bP2P2/7R w - - 0 27`: 446 vs 493 cp). Depths 1–3 are equal. | LOW (open, informational) | `scripts/eval_symmetry_probe.py` (interactive, deterministic) | Expected for null-move pruning, LMR and move-order ties; NOT an evaluation asymmetry: the static evaluation is symmetric on the same two positions (`static_evaluation_is_colour_symmetric`, 303 pairs) | None (search heuristics are not required to be symmetric). Not proven to be heuristic-only; open. | probe prints SEARCH-MISMATCH; hard gate is the Rust test |
+| UCI-NOTE `go` + `quit` in one stdin burst returns an UNSEARCHED fallback `bestmove` (first legal move, e.g. `a2a3`), because `quit` stops the search before any iteration completes | not a defect of the protocol (quit abandons the search) | Reproduced: `go depth 4` + `isready` + `quit` in one burst → 0 info lines; with a 3 s wait before `isready` → 4 info lines | test-method artifact (already documented in CHANGELOG) | none; probes wait for `bestmove` before `quit` | `uci_bestmove_smoke.py`, `eval_symmetry_probe.py` |
+
+Fuzzing and differential evidence (this session, release build of the batch-2 tree):
+- `scripts/fuzz_legal_differential.py` seeds 1–6 (games 40/150/150/150/150/150) plus placement fuzz: 157,000+ positions checked against python-chess legal move sets, all agree (0 mismatches); 0 oracle-invalid positions accepted; every engine rejection of an oracle-valid position justified by the material bound; en passant positions present in every seed (293–1,073 each).
+- `scripts/fuzz_uci_grammar.py` seeds 1–5 (150 + 4×300 sessions = 1,350 random UCI sessions, valid and malformed commands, random FENs, go variants, binary garbage): 0 hangs, 0 crashes, 0 missing handshakes, 0 bad exit codes.
+- `scripts/eval_symmetry_probe.py`: 40 positions at depth 4, 2 informational search mismatches (S-14).
+
+Gate evidence on the batch-2 tree (logs in /tmp/gates/): `cargo fmt --all -- --check` rc 0; `cargo clippy --release --all-targets -- -D warnings` rc 0; `cargo clippy --all-targets -- -D warnings` rc 0; `cargo test --release --locked` all green (lib 22, clock 3, correctness 37, movetime 11, protocol_regressions 8, uci_smoke 11); `cargo test --locked` (debug) all green; Python suites test_match 111/111, test_rating_estimator 65/65, test_reduced_sample 7/7, test_make_batch_dispatch 7/7, test_power_analysis OK, test_merge_batch_runs PASS, test_windows_artifact OK, test_aggregate_60 PASS, test_recover_download PASS; verify_opening_subsets rc 0; power_analysis JSON assertions (CI) ok; uci_bestmove_smoke ok; uci_protocol_probe 12/12; uci_malformed_probe 37/37; selfplay_games rc 0; fullgame_en_passant_probe PASS; resource_probe rc 0 (peak RSS 21/56/82 MiB at Hash 16/64/256; exit 0); perft 3 = 8902; bench signature 141943aa23b3fc68, 2,530,885 nodes.
+
+Not run locally: MSRV 1.80 (toolchain unavailable on the npm mirror; CI `msrv` job is the check of record); Windows x64 build and smoke (CI `windows-x64-artifact` job is the check of record; no local Windows); GUI tests (no GUI is part of this release; see docs/WINDOWS_GUI_TEST.md, which states that no GUI test has been run).

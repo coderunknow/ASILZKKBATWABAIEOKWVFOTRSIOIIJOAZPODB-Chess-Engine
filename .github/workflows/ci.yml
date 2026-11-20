@@ -19,6 +19,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install Rust (pinned)
         uses: dtolnay/rust-toolchain@master
@@ -136,6 +138,8 @@ jobs:
           "$PY" scripts/uci_malformed_probe.py "$exe" || { echo "::error::uci_malformed_probe failed"; exit 1; }
           "$PY" scripts/selfplay_games.py "$exe" "${RUNNER_TEMP:-/tmp}/selfplay" --tc 3000+50 \
             || { echo "::error::selfplay_games failed"; exit 1; }
+          "$PY" scripts/fullgame_en_passant_probe.py "$exe" \
+            || { echo "::error::fullgame_en_passant_probe failed"; exit 1; }
 
       - name: Resource probe (Linux /proc; wall, CPU, peak RSS for 1 s searches)
         if: runner.os == 'Linux'
@@ -159,6 +163,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install Rust 1.80.0
         uses: dtolnay/rust-toolchain@master

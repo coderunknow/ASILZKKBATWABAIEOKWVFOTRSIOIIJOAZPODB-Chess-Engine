@@ -518,3 +518,20 @@ Scope: panic sites in src/, input parsing (go/setoption/position), search root h
 - scripts/selfplay_games.py `--only`: an unknown name silently ran zero games → FIXED (argparse `choices`). Checked: exit 2 with the valid list.
 - scripts/selfplay_games.py: a protocol-level EngineError escaped play() without a log → FIXED (recorded as ENGINE_ERROR, a failure prefix; completed moves kept).
 - scripts/windows_artifact.py finish(): stdin was closed before waiting after `quit`, so EOF could pass an engine that ignores quit → FIXED (quit callers use finish(eof=False); the EOF test keeps eof=True). Fake-engine regression test `test_engine_ignoring_quit_is_not_passed_by_eof` added; the local suite passes 19/19 (about 3 s).
+
+## 2026-11-20 — Final audit execution (branch arena/f668bde4-flawlesschess)
+
+- Fixes committed in 49fdecf: FEN material limits, bounded UCI line reader, single-side clock, Hash max 1024, stdout option messages, saturating clock math, 16 MiB search stack, MoveList capacity 512.
+- Tests added: correctness (CPW perft references, material limits, castling rights), protocol_regressions (7 process tests), uci unit tests (clock saturation, line reader).
+- Local gates run: `cargo fmt --all -- --check`, `cargo clippy --release --all-targets -- -D warnings`, `cargo test --release --locked`, Python suites (test_match, test_rating_estimator, test_reduced_sample, test_make_batch_dispatch, test_power_analysis, test_merge_batch_runs, test_windows_artifact, test_aggregate_60, test_recover_download), probes (uci_bestmove_smoke, uci_protocol_probe, uci_malformed_probe, selfplay_games, resource_probe), perft d3 = 8902, bench signature 141943aa23b3fc68.
+- Not run locally: MSRV 1.80 (toolchain not available from the mirror), Windows x64 build (CI job is the check of record).
+- Policy kept: append-only logs were extended, not edited. The older AGENTS_LOG entry that calls Hash 4096 a limitation is historical.
+
+## 2026-11-20 — FINAL AUDIT batch 2 (checker validation and verification)
+
+- Differential fuzzing (`scripts/fuzz_legal_differential.py`, seeds 1–6, 157k+ positions) found F-08 (checker rule). Fixed; differential rerun shows 0 mismatches and 0 accepted oracle-invalid positions.
+- UCI grammar fuzzing (`scripts/fuzz_uci_grammar.py`, 1,350 sessions): 0 failures.
+- Full-game en passant probe added (`scripts/fullgame_en_passant_probe.py`) and wired into CI after selfplay.
+- Static evaluation colour-symmetry test added (303 pairs). The search-level probe `scripts/eval_symmetry_probe.py` is informational only (2 of 40 depth-4 mismatches; see FINAL_AUDIT_PROGRESS.md S-14).
+- The CI `persist-credentials: false` nitpick fixed on the `test` and `msrv` checkouts.
+- Naming decision (ADR 0002) stands: the Cargo package is `flawless`.

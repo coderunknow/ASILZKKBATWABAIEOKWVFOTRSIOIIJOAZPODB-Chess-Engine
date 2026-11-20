@@ -438,3 +438,11 @@ DRAFT ONLY — no code changes under this entry.
 - The Cargo package stays `flawless` (binary `flawless`). The user declined a rename because it would break crate imports and CI paths.
 - `Cargo.toml` `repository` now points to the verified remote `https://github.com/coderunknow/FlawLessChess`. The earlier `Flawless-Chess-Engine` URL is recorded as historical and was not used by CI.
 - The product name remains FlawLessChess.
+
+## 2026-11-20 — Audit remediation decisions
+
+- Hash: the advertised maximum is lowered from 4096 to 1024 MiB to match the real 1 GiB TT ceiling (`MAX_HASH_MB`). Raising it needs a TT change and a memory test first.
+- MoveList: capacity 512, not 256. The bound is 335 pseudo-legal moves (reachable positions under the FEN material limits: at most 16 pieces and 8 pawns per side); the hard check in `push` makes any future violation a panic in debug and release, never silent corruption.
+- FEN material limits: >16 pieces per side, >8 pawns per side, or promoted pieces exceeding the missing pawns are rejected. Such positions cannot arise from a legal game from startpos. Positions from other sources may be rejected, which is the intended trade-off.
+- Naming: the Cargo package stays `flawless` (ADR 0002). The GitHub repository and product name are `FlawLessChess` / `Flawless-Chess-Engine`. This is not a rename.
+- Threads: stays a single-threaded build. The option is advertised as 1..1 and non-1 values are reported on stdout. No multithreaded search is claimed.

@@ -15,6 +15,22 @@ use std::sync::LazyLock;
 /// the king, at most 8 pawns, and every piece beyond the starting set (queens above one, rooks,
 /// bishops and knights above two) must come from a promoted pawn, so the total excess is at most the
 /// number of missing pawns.
+/// True when squares `a` and `b` lie on one rank, file or diagonal and `k` lies strictly on the
+/// segment between them. Coordinates are (file, rank) with a1 = 0.
+fn king_between_aligned(a: Square, b: Square, k: Square) -> bool {
+    let (fa, ra) = (file_of(a) as i32, rank_of(a) as i32);
+    let (fb, rb) = (file_of(b) as i32, rank_of(b) as i32);
+    let (fk, rk) = (file_of(k) as i32, rank_of(k) as i32);
+    let (df, dr) = (fb - fa, rb - ra);
+    let aligned = df == 0 || dr == 0 || df.abs() == dr.abs();
+    if !aligned {
+        return false;
+    }
+    let collinear = (rk - ra) * df == (fk - fa) * dr;
+    let within = fk >= fa.min(fb) && fk <= fa.max(fb) && rk >= ra.min(rb) && rk <= ra.max(rb);
+    collinear && within && (fk, rk) != (fa, ra) && (fk, rk) != (fb, rb)
+}
+
 fn material_is_reachable(pos: &Position, color: usize) -> bool {
     let count = |piece: usize| popcount(pos.pieces[color * 6 + piece]) as i32;
     let pawns = count(PAWN);
@@ -360,6 +376,23 @@ impl Position {
         let opp_king_sq = lsb(pos.pieces[(1 - pos.side) * 6 + KING]);
         if pos.is_attacked(opp_king_sq, pos.side) {
             return Err("fen: side to move is attacking the opponent's king".to_string());
+        }
+        // Checks against the side to move: a legal position has at most two checkers, and two
+        // checkers may not lie on one line with the king between them (that would need a piece
+        // to move from one side of the king to the other). Found by differential testing against
+        // python-chess (`chess.STATUS_IMPOSSIBLE_CHECK`).
+        let our_king_sq = lsb(pos.pieces[pos.side * 6 + KING]);
+        let checkers = pos.attackers_to(our_king_sq, pos.occ_all, 1 - pos.side);
+        if popcount(checkers) > 2 {
+            return Err("fen: impossible check (more than two checkers)".to_string());
+        }
+        if popcount(checkers) == 2 {
+            let (a, b) = (lsb(checkers), (63 - checkers.leading_zeros()) as Square);
+            if king_between_aligned(a, b, our_king_sq) {
+                return Err(
+                    "fen: impossible check (two checkers on one line through the king)".to_string(),
+                );
+            }
         }
         pos.ep_included = pos.ep >= 0 && pos.hash_ep().is_some();
         pos.hash = pos.zobrist_full();

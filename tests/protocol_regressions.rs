@@ -265,3 +265,64 @@ fn illegal_only_searchmoves_still_returns_a_legal_move() {
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
+
+/// Regression (AUDIT-SEARCH-03, prior report S-07): `go ponder nodes N` must still honour the node
+/// cap after `ponderhit`. The ponder search is unlimited until `ponderhit`, so the cap is checked
+/// only once the hit arrives; with `ponderhit` sent immediately the search must end close to N.
+#[test]
+fn ponder_node_cap_is_enforced_after_ponderhit() {
+    const CAP: u64 = 5_000;
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("isready");
+    e.read_until("readyok", Duration::from_secs(10));
+    e.send("position startpos moves e2e4 e7e5");
+    e.send(&format!("go ponder nodes {CAP}"));
+    e.send("ponderhit");
+    let lines = e.read_until("bestmove", Duration::from_secs(20));
+    let last_nodes = lines
+        .iter()
+        .filter(|l| l.starts_with("info depth"))
+        .filter_map(|l| {
+            let mut it = l.split_whitespace();
+            while let Some(tok) = it.next() {
+                if tok == "nodes" {
+                    return it.next().and_then(|n| n.parse::<u64>().ok());
+                }
+            }
+            None
+        })
+        .next_back()
+        .expect("at least one info line with nodes");
+    assert!(
+        last_nodes <= 10 * CAP,
+        "ponder search ran {last_nodes} nodes with a cap of {CAP}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (AUDIT-UCI-04): the build is single-threaded. A `Threads` value other than 1 must be
+/// reported to the GUI on stdout (an `info string`), not only on stderr, and must not change
+/// the search (the engine still answers with a legal move).
+#[test]
+fn threads_other_than_one_is_reported_on_stdout() {
+    let mut e = Engine::start();
+    e.send("uci");
+    let uci = e.read_until("uciok", Duration::from_secs(10));
+    assert!(
+        uci.iter()
+            .any(|l| l == "option name Threads type spin default 1 min 1 max 1"),
+        "Threads option is not advertised as 1..1: {uci:?}"
+    );
+    e.send("setoption name Threads value 4");
+    e.send("isready");
+    let lines = e.read_until("readyok", Duration::from_secs(10));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string") && l.contains("Threads")),
+        "Threads 4 was not reported on stdout: {lines:?}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}

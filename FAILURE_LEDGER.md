@@ -472,3 +472,22 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Root cause: `cmd_go` stored `last_clocks` on every `go`, including zeros when no clock was sent; `ponderhit` then recalculated a budget of about 20 ms from those zeros. Measured 1 ms (movetime ponder) on the candidate head before the fix.
 - Severity: medium (ponder with GUIs that send `go ponder movetime`).
 - Regression: `ponder_movetime_ponderhit_keeps_the_movetime_deadline` (fails on the previous uci.rs).
+
+## 2026-11-20 — FINAL AUDIT: defects reproduced and fixed on arena/f668bde4-flawlesschess
+
+- F-01 HIGH: a legal-looking dense FEN (`KQQQQQBk/Q5RB/Q6Q/Q6Q/Q6Q/Q6Q/Q1QQ3Q/QR3QQQ w - - 0 1`) crashed `go` with exit 101 (move-list overflow at types.rs). Fixed: FEN material limits + capacity 512 + hard push check. Regression tests added.
+- F-02 HIGH: a non-UTF-8 stdin line ended the UCI session silently. Fixed: byte-level bounded reader. Regression tests added.
+- F-03 HIGH: `go wtime N` alone had no time limit. Fixed: single-side clock bounds the search. Regression test added.
+- F-04 MEDIUM: Hash 4096 was accepted but the table was silently capped at 1 GiB (RSS identical for 1024 and 4096). Fixed: advertised and accepted maximum is 1024. Regression test added.
+- F-05 LOW: `clock_limits` could wrap on huge clocks. Fixed with saturating arithmetic. Unit test added.
+- F-06 LOW: option rejection messages went to stderr only. Fixed: stdout info strings. Test added.
+- NOT REPRODUCED (kept as regression tests): illegal-only `searchmoves` returned `bestmove 0000` (it returns a legal move); `go ponder nodes N` ignored its cap after `ponderhit` (with ponderhit sent immediately the search stops near N). Ponder node-cap test added.
+- OBSERVATION (not a defect, not fixed): `go nodes N` stops below N (e.g. about 651 nodes for N=1000, 81,210 for N=100000). The cap is an upper bound and is not exceeded. The cause of the undershoot was not analysed.
+- OPEN: MSRV 1.80 could not be run locally (the 1.80.0 toolchain is not on the npm mirror). The CI `msrv` job is the check of record.
+
+## 2026-11-20 — FINAL AUDIT batch 2: checker validation and verification tools
+
+- F-08 (MEDIUM): `from_fen` accepted positions with three checkers on the side to move, or two checkers on one line through its king (e.g. `1b4NQ/8/7R/3q4/3P1bn1/3k1K1P/3p4/2B1bN1q w - - 0 1`). Found by differential fuzzing against python-chess (14 such positions accepted in the seed-1 differential run: 40 random games plus placement fuzz). Fixed in `from_fen`. Regression tests added.
+- EP-01: no saved self-play game contained an en passant capture, so full-game en passant was unverified. Added `scripts/fullgame_en_passant_probe.py` (python-chess referee, forced en passant, engine-vs-engine to the rule end). Passes; added to CI.
+- S-14 (OPEN, informational): search is not colour-symmetric at depth 4 for 2 of 40 random positions (446 vs 493 cp, and 1284 vs 1262 cp). The static evaluation is symmetric on the same positions. Not treated as a bug; to be investigated only if a search defect is suspected.
+- TEST ARTIFACT (not a defect): sending `go` and `quit` in one stdin burst returns the unsearched fallback move. Probes wait for `bestmove` before `quit`. Already documented in CHANGELOG.

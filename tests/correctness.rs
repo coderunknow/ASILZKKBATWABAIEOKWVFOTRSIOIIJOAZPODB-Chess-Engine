@@ -544,11 +544,11 @@ fn perft_cpw_position_6_reference() {
 
 #[test]
 fn fen_rejects_material_that_no_game_can_reach() {
-    // 9 queens + 2 rooks + 2 bishops + 2 knights + king + 0 pawns: 17 pieces with the king.
+    // 22 queens + 2 rooks + 2 bishops + king: 27 white pieces, far above the 16-piece limit.
     let too_many = "KQQQQQBk/Q5RB/Q6Q/Q6Q/Q6Q/Q6Q/Q1QQ3Q/QR3QQQ w - - 0 1";
     let err = Position::from_fen(too_many)
         .err()
-        .expect("17 pieces accepted");
+        .expect("27 white pieces were not rejected");
     assert!(err.contains("impossible material"), "{err}");
     // 9 white pawns.
     let err = Position::from_fen("4k3/PPPPPPPP/P7/8/8/8/8/4K3 w - - 0 1")
@@ -583,4 +583,113 @@ fn move_list_capacity_covers_maximum_mobility_of_accepted_positions() {
     assert!(n < MOVE_LIST_CAPACITY, "{n} pseudo-legal moves");
     let mut p = pos.clone();
     assert!(movegen::generate_legal(&mut p).len <= n);
+}
+
+// ---------- Castling rights vs. placement (AUDIT-FEN-02) ----------
+// The FEN castling field is not cross-checked against the placement. These tests pin the
+// observable contract: stale rights never produce a castling move, and correct rights do.
+
+fn castle_moves_for(fen: &str) -> Vec<String> {
+    let mut pos = Position::from_fen(fen).expect("fen accepted");
+    movegen::generate_legal(&mut pos)
+        .iter()
+        .map(|m| m.to_uci())
+        .filter(|u| u == "e1g1" || u == "e1c1" || u == "e8g8" || u == "e8c8")
+        .collect()
+}
+
+#[test]
+fn stale_castling_rights_without_rooks_generate_no_castling() {
+    assert!(castle_moves_for("4k3/8/8/8/8/8/8/4K3 w KQkq - 0 1").is_empty());
+    assert!(castle_moves_for("4k3/8/8/8/8/8/8/R3K3 w KQ - 0 1")
+        .iter()
+        .all(|m| m != "e1g1"));
+    assert!(castle_moves_for("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1").contains(&"e1c1".to_string()));
+}
+
+#[test]
+fn castling_rights_with_rooks_generate_exactly_the_castles() {
+    let both = castle_moves_for("4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1");
+    assert!(both.contains(&"e1g1".to_string()) && both.contains(&"e1c1".to_string()));
+    assert_eq!(
+        castle_moves_for("4k3/8/8/8/8/8/8/R3K2R w K - 0 1"),
+        vec!["e1g1".to_string()]
+    );
+    assert_eq!(
+        castle_moves_for("4k3/8/8/8/8/8/8/R3K2R w Q - 0 1"),
+        vec!["e1c1".to_string()]
+    );
+    assert!(castle_moves_for("4k3/8/8/8/8/8/8/R3K2R w - - 0 1").is_empty());
+}
+
+#[test]
+fn castling_right_is_ignored_when_king_is_off_its_home_square() {
+    // King on f1 with a K right: no castling move may be generated from f1.
+    let moves = castle_moves_for("4k3/8/8/8/8/8/8/R4K1R w K - 0 1");
+    assert!(moves.is_empty(), "{moves:?}");
+}
+
+// ---------- Checkers against the side to move (AUDIT-FEN-03) ----------
+// Found by differential fuzzing against python-chess: the engine accepted positions in which the
+// side to move was in check from two sliders on one line with its king between them, and from
+// three pieces. Neither can occur in a legal game.
+
+#[test]
+fn fen_rejects_two_checkers_on_one_line_through_the_king() {
+    // Black queens on d5 and h1 both check Kf3 along the d5-h1 diagonal.
+    let err = Position::from_fen("1b4NQ/8/7R/3q4/3P1bn1/3k1K1P/3p4/2B1bN1q w - - 0 1")
+        .err()
+        .expect("aligned double check accepted");
+    assert!(err.contains("two checkers on one line"), "{err}");
+}
+
+#[test]
+fn fen_rejects_more_than_two_checkers() {
+    let err = Position::from_fen("3Q1N1R/NK5q/p7/nq6/R4rQ1/6Q1/1N4Qr/1k6 w - - 0 1")
+        .err()
+        .expect("three checkers accepted");
+    assert!(err.contains("more than two checkers"), "{err}");
+}
+
+#[test]
+fn fen_accepts_a_legal_double_check_from_knight_and_queen() {
+    // Knight g2 and queen d2 both check Ke1; they are not on one line through the king.
+    let mut pos =
+        Position::from_fen("4k3/8/8/8/8/8/3q4/4K1n1 w - - 0 1").expect("legal double check");
+    let mut moves: Vec<String> = movegen::generate_legal(&mut pos)
+        .iter()
+        .map(|m| m.to_uci())
+        .collect();
+    moves.sort();
+    assert_eq!(moves, vec!["e1d2", "e1f1"]);
+}
+
+// ---------- Evaluation colour symmetry (AUDIT-EVAL-01) ----------
+// The static evaluation, seen from the side to move, must be identical for a position and its
+// colour mirror (ranks flipped, colours and side swapped). tests/data/eval_symmetry_fens.tsv holds
+// 303 such pairs generated with python-chess `Board.mirror()`; the last two are positions where a
+// depth-4 search scored a mirror pair differently (the search is not symmetric by design: null
+// move, LMR and move-order ties; the static evaluation must still be).
+
+#[test]
+fn static_evaluation_is_colour_symmetric() {
+    use flawless::eval::{ClassicalEvaluator, Evaluator};
+    let data = include_str!("data/eval_symmetry_fens.tsv");
+    let mut ev = ClassicalEvaluator;
+    let mut pairs = 0;
+    for line in data
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+    {
+        let (fen, mirror) = line.split_once('\t').expect("tab-separated pair");
+        let a = Position::from_fen(fen).expect("fen");
+        let b = Position::from_fen(mirror).expect("mirror fen");
+        let (ea, eb) = (ev.evaluate(&a), ev.evaluate(&b));
+        assert_eq!(
+            ea, eb,
+            "eval asymmetry: {fen} -> {ea}, mirror {mirror} -> {eb}"
+        );
+        pairs += 1;
+    }
+    assert!(pairs >= 300, "only {pairs} pairs checked");
 }

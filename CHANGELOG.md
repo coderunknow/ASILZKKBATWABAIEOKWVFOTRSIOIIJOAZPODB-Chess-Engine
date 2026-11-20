@@ -2,6 +2,43 @@
 
 All notable changes are documented here. SemVer 2.0.0. Versions before the V1 release gate are `0.x`.
 
+## [Unreleased] — independent audit remediation (on top of 0.1.0 candidate)
+
+- **Fixed (HIGH): a legal-looking FEN could crash the engine in release builds.** `position fen` accepted
+  up to 27 white pieces (`KQQQQQBk/Q5RB/Q6Q/Q6Q/Q6Q/Q6Q/Q1QQ3Q/QR3QQQ w - - 0 1` has 22 queens), overflowing the
+  fixed move list (`MoveList`). FEN parsing now rejects material no game can reach (more than 16 pieces,
+  more than 8 pawns, or promoted pieces exceeding the missing pawns). `MoveList` capacity is 512 with a
+  documented bound (335 pseudo-legal moves) and a hard check on push. Tests: `correctness` material tests,
+  `protocol_regressions::impossible_material_fen_is_rejected_without_crashing`.
+- **Fixed (HIGH): a non-UTF-8 input line ended the UCI session.** Stdin is now read as bytes with a 64 KiB
+  line bound; invalid UTF-8 is decoded lossily, and oversized lines are dropped with an `info string`.
+  Tests: `protocol_regressions::non_utf8_input_line_does_not_end_the_session`,
+  `oversized_input_line_is_dropped_and_session_continues`, and the `uci` line-reader unit tests.
+- **Fixed (HIGH): `go wtime N` (or `btime` alone) had no time limit.** A single side's clock now bounds the
+  search. Test: `protocol_regressions::single_side_clock_bounds_the_search`.
+- **Changed: the advertised Hash maximum is 1024 MiB (was 4096).** The transposition table is capped at
+  1 GiB, so 4096 was accepted and silently capped. Values outside 1..=1024 are rejected with an `info string`
+  on stdout. Test: `protocol_regressions::hash_limit_is_advertised_and_enforced`.
+- **Fixed: Threads, Hash and MultiPV rejections are reported on stdout** (they were on stderr, which GUIs do
+  not show). The build is single-threaded: `Threads` other than 1 is reported and ignored. Test:
+  `protocol_regressions::threads_other_than_one_is_reported_on_stdout`.
+- **Fixed (LOW): clock arithmetic saturates** (`clock_limits` could wrap on enormous clocks). Test:
+  `uci::tests::clock_limits_saturate_instead_of_wrapping`.
+- **Fixed (LOW): the search thread has a 16 MiB stack** (was the 2 MiB default).
+- **Added tests:** CPW perft references (startpos d1–d4, Kiwipete d1–d3, positions 3–6), castling-rights
+  tests (stale rights generate no castling), the ponder node cap after `ponderhit`
+  (`protocol_regressions::ponder_node_cap_is_enforced_after_ponderhit`), and the illegal-only `searchmoves`
+  process test.
+- **CI:** `persist-credentials: false` on the checkouts of the `test` and `msrv` jobs.
+- **Fixed (MEDIUM): FENs with two checkers on one line through the king, or with three checkers, were accepted.**
+  Found by differential fuzzing against python-chess. Such positions cannot occur in a legal game. Tests:
+  `correctness::fen_rejects_two_checkers_on_one_line_through_the_king`, `fen_rejects_more_than_two_checkers`,
+  and `fen_accepts_a_legal_double_check_from_knight_and_queen`.
+- **Added: verification tools** `scripts/fuzz_legal_differential.py` (random legal games vs python-chess legal move
+  sets), `scripts/fuzz_uci_grammar.py` (random UCI sessions), `scripts/fullgame_en_passant_probe.py` (full engine game
+  with a forced en passant capture; in CI), `scripts/eval_symmetry_probe.py` (informational search symmetry), and the
+  static-evaluation colour-symmetry test over 303 pairs (`tests/data/eval_symmetry_fens.tsv`).
+
 ## [0.1.0] — pre-V1 release candidate (2026-11-19, not yet tagged)
 
 **Pre-V1. Not v1.0.0. The V1 rating gate is not met and no absolute rating is claimed.**
