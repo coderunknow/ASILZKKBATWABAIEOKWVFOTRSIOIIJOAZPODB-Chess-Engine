@@ -15,6 +15,10 @@ Product name: FlawLessChess. UCI engine name: Flawless. Cargo package: `flawless
   `last_clocks` was recorded on every `go` (zeros when no clock was sent), so `ponderhit` recalculated
   a ~20 ms budget. A movetime ponder now keeps its deadline; a bare `go ponder` waits for `stop`.
   Regression tests: `ponder_movetime_ponderhit_keeps_the_movetime_deadline`, `bare_go_ponder_keeps_searching_until_stop`.
+- **Fixed: `go ponder nodes N` ignored its node cap after `ponderhit`.** The ponderhit fallback left
+  `infinite` set, so the cap was never checked. Regression test: `ponder_node_cap_is_enforced_after_ponderhit`.
+- **Added: en passant forced-root test** (`t_en_passant_capture` in `scripts/uci_protocol_probe.py`) and a Linux resource
+  probe step in CI. Full-game en passant is still NOT VERIFIED (no played game in the set contains one).
 - **Fixed: no-argument launch starts UCI mode** (see the next section).
 - **Added:** `tests/movetime_smoke.rs` (8 real-process timing and lifecycle tests); CI steps for
   `scripts/uci_protocol_probe.py`, `scripts/uci_malformed_probe.py` and `scripts/selfplay_games.py`

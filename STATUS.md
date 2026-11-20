@@ -290,7 +290,7 @@ CI on c564c5c passed Ubuntu but failed the Windows power-analysis smoke because 
 
 ## 2026-11-19 — v0.1.0 pre-V1 release candidate (status update)
 
-- Version `0.1.0` (pre-V1; not v1.0.0; not tagged; no release). Product: FlawLessChess. UCI name: Flawless. Cargo package: `flawless` (kept; the naming decision is still pending, see the release-candidate report).
+- Version `0.1.0` (pre-V1; not v1.0.0; not tagged; no release). Product: FlawLessChess. UCI name: Flawless. Cargo package: `flawless` (kept; the naming decision is made: the package stays `flawless` (user decision), see the release-candidate report).
 - Fixed: `go movetime N` early return (search stopped at 39–100% of N). Now 100–101% of N. Clock searches unchanged. Tests: `tests/movetime_smoke.rs`.
 - Verified locally on the candidate head: fmt, clippy `-D warnings`, `cargo test --release --locked` (all suites), release build, bench signature `141943aa23b3fc68` (unchanged), perft d3 8902 / d4 197281, diftest 2,321/0, six full games with python-chess referee (all legal), UCI protocol probes 10/10, malformed input 37/37, Python harness suites.
 - Not verified: Windows artifact bytes (SHA-256, PE machine, manifest) by hand; real GUI playability in Arena or Cute Chess; independent AI review; MSRV 1.80 on the new head (depends on CI).
