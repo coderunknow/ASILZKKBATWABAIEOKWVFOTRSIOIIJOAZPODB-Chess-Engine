@@ -176,3 +176,10 @@ Known gap, not changed: the pre-existing ci.yml step "UCI bestmove smoke test (s
 - CodeRabbit on `a7b7eda`: 3 actionable findings (all in `scripts/windows_artifact.py`), all valid and fixed in the harness. Regression tests added (15/15 pass).
 - No Rust code changed in round 4, so the round-3 Rust gate results still apply. Engine behaviour is unchanged.
 
+
+## Current head status (07b68a8, supersedes the a7b7eda CI references above)
+
+- CI run `44673016254` on `07b68a8` (harness hardening only; no Rust change): success on ubuntu-latest, windows-latest, msrv (rust 1.80), windows x64 artifact job; anchor-verify `44673016389` success.
+- Artifact `flawless-windows-x64-07b68a8001a3405b21d3cdfcb5f013d89e6eb469` (186691 bytes) is listed; download fails from this sandbox (blob-storage EOF). NOT VERIFIED: SHA-256, manifest, PE 0x8664 on the downloaded file.
+- CodeRabbit on `07b68a8`: review requested; rate-limited by CodeRabbit ("Your next included review will be available in 16 minutes" earlier; the later request was also rate-limited). NOT VERIFIED.
+- Merge criteria (CI and CodeRabbit both green on the final head) are NOT met for CodeRabbit on `07b68a8`.
