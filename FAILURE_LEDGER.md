@@ -622,3 +622,24 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Scratch checks (in `/tmp/fuzz`, not in the repository): `uci_fuzz.py` seeds 41 (150 sessions), 42, 43, 44 (300 each):
   0 failures. `fuzz_fen.py` seeds 1, 2 (3,000 FEN lines each through `moves`): every line answered, rc 0. The repository
   has no `scripts/fuzz_uci.py`; the queue item named a file that was never committed.
+
+## 2026-11-20 (late, stretch 3) — F-16 and F-17: allocation refusal aborted or panicked the engine
+
+- F-16 FIXED (MEDIUM, resources): a refused transposition-table allocation aborted the process (SIGABRT, rc 134, no
+  `readyok`). Reproduced: `ulimit -v 400000` then `setoption name Hash value 1024` after `uci`. Rust aborts on a failed
+  `vec!` allocation, so the GUI saw a crashed engine. The same happens at start-up under a limit below the default 64 MiB.
+  Fix (`src/tt.rs`): `try_resize` and `try_new` reserve the size first with `try_reserve_exact` (a refusal becomes an
+  error), then do the usual zeroed allocation. The table stays lazily zeroed; idle RSS after Hash 1024 is 4 MiB (unchanged).
+  No `unsafe`. Fix (`src/uci.rs`): `setoption Hash` that cannot be allocated prints
+  `info string option Hash N MiB could not be allocated; keeping M MiB` and keeps the old table. Start-up and the
+  fallback re-allocation halve the size until the allocator accepts it (announced on stdout); a refusal at 1 MiB exits 1
+  with a message on stderr (there is no memory for any search).
+  Regression: `protocol_regressions::hash_allocation_refusal_does_not_abort_the_engine` (Linux only; fails on 2b10cd2 with a
+  signal exit, passes on the fix).
+- F-17 FIXED (MEDIUM, resources): when the OS refused the search thread (`WouldBlock`, under the same limit), `go` hit
+  `expect("spawn search thread")` and the engine exited 101. Fix: on a failed spawn, the engine answers with the fallback
+  move (the first legal move, or `0000` with no legal move) and prints `info string search thread unavailable (...)`
+  on stdout. Limitation: under such pressure the engine answers without searching. Covered by the same regression test
+  (50 MB case, which halves the table and then cannot spawn the thread).
+- Checked after the fix: 400 MB limit + Hash 1024: readyok, exit 0, legal bestmove; 50 MB and 30 MB limits: exit 0,
+  legal bestmove. No limit: bestmove unchanged (`b1a3` at depth 4 from startpos, identical before and after).

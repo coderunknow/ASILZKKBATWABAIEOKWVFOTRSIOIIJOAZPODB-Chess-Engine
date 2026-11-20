@@ -119,6 +119,36 @@ fn lock_ignoring_poison(m: &Mutex<()>) -> std::sync::MutexGuard<'_, ()> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// Hash size at start-up, in MiB (the UCI default).
+const DEFAULT_HASH_MB: usize = 64;
+
+/// Allocates a transposition table of `mb` MiB, halving the size while the allocator refuses it.
+/// Returns the table and the size actually allocated. A refusal at 1 MiB is fatal: there is no
+/// memory for any search, and this is reported on the process's stderr before exiting.
+fn allocate_tt(mb: usize) -> (TranspositionTable, usize) {
+    let mut size = mb.clamp(1, MAX_HASH_MB);
+    loop {
+        match TranspositionTable::try_new(size) {
+            Ok(tt) => {
+                if size < mb {
+                    crate::out_line!(
+                        "info string hash table reduced from {mb} MiB to {size} MiB (memory limit)"
+                    );
+                }
+                return (tt, size);
+            }
+            Err(e) if size > 1 => {
+                crate::err_line!("info string table of {size} MiB refused ({e}); trying half");
+                size /= 2;
+            }
+            Err(e) => {
+                crate::err_line!("fatal: no memory for even a 1 MiB table ({e})");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 /// Parses a `go` time value in milliseconds (`wtime`, `btime`, `winc`, `binc`, `movetime`).
 ///
 /// A negative value means the time is already gone (a GUI reports a flagged clock this way), so
@@ -172,11 +202,12 @@ struct WorkerHandle {
 
 impl UciEngine {
     pub fn new() -> Self {
+        let (tt, hash_mb) = allocate_tt(DEFAULT_HASH_MB);
         UciEngine {
             pos: Position::startpos(),
             position_invalid: false,
-            tt: Some(TranspositionTable::new(64)),
-            hash_mb: 64,
+            tt: Some(tt),
+            hash_mb,
             multi_pv: 1,
             worker: None,
             last_clocks: None,
@@ -460,10 +491,14 @@ impl UciEngine {
         let flush = Arc::new(Mutex::new(()));
         let stop = Arc::new(AtomicBool::new(false));
         let consumed = Arc::new(AtomicBool::new(false));
-        let tt = self
-            .tt
-            .take()
-            .unwrap_or_else(|| TranspositionTable::new(self.hash_mb));
+        let tt = match self.tt.take() {
+            Some(tt) => tt,
+            None => {
+                let (tt, mb) = allocate_tt(self.hash_mb);
+                self.hash_mb = mb;
+                tt
+            }
+        };
         let mut pos = self.pos.clone();
         // `searchmoves` that names no legal move: the search widens to all legal moves (see
         // `Searcher::search_root`). That is a deliberate choice (a null move is never useful here),
@@ -484,7 +519,7 @@ impl UciEngine {
         let hold_for_thread = hold.clone();
         let printed_for_thread = printed.clone();
         let flush_for_thread = flush.clone();
-        let handle = thread::Builder::new()
+        let spawned = thread::Builder::new()
             .stack_size(SEARCH_STACK_BYTES)
             .spawn(move || {
             let mut tt = tt;
@@ -545,7 +580,25 @@ impl UciEngine {
                 }
             }
         })
-            .expect("spawn search thread");
+            ;
+        let handle = match spawned {
+            Ok(handle) => handle,
+            Err(e) => {
+                // The OS refused the search thread (for example under a memory limit). Answer now
+                // with the fallback move (the first legal move) and say so on stdout, instead of
+                // panicking. The table was moved into the thread's closure and is dropped with it;
+                // the next `go` allocates a new one.
+                crate::out_line!(
+                    "info string search thread unavailable ({e}); answering without a search"
+                );
+                match fallback_move {
+                    Some(m) => crate::out_line!("bestmove {m}"),
+                    None => crate::out_line!("bestmove 0000"),
+                }
+                let _ = std::io::stdout().flush();
+                return;
+            }
+        };
 
         self.worker = Some(WorkerHandle {
             join: handle,
@@ -641,8 +694,21 @@ impl UciEngine {
             {
                 Some(mb) => {
                     self.stop_and_join();
-                    self.hash_mb = mb;
-                    self.tt = Some(TranspositionTable::new(mb));
+                    match self.tt.as_mut().map(|tt| tt.try_resize(mb)) {
+                        Some(Ok(())) => self.hash_mb = mb,
+                        _ => {
+                            // Keep the previous table: the engine must stay usable.
+                            let (tt, kept) = match self.tt.take() {
+                                Some(tt) => (tt, self.hash_mb),
+                                None => allocate_tt(self.hash_mb),
+                            };
+                            self.tt = Some(tt);
+                            self.hash_mb = kept;
+                            crate::out_line!(
+                                "info string option Hash {mb} MiB could not be allocated; keeping {kept} MiB"
+                            );
+                        }
+                    }
                 }
                 None => {
                     crate::out_line!(
@@ -696,7 +762,9 @@ impl UciEngine {
                     crate::err_line!("info string search thread ended without result");
                 }
                 if self.tt.is_none() {
-                    self.tt = Some(TranspositionTable::new(self.hash_mb));
+                    let (tt, mb) = allocate_tt(self.hash_mb);
+                    self.hash_mb = mb;
+                    self.tt = Some(tt);
                 }
                 if !worker.printed.swap(true, Ordering::AcqRel) {
                     match worker.fallback {

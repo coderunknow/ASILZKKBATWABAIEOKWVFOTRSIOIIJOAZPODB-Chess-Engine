@@ -633,3 +633,90 @@ fn negative_time_values_answer_at_once() {
         e.quit_and_expect_exit(Duration::from_secs(10));
     }
 }
+
+/// Runs the engine with its address space limited to `limit_kb` (through `sh`'s `ulimit -v`),
+/// feeds `input`, and returns stdout and the exit status. Kills the child after 30 s.
+#[cfg(target_os = "linux")]
+fn run_under_address_limit(limit_kb: u64, input: &str) -> (String, Option<i32>) {
+    use std::io::Read;
+    let script = format!("ulimit -v {limit_kb} && exec \"$0\" uci");
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(script)
+        .arg(env!("CARGO_BIN_EXE_flawless"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn sh");
+    let mut stdin = child.stdin.take().expect("stdin piped");
+    let mut stdout = child.stdout.take().expect("stdout piped");
+    let (tx, rx) = channel::<String>();
+    thread::spawn(move || {
+        let mut s = String::new();
+        let _ = stdout.read_to_string(&mut s);
+        let _ = tx.send(s);
+    });
+    stdin.write_all(input.as_bytes()).expect("write input");
+    drop(stdin);
+    let out = match rx.recv_timeout(Duration::from_secs(30)) {
+        Ok(s) => s,
+        Err(_) => {
+            let _ = child.kill();
+            panic!("engine did not finish under a {limit_kb} KB address limit");
+        }
+    };
+    let status = child.wait().expect("wait");
+    (out, status.code())
+}
+
+/// Regression (memory): `setoption name Hash value 1024` under a 400 MB address limit made the
+/// allocator abort the process (SIGABRT, no `readyok`). The refusal must be reported, the previous
+/// table kept, and the engine must keep answering. Start-up with a 50 MB limit must halve the
+/// default table instead of aborting, and `go` must still answer with a legal move even when the
+/// search thread cannot be created.
+#[cfg(target_os = "linux")]
+#[test]
+fn hash_allocation_refusal_does_not_abort_the_engine() {
+    let (out, code) = run_under_address_limit(
+        400_000,
+        "uci\nsetoption name Hash value 1024\nisready\nposition startpos\ngo depth 3\nquit\n",
+    );
+    assert_eq!(
+        code,
+        Some(0),
+        "exit status after a refused Hash 1024:\n{out}"
+    );
+    assert!(
+        out.contains("info string option Hash 1024 MiB could not be allocated; keeping 64 MiB"),
+        "refusal not reported:\n{out}"
+    );
+    assert!(out.lines().any(|l| l == "readyok"), "no readyok:\n{out}");
+    assert!(
+        out.lines().any(|l| l.starts_with("bestmove ")),
+        "no bestmove:\n{out}"
+    );
+
+    let (out, code) = run_under_address_limit(
+        50_000,
+        "uci\nisready\nposition startpos\ngo depth 3\nquit\n",
+    );
+    assert_eq!(
+        code,
+        Some(0),
+        "exit status at start-up under a 50 MB limit:\n{out}"
+    );
+    assert!(out.lines().any(|l| l == "readyok"), "no readyok:\n{out}");
+    let mv = out
+        .lines()
+        .find_map(|l| l.strip_prefix("bestmove "))
+        .unwrap_or_else(|| panic!("no bestmove:\n{out}"));
+    let legal = [
+        "a2a3", "a2a4", "b2b3", "b2b4", "c2c3", "c2c4", "d2d3", "d2d4", "e2e3", "e2e4", "f2f3",
+        "f2f4", "g2g3", "g2g4", "h2h3", "h2h4", "b1a3", "b1c3", "g1f3", "g1h3",
+    ];
+    assert!(
+        legal.iter().any(|m| mv.starts_with(m)),
+        "bestmove {mv} is not a legal start move"
+    );
+}

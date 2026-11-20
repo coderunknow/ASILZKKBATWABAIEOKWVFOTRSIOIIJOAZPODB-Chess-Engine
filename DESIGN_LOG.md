@@ -489,3 +489,15 @@ DRAFT ONLY — no code changes under this entry.
 - Decision: answer at once, as `wtime 0` does. A negative time is how a GUI reports that the clock has run out; treating
   it as "no limit" would search forever and lose on time. Overflow above `u64::MAX` saturates to a huge limit.
 - Not changed: `go mate N` is parsed and ignored (see FAILURE_LEDGER). Unparseable values are still dropped.
+
+## 2026-11-20 (late, stretch 3) — Memory refusal is reported, not fatal
+
+- Question: when the allocator refuses the transposition table, or the OS refuses the search thread, should the engine
+  abort?
+- Decision: no. A refused table keeps the previous table (for `setoption`) or halves until the allocator accepts it (at
+  start-up and in fallbacks). A refused search thread answers with the first legal move, with a stdout notice. The engine
+  must stay usable for a GUI on a small machine. The notices go on stdout so a GUI can see them.
+- Question: how to make a fallible allocation without `unsafe`?
+- Decision: reserve the size with `try_reserve_exact` and release it, then allocate normally. The allocation that
+  follows is the same size in a single-threaded process, so it normally succeeds; the lazy zeroing is kept.
+  A `std::alloc::alloc_zeroed` path would be fallible too, but needs `unsafe` and a benchmark, and was not needed.

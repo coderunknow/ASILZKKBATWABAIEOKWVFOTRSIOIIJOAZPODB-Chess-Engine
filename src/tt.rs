@@ -75,6 +75,18 @@ pub struct TranspositionTable {
     pub hits: u64,
 }
 
+/// The allocator refused a transposition table of `bytes` bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableAllocError {
+    pub bytes: usize,
+}
+
+impl std::fmt::Display for TableAllocError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "could not reserve {} bytes", self.bytes)
+    }
+}
+
 const MATE_BOUND: i32 = crate::eval::MATE_SCORE - 100;
 
 impl TranspositionTable {
@@ -92,13 +104,47 @@ impl TranspositionTable {
     }
 
     pub fn resize(&mut self, size_mb: usize) {
+        if let Err(e) = self.try_resize(size_mb) {
+            panic!("transposition table allocation failed: {e}");
+        }
+    }
+
+    /// Like [`TranspositionTable::new`], but reports a refused allocation instead of aborting.
+    pub fn try_new(size_mb: usize) -> Result<Self, TableAllocError> {
+        let mut tt = TranspositionTable {
+            entries: Box::new([]),
+            len_mask: 0,
+            generation: 1,
+            stores: 0,
+            probes: 0,
+            hits: 0,
+        };
+        tt.try_resize(size_mb)?;
+        Ok(tt)
+    }
+
+    /// Resizes the table to `size_mb` MiB. On a refused allocation the table is left unchanged.
+    ///
+    /// Rust aborts the process when an allocation fails, so the size is first reserved and
+    /// released: a refused reservation is returned as an error. The zeroed allocation that
+    /// follows is the same size, so it normally succeeds; the table stays lazily zeroed (pages
+    /// are committed when first written). Single-threaded, so nothing else takes the space in
+    /// between.
+    pub fn try_resize(&mut self, size_mb: usize) -> Result<(), TableAllocError> {
         let bytes = size_mb.max(1) * 1024 * 1024;
         let want_entries = bytes / 8;
         // Keep a reasonable bound: at least 1024 entries, at most 2^27 entries (1 GiB).
         let entries = want_entries.clamp(1024, 1 << 27).next_power_of_two();
+        {
+            let mut probe: Vec<u64> = Vec::new();
+            probe
+                .try_reserve_exact(entries)
+                .map_err(|_| TableAllocError { bytes: entries * 8 })?;
+        }
         self.entries = vec![0u64; entries].into_boxed_slice();
         self.len_mask = entries - 1;
         self.clear();
+        Ok(())
     }
 
     pub fn clear(&mut self) {

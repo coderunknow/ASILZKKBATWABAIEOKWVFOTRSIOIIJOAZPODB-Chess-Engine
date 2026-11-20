@@ -18,6 +18,12 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   so `go` had no time limit and never answered without `stop`. A negative time is now 0 (answer at once); values above
   `u64::MAX` saturate. Test: `protocol_regressions::negative_time_values_answer_at_once` (fails on the previous code).
   Probe: `scripts/uci_extreme_args_probe.py`.
+- **Fixed (MEDIUM, F-16): a refused hash-table allocation aborted the engine.** `setoption name Hash value 1024` under
+  a low memory limit killed the process (SIGABRT). The refusal is now reported on stdout and the previous table is kept;
+  start-up halves the default table until the allocator accepts it. Test:
+  `protocol_regressions::hash_allocation_refusal_does_not_abort_the_engine` (Linux; fails on the previous code).
+- **Fixed (MEDIUM, F-17): a refused search thread panicked `go`.** The engine now answers with the first legal move and a
+  stdout notice instead of exiting 101. Same test.
 - **Hardened:** stdout-ordering locks recover from poisoning instead of panicking. Piece-bitboard invariant test over
   random legal games: `correctness::piece_bitboards_stay_in_sync_over_random_games`.
 - **CI:** the test workflow declares `permissions: contents: read`; `dtolnay/rust-toolchain` is pinned to a commit SHA
