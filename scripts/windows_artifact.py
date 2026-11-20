@@ -246,9 +246,14 @@ def uci_session_bestmove(exe, args, label):
         s.kill()
     lines = s.lines
     check_uci_lines_only(label, lines)
-    bestmoves = [m for m in (BESTMOVE_RE.match(l) for l in lines) if m]
-    if len(bestmoves) != 1:
-        fail(f"{label}: expected exactly one bestmove line, got {len(bestmoves)}")
+    # Count every line that starts with `bestmove` over the whole transcript (after quit too), before
+    # any filtering. A malformed second reply must fail here, not be silently dropped by the regex.
+    all_bestmove_lines = [l for l in lines if l.startswith("bestmove")]
+    if len(all_bestmove_lines) != 1:
+        fail(f"{label}: expected exactly one bestmove line, got {len(all_bestmove_lines)}: {all_bestmove_lines!r}")
+    if not BESTMOVE_RE.match(all_bestmove_lines[0]):
+        fail(f"{label}: malformed bestmove line: {all_bestmove_lines[0]!r}")
+    bestmoves = [BESTMOVE_RE.match(all_bestmove_lines[0])]
     # Only output before the bestmove counts: a depth-2 line printed after the answer must not
     # satisfy the check.
     first_bm = next(i for i, l in enumerate(lines) if BESTMOVE_RE.match(l))

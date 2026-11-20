@@ -12,10 +12,13 @@ Usage: python3 scripts/eval_symmetry_probe.py ./target/release/flawless [--posit
 Requires: pip install chess==1.11.2
 """
 import argparse
+import queue
 import random
 import re
 import subprocess
 import sys
+import threading
+import time
 
 import chess
 
@@ -27,27 +30,46 @@ class Searcher:
 
     Sending `go` and `quit` in one burst lets `quit` stop the search before an iteration completes,
     which returns the unsearched fallback move (see CHANGELOG). This probe never does that.
+    Every wait has a deadline; on any failure the child is killed and reaped.
     """
 
     def __init__(self, engine):
         self.p = subprocess.Popen([engine], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, text=True, bufsize=1)
-        self.send("uci")
-        self.wait_for("uciok")
-        self.send("isready")
-        self.wait_for("readyok")
+                                  stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        self.q = queue.Queue()
+        self.reader = threading.Thread(target=self._pump, daemon=True)
+        self.reader.start()
+        try:
+            self.send("uci")
+            self.wait_for("uciok")
+            self.send("isready")
+            self.wait_for("readyok")
+        except BaseException:
+            self.kill()
+            raise
+
+    def _pump(self):
+        for line in self.p.stdout:
+            self.q.put(line.rstrip("\n"))
+        self.q.put(None)  # EOF marker
 
     def send(self, line):
         self.p.stdin.write(line + "\n")
         self.p.stdin.flush()
 
-    def wait_for(self, token, timeout=120):
+    def wait_for(self, token, timeout=120.0):
         lines = []
+        end = time.monotonic() + timeout
         while True:
-            line = self.p.stdout.readline()
-            if line == "":
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(f"timeout after {timeout}s waiting for {token!r}; last={lines[-3:]}")
+            try:
+                line = self.q.get(timeout=min(remaining, 0.2))
+            except queue.Empty:
+                continue
+            if line is None:
                 raise RuntimeError(f"engine exited while waiting for {token!r}: {lines[-5:]}")
-            line = line.rstrip("\n")
             lines.append(line)
             if line.startswith(token):
                 return lines
@@ -69,9 +91,26 @@ class Searcher:
             raise RuntimeError(f"no depth-{depth} score for {fen}")
         return found
 
+    def kill(self):
+        if self.p.poll() is None:
+            self.p.kill()
+        self.p.wait()
+        for f in (self.p.stdin, self.p.stdout):
+            try:
+                f.close()
+            except Exception:
+                pass
+
     def close(self):
-        self.send("quit")
-        self.p.wait(timeout=30)
+        """Ask for quit, require a clean exit within a deadline, otherwise kill and fail."""
+        try:
+            self.send("quit")
+            self.p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            self.kill()
+            raise RuntimeError("engine did not exit within 30s after quit")
+        finally:
+            self.kill()
         if self.p.returncode != 0:
             raise RuntimeError(f"engine exit {self.p.returncode}")
 
@@ -105,8 +144,10 @@ def main():
             b = eng.score(mirror, args.depth)
             if a != b:
                 mismatches.append((fen, a, mirror, b))
-    finally:
-        eng.close()
+    except BaseException:
+        eng.kill()
+        raise
+    eng.close()
 
     print(f"positions={len(fens)} depth={args.depth} search_mismatches={len(mismatches)} (informational)")
     for m in mismatches[:10]:

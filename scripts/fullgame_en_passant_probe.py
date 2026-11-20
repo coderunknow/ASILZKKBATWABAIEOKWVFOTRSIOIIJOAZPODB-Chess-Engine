@@ -45,7 +45,9 @@ def main():
     ep_count = castle_count = promo_count = 0
     try:
         # Ply 0: the forced en passant capture. searchmoves limits the root to that single move.
-        res = eng.play(board, chess.engine.Limit(depth=3), root_moves=[forced])
+        # Depth-limited AND time-limited: python-chess applies no client deadline to a depth-only
+        # limit, so the time limit bounds the wait (timeout + 5 s) if the engine stops replying.
+        res = eng.play(board, chess.engine.Limit(depth=3, time=5.0), root_moves=[forced])
         if res.move is None or res.move.uci() == "0000":
             fail("no move for the forced en passant search")
         if res.move != forced:
@@ -69,11 +71,18 @@ def main():
             promo_count += bool(mv.promotion)
             board.push(mv)
             played.append(mv.uci())
-    finally:
-        try:
-            eng.quit()
-        except Exception:
-            eng.close()
+    except BaseException:
+        eng.close()
+        raise
+    # Clean shutdown is part of the result: quit must succeed and the process must exit with 0.
+    try:
+        eng.quit()
+    except Exception as e:
+        eng.close()
+        fail(f"quit failed after the game: {e!r}")
+    exit_code = eng.protocol.returncode.result()
+    if exit_code != 0:
+        fail(f"engine exit code {exit_code} after quit")
 
     if len(played) >= args.max_plies:
         termination = f"ply cap {args.max_plies} reached (no rule-based end)"

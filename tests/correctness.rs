@@ -653,13 +653,11 @@ fn fen_rejects_more_than_two_checkers() {
 
 #[test]
 fn fen_accepts_a_legal_double_check_from_knight_and_queen() {
-    // Knight g2 and queen d2 both check Ke1; they are not on one line through the king.
+    // Queen d2 and knight g2 both check Ke1 (checkers d2 and g2, not on one line through the king).
     let mut pos =
-        Position::from_fen("4k3/8/8/8/8/8/3q4/4K1n1 w - - 0 1").expect("legal double check");
-    let mut moves: Vec<String> = movegen::generate_legal(&mut pos)
-        .iter()
-        .map(|m| m.to_uci())
-        .collect();
+        Position::from_fen("4k3/8/8/8/8/8/3q2n1/4K3 w - - 0 1").expect("legal double check");
+    let legal = movegen::generate_legal(&mut pos);
+    let mut moves: Vec<String> = legal.iter().map(|m| m.to_uci()).collect();
     moves.sort();
     assert_eq!(moves, vec!["e1d2", "e1f1"]);
 }

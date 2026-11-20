@@ -535,3 +535,9 @@ Scope: panic sites in src/, input parsing (go/setoption/position), search root h
 - Static evaluation colour-symmetry test added (303 pairs). The search-level probe `scripts/eval_symmetry_probe.py` is informational only (2 of 40 depth-4 mismatches; see FINAL_AUDIT_PROGRESS.md S-14).
 - The CI `persist-credentials: false` nitpick fixed on the `test` and `msrv` checkouts.
 - Naming decision (ADR 0002) stands: the Cargo package is `flawless`.
+
+## 2026-11-20 — PR #4 CodeRabbit triage (12 inline comments, 1 nitpick)
+
+- All comments are addressed. Details and evidence are in FINAL_AUDIT_PROGRESS.md, "Phase E".
+- The one Major item (fuzz final readiness) and the CI-relevant one (malformed bestmove in the Windows artifact checker) were real defects in my or in pre-existing harness code, and both are now covered by tests or self-tests.
+- Qodo (billing-blocked), Kilo (out of credits) and CodeRabbit's walkthrough are not counted as passed reviews. CodeRabbit's inline review is addressed; a re-review of the new head is requested.

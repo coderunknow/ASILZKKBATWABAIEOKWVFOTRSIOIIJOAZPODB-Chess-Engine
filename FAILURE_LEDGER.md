@@ -491,3 +491,12 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - EP-01: no saved self-play game contained an en passant capture, so full-game en passant was unverified. Added `scripts/fullgame_en_passant_probe.py` (python-chess referee, forced en passant, engine-vs-engine to the rule end). Passes; added to CI.
 - S-14 (OPEN, informational): search is not colour-symmetric at depth 4 for 2 of 40 random positions (446 vs 493 cp, and 1284 vs 1262 cp). The static evaluation is symmetric on the same positions. Not treated as a bug; to be investigated only if a search defect is suspected.
 - TEST ARTIFACT (not a defect): sending `go` and `quit` in one stdin burst returns the unsearched fallback move. Probes wait for `bestmove` before `quit`. Already documented in CHANGELOG.
+
+## 2026-11-20 — PR #4 review findings in the audit harness (fixed)
+
+- The UCI fuzzer accepted a session when any earlier `readyok` appeared, so a dropped final `isready` could pass. Fixed: exactly one `readyok` per session, generator never emits `isready`.
+- The Windows artifact checker dropped a malformed extra `bestmove` before counting (regex filter). Fixed: count over the whole transcript first; regression tests added.
+- The protocol and malformed probes validated only the first `bestmove`. Fixed; self-tested against a fake engine that prints two replies.
+- Probes waited without a deadline (eval symmetry, en passant forced search) and the en passant probe ignored a failed quit. Fixed.
+- The Rust protocol harness could block on a stdin write before its reply deadline. Fixed with a writer thread.
+- A test named "double check" used a position with a single check (knight on g1). Fixed; the position is now a verified double check.

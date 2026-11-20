@@ -148,6 +148,10 @@ def run(line):
         if l is None:
             break
         out_lines.append(l)
+    # Every bestmove on the complete transcript (drained after quit) counts: one search, one reply.
+    replies = [l for l in out_lines if l.startswith("bestmove")]
+    if len(replies) > 1:
+        return finish(f"EXTRA_BESTMOVE x{len(replies)}")
     status, out, err = finish("OK")
     if code != 0:
         return f"EXIT {code}", out, err

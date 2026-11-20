@@ -61,6 +61,11 @@ class Eng:
         bad = unknown_lines(self.all)
         if bad:
             raise AssertionError(f"unexpected stdout lines (all output is checked, incl. before uciok): {bad[:3]}")
+        # Over the complete transcript (after quit too): at most one bestmove per session in these
+        # tests. A second reply, even a legal one, is a protocol violation.
+        replies = [l for l in self.all if l.startswith("bestmove")]
+        if len(replies) > 1:
+            raise AssertionError(f"{len(replies)} bestmove lines on stdout (at most one expected): {replies}")
         return code
 
 def check(name, fn):

@@ -119,6 +119,9 @@ class DepthEvidence(unittest.TestCase):
                 raise wa.CheckError(f"no line for {what}")
 
             def finish(self, eof=True):
+                # Like the real Session.finish(): drain whatever the engine printed after quit.
+                self.lines.extend(self.feed)
+                self.feed = []
                 return 0
 
             def kill(self):
@@ -139,6 +142,22 @@ class DepthEvidence(unittest.TestCase):
 
     def test_depth0_fallback_rejected(self):
         lines = self.base + ["bestmove a2a3"]
+        with self.assertRaises(wa.CheckError):
+            self.run_with_lines(lines)
+
+    def test_second_legal_bestmove_is_rejected(self):
+        lines = self.base + ["info depth 2 seldepth 4 multipv 1 score cp 12", "bestmove b1c3", "bestmove e2e4"]
+        with self.assertRaises(wa.CheckError):
+            self.run_with_lines(lines)
+
+    def test_second_malformed_bestmove_is_rejected(self):
+        # Regression (CodeRabbit on PR #4): a malformed extra reply used to be dropped by the regex filter.
+        lines = self.base + ["info depth 2 seldepth 4 multipv 1 score cp 12", "bestmove b1c3", "bestmove garbage"]
+        with self.assertRaises(wa.CheckError):
+            self.run_with_lines(lines)
+
+    def test_malformed_single_bestmove_is_rejected(self):
+        lines = self.base + ["info depth 2 seldepth 4 multipv 1 score cp 12", "bestmove zz9"]
         with self.assertRaises(wa.CheckError):
             self.run_with_lines(lines)
 

@@ -1,12 +1,15 @@
 # Windows GUI test guide — FlawLessChess v0.1.0 (pre-V1 release candidate)
 
 Status of this guide: **prepared, not yet executed.** No GUI test has been run by the project.
+This release ships the UCI engine only; no GUI is part of the release (see the release notes).
 Use it to test the Windows x64 engine in a UCI chess GUI and report results.
 
 ## 1. Get the exact binary
 
-1. Open the GitHub Actions run for the release-candidate commit (the PR #3 head). The run is listed
-   in `docs/audit/2026-11-19-v0.1.0-release-candidate.md`.
+1. Open the GitHub Actions run for the release commit: the head commit of the release pull request
+   (PR #4, branch `arena/f668bde4-flawlesschess`, unless a later release PR replaces it). Use only the
+   artifact from that run. Its name contains the commit SHA; a binary from any other commit is not the
+   release binary. The earlier candidate `c64b743` (PR #3) lacks the audit fixes and must not be used.
 2. Download the artifact named `flawless-windows-x64-<commit-sha>`. It contains:
    - `flawless.exe` — the engine (UCI, x86-64 Windows).
    - `SHA256SUMS.txt` — the expected SHA-256 of `flawless.exe`.

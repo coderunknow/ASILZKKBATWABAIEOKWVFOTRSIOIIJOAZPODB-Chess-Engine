@@ -5,14 +5,16 @@
 //! hung engine fails the test instead of hanging the suite.
 
 use std::io::Write;
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 struct Engine {
     child: Child,
-    stdin: Option<ChildStdin>,
+    /// Input goes through a writer thread, so a stalled engine cannot block the test thread
+    /// before its reply deadline starts (a full pipe would otherwise block `write_all` forever).
+    writer: Option<Sender<Vec<u8>>>,
     lines: Receiver<String>,
 }
 
@@ -26,7 +28,17 @@ impl Engine {
             .spawn()
             .expect("spawn flawless");
         let stdout = child.stdout.take().expect("stdout piped");
-        let stdin = child.stdin.take();
+        let mut stdin = child.stdin.take().expect("stdin piped");
+        let (wtx, wrx) = channel::<Vec<u8>>();
+        thread::spawn(move || {
+            for buf in wrx {
+                // A write error means the engine is gone; the reader side reports that.
+                if stdin.write_all(&buf).is_err() || stdin.flush().is_err() {
+                    break;
+                }
+            }
+            // Dropping `stdin` here closes the pipe (EOF for the engine).
+        });
         let (tx, rx) = channel();
         thread::spawn(move || {
             use std::io::BufRead;
@@ -43,15 +55,16 @@ impl Engine {
         });
         Engine {
             child,
-            stdin,
+            writer: Some(wtx),
             lines: rx,
         }
     }
 
     fn send_raw(&mut self, bytes: &[u8]) {
-        let stdin = self.stdin.as_mut().expect("stdin open");
-        stdin.write_all(bytes).expect("write to engine");
-        stdin.flush().expect("flush engine stdin");
+        if let Some(tx) = self.writer.as_ref() {
+            // Ignored on failure: if the engine died, reading its output reports the failure.
+            let _ = tx.send(bytes.to_vec());
+        }
     }
 
     fn send(&mut self, line: &str) {
@@ -96,7 +109,7 @@ impl Engine {
     /// Ask for `quit` and require the process to exit on its own within `timeout`.
     fn quit_and_expect_exit(mut self, timeout: Duration) {
         self.send("quit");
-        self.stdin = None;
+        self.writer = None; // closes the channel; the writer thread drains and exits
         let start = Instant::now();
         loop {
             match self.child.try_wait() {

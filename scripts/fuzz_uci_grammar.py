@@ -42,6 +42,15 @@ def rand_fen():
 
 
 def rand_line():
+    # Retry until the line does not contain the token `isready`: every readyok must then come from
+    # the single sentinel `isready` appended to each session.
+    while True:
+        line = _rand_line()
+        if "isready" not in line:
+            return line
+
+
+def _rand_line():
     c = rnd.random()
     if c < 0.10:
         return "position startpos" + (" moves " + " ".join(rnd.choice(MOVES_POOL) for _ in range(rnd.randint(0, 6))) if rnd.random() < 0.5 else "")
@@ -68,7 +77,7 @@ def rand_line():
         val = rnd.choice(["1", "16", "1024", "1025", "4096", "0", "-3", "abc", "", "300", "99999999999999999999"])
         return f"setoption name {name} value {val}" if rnd.random() < 0.9 else f"setoption {name} {val}"
     if c < 0.70:
-        return rnd.choice(["ucinewgame", "debug on", "debug off", "register later", "isready", "uci", "d", "eval"])
+        return rnd.choice(["ucinewgame", "debug on", "debug off", "register later", "uci", "d", "eval"])
     if c < 0.80:
         return "perft " + str(rnd.randint(0, 2))
     # random garbage, including control characters and long tokens
@@ -89,12 +98,14 @@ for s in range(sessions):
     if p.returncode != 0:
         failures.append((f"EXIT {p.returncode}", s, lines, p.stderr.decode("utf-8", "replace")[:300]))
         continue
-    if "uciok" not in out or "readyok" not in out:
-        failures.append(("NO-HANDSHAKE", s, lines))
+    if "uciok" not in out:
+        failures.append(("NO-UCIOK", s, lines))
         continue
-    # readyok must come after uciok (the final isready answer is the last readyok)
-    if out[-1] != "" and not out or (out and out[-1] not in ("readyok", "")):
-        pass
+    # Exactly one readyok: it answers the final `isready`, sent after every generated line. No
+    # generated line contains `isready`, so an earlier reply cannot be mistaken for it.
+    if out.count("readyok") != 1:
+        failures.append((f"READYOK x{out.count('readyok')} (expected 1)", s, lines))
+        continue
 print(f"seed={seed} sessions={sessions} failures={len(failures)}")
 for f in failures[:5]:
     print("FAIL", f)
