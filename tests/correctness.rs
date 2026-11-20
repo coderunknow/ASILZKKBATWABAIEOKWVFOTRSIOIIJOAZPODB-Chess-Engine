@@ -471,3 +471,116 @@ fn clock_limits_never_panics_at_zero_time() {
     let (soft, hard) = clock_limits(WHITE, 60_000, 60_000, 1_000, 1_000, None);
     assert!(soft <= hard && hard <= 60_000 - 30 + 1);
 }
+
+// ---------- Perft reference matrix (Chess Programming Wiki "Perft Results") ----------
+// Node counts are the published CPW values. Release-mode gates (perft is slow in debug builds).
+
+fn perft_of(fen: Option<&str>, depth: u32) -> u64 {
+    let mut pos = match fen {
+        Some(f) => Position::from_fen(f).expect("reference FEN"),
+        None => Position::startpos(),
+    };
+    movegen::perft(&mut pos, depth)
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "perft gate: run with --release")]
+fn perft_startpos_reference() {
+    assert_eq!(perft_of(None, 1), 20);
+    assert_eq!(perft_of(None, 2), 400);
+    assert_eq!(perft_of(None, 3), 8_902);
+    assert_eq!(perft_of(None, 4), 197_281);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "perft gate: run with --release")]
+fn perft_kiwipete_reference() {
+    let f = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    assert_eq!(perft_of(Some(f), 1), 48);
+    assert_eq!(perft_of(Some(f), 2), 2_039);
+    assert_eq!(perft_of(Some(f), 3), 97_862);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "perft gate: run with --release")]
+fn perft_cpw_position_3_reference() {
+    // Pawn/en-passant/discovered-check heavy endgame.
+    let f = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
+    assert_eq!(perft_of(Some(f), 1), 14);
+    assert_eq!(perft_of(Some(f), 2), 191);
+    assert_eq!(perft_of(Some(f), 3), 2_812);
+    assert_eq!(perft_of(Some(f), 4), 43_238);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "perft gate: run with --release")]
+fn perft_cpw_position_4_reference() {
+    // Promotions, castling through/into check, and pins.
+    let f = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+    assert_eq!(perft_of(Some(f), 1), 6);
+    assert_eq!(perft_of(Some(f), 2), 264);
+    assert_eq!(perft_of(Some(f), 3), 9_467);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "perft gate: run with --release")]
+fn perft_cpw_position_5_reference() {
+    let f = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+    assert_eq!(perft_of(Some(f), 1), 44);
+    assert_eq!(perft_of(Some(f), 2), 1_486);
+    assert_eq!(perft_of(Some(f), 3), 62_379);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "perft gate: run with --release")]
+fn perft_cpw_position_6_reference() {
+    let f = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
+    assert_eq!(perft_of(Some(f), 1), 46);
+    assert_eq!(perft_of(Some(f), 2), 2_079);
+    assert_eq!(perft_of(Some(f), 3), 89_890);
+}
+
+// ---------- Material limits (AUDIT-FEN-01) ----------
+
+#[test]
+fn fen_rejects_material_that_no_game_can_reach() {
+    // 9 queens + 2 rooks + 2 bishops + 2 knights + king + 0 pawns: 17 pieces with the king.
+    let too_many = "KQQQQQBk/Q5RB/Q6Q/Q6Q/Q6Q/Q6Q/Q1QQ3Q/QR3QQQ w - - 0 1";
+    let err = Position::from_fen(too_many)
+        .err()
+        .expect("17 pieces accepted");
+    assert!(err.contains("impossible material"), "{err}");
+    // 9 white pawns.
+    let err = Position::from_fen("4k3/PPPPPPPP/P7/8/8/8/8/4K3 w - - 0 1")
+        .err()
+        .expect("9 pawns");
+    assert!(err.contains("impossible material"), "{err}");
+    // 9 queens with one pawn: eight promotions are needed but only seven pawns are missing.
+    let err = Position::from_fen("4k3/8/8/QQQQQQQQ/Q7/8/P7/K7 w - - 0 1")
+        .err()
+        .expect("nine queens with one pawn accepted");
+    assert!(err.contains("impossible material"), "{err}");
+}
+
+#[test]
+fn fen_accepts_promoted_piece_counts_that_are_reachable() {
+    // Three extra queens with seven missing pawns: reachable.
+    assert!(Position::from_fen("4k3/8/8/8/8/8/P7/QQQQ1K2 w - - 0 1").is_ok());
+    // Nine queens and no pawns: all eight pawns promoted.
+    let nine = "k7/8/8/8/8/8/QQQQQQQQ/K6Q b - - 0 1";
+    let pos = Position::from_fen(nine).expect("nine queens reachable by promotion");
+    assert_eq!(pos.pieces[WHITE * 6 + QUEEN].count_ones(), 9);
+    assert_eq!(pos.pieces[WHITE * 6 + PAWN], 0);
+}
+
+#[test]
+fn move_list_capacity_covers_maximum_mobility_of_accepted_positions() {
+    // A high-mobility position accepted by the material rules: 211 pseudo-legal moves for White.
+    let fen = "rR5Q/k1N1Q3/b1Q3Q1/3Q4/5Q2/R6Q/4Q3/BQ1NB1K1 w - - 0 1";
+    let pos = Position::from_fen(fen).expect("accepted high-mobility position");
+    let n = movegen::generate_pseudo_legal(&pos).len;
+    assert!(n > 200, "test position lost its mobility: {n}");
+    assert!(n < MOVE_LIST_CAPACITY, "{n} pseudo-legal moves");
+    let mut p = pos.clone();
+    assert!(movegen::generate_legal(&mut p).len <= n);
+}

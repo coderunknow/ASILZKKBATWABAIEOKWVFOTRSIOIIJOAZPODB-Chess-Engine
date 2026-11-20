@@ -11,6 +11,21 @@ use crate::attack;
 use crate::types::*;
 use std::sync::LazyLock;
 
+/// Necessary condition for a side's material to occur in a real game: at most 16 pieces including
+/// the king, at most 8 pawns, and every piece beyond the starting set (queens above one, rooks,
+/// bishops and knights above two) must come from a promoted pawn, so the total excess is at most the
+/// number of missing pawns.
+fn material_is_reachable(pos: &Position, color: usize) -> bool {
+    let count = |piece: usize| popcount(pos.pieces[color * 6 + piece]) as i32;
+    let pawns = count(PAWN);
+    let total: i32 = (0..6).map(count).sum();
+    let excess = (count(QUEEN) - 1).max(0)
+        + (count(ROOK) - 2).max(0)
+        + (count(BISHOP) - 2).max(0)
+        + (count(KNIGHT) - 2).max(0);
+    total <= 16 && pawns <= 8 && excess <= 8 - pawns
+}
+
 // ---------------- Zobrist ----------------
 
 pub struct Zobrist {
@@ -328,6 +343,16 @@ impl Position {
             != 0
         {
             return Err("fen: kings adjacent".to_string());
+        }
+        // Material must be reachable in a real game. Move generation and the fixed-size move list
+        // rely on these limits (see `types::MOVE_LIST_CAPACITY`); arbitrary piece counts are rejected.
+        for color in [WHITE, BLACK] {
+            if !material_is_reachable(&pos, color) {
+                return Err(format!(
+                    "fen: impossible material for {} (at most 16 pieces, 8 pawns, and no more promoted pieces than missing pawns)",
+                    if color == WHITE { "white" } else { "black" }
+                ));
+            }
         }
         // Illegal position: the side to move may never be giving check to the opponent's king
         // (that would mean the opponent failed to respond to check). Reject — move generation

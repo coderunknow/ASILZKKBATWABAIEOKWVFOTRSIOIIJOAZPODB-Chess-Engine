@@ -25,6 +25,9 @@ use std::time::Instant;
 
 const WHITE: usize = crate::types::WHITE;
 const ENGINE_NAME: &str = "Flawless";
+/// Largest Hash the engine accepts. `TranspositionTable` caps its size at 2^27 eight-byte entries
+/// (1 GiB), so larger requests would silently allocate 1 GiB; they are rejected instead.
+pub const MAX_HASH_MB: usize = 1024;
 
 impl Default for UciEngine {
     fn default() -> Self {
@@ -43,6 +46,70 @@ pub struct UciEngine {
     worker: Option<WorkerHandle>,
     last_clocks: Option<(u64, u64, u64, u64, Option<u64>)>, // wtime btime winc binc movestogo
     stderr_log: bool,
+}
+
+/// Longest accepted input line. Real GUIs send far shorter lines (a 500-move `position` command is
+/// about 3 KB); longer lines are discarded without unbounded buffering.
+const MAX_INPUT_LINE_BYTES: usize = 64 * 1024;
+
+enum LineRead {
+    Line,
+    TooLong,
+    Eof,
+}
+
+/// Read one `\n`-terminated line as raw bytes, keeping at most `max` bytes. A longer line is
+/// consumed completely and reported as `TooLong`. A final line without a newline is returned as a
+/// line; end of input with nothing buffered is `Eof`.
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    max: usize,
+) -> std::io::Result<LineRead> {
+    buf.clear();
+    let mut too_long = false;
+    let mut saw_bytes = false;
+    loop {
+        let (finished, used) = {
+            let avail = reader.fill_buf()?;
+            if avail.is_empty() {
+                return Ok(match (saw_bytes, too_long) {
+                    (false, _) => LineRead::Eof,
+                    (true, true) => LineRead::TooLong,
+                    (true, false) => LineRead::Line,
+                });
+            }
+            saw_bytes = true;
+            let (chunk, newline) = match avail.iter().position(|&b| b == b'\n') {
+                Some(i) => (&avail[..i], true),
+                None => (avail, false),
+            };
+            if !too_long {
+                if buf.len() + chunk.len() > max {
+                    too_long = true;
+                    buf.clear();
+                } else {
+                    buf.extend_from_slice(chunk);
+                }
+            }
+            (
+                newline,
+                if newline {
+                    chunk.len() + 1
+                } else {
+                    chunk.len()
+                },
+            )
+        };
+        reader.consume(used);
+        if finished {
+            return Ok(if too_long {
+                LineRead::TooLong
+            } else {
+                LineRead::Line
+            });
+        }
+    }
 }
 
 fn print_bestmove(result: &SearchResult) {
@@ -88,14 +155,32 @@ impl UciEngine {
 
     pub fn run(&mut self) {
         let stdin = std::io::stdin();
-        let mut lines = stdin.lock().lines();
-        while let Some(Ok(line)) = lines.next() {
-            let line = line.trim().to_string();
-            if line.is_empty() {
-                continue;
-            }
-            if !self.handle_line(&line) {
-                break;
+        let mut reader = stdin.lock();
+        let mut buf: Vec<u8> = Vec::new();
+        loop {
+            match read_bounded_line(&mut reader, &mut buf, MAX_INPUT_LINE_BYTES) {
+                Ok(LineRead::Eof) | Err(_) => break,
+                Ok(LineRead::TooLong) => {
+                    // Oversized input is dropped as a whole line; the session stays in sync.
+                    eprintln!(
+                        "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
+                    );
+                    println!(
+                        "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
+                    );
+                    let _ = std::io::stdout().flush();
+                }
+                Ok(LineRead::Line) => {
+                    // Invalid UTF-8 is replaced rather than treated as end of input.
+                    let text = String::from_utf8_lossy(&buf);
+                    let line = text.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if !self.handle_line(line) {
+                        break;
+                    }
+                }
             }
         }
         self.stop_and_join();
@@ -111,7 +196,7 @@ impl UciEngine {
             "uci" => {
                 println!("id name {ENGINE_NAME}");
                 println!("id author coderunknow (Apache-2.0)");
-                println!("option name Hash type spin default 64 min 1 max 4096");
+                println!("option name Hash type spin default 64 min 1 max 1024");
                 println!("option name Threads type spin default 1 min 1 max 1");
                 println!("option name MultiPV type spin default 1 min 1 max 256");
                 println!("uciok");
@@ -288,21 +373,17 @@ impl UciEngine {
         // Remember clock fields only when the GUI sent a clock. `ponderhit` recalculates the
         // budget from these; a movetime-only or bare `go ponder` must not recalculate from zeros
         // (that gave a ~20 ms budget and an immediate bestmove).
-        self.last_clocks = if wtime.is_some() || btime.is_some() {
-            Some((
-                wtime.unwrap_or(0),
-                btime.unwrap_or(0),
-                winc,
-                binc,
-                movestogo,
-            ))
-        } else {
-            None
-        };
+        // Only the side to move's clock limits the search. A GUI that sends a single clock, or that
+        // omits the opponent's clock, must still get a bounded search; the missing opponent clock is
+        // never read, so it takes the side-to-move value. Without the side-to-move clock the search
+        // is unlimited (until stop/ponderhit), as for a bare `go`.
+        let own_clock = if self.pos.side == WHITE { wtime } else { btime };
+        let clock_pair = own_clock.map(|own| (wtime.unwrap_or(own), btime.unwrap_or(own)));
+        self.last_clocks = clock_pair.map(|(wt, bt)| (wt, bt, winc, binc, movestogo));
 
         let (soft_ms, hard_ms) = if let Some(mt) = movetime {
             (mt, mt)
-        } else if let (Some(wt), Some(bt)) = (wtime, btime) {
+        } else if let Some((wt, bt)) = clock_pair {
             clock_limits(self.pos.side, wt, bt, winc, binc, movestogo)
         } else {
             (u64::MAX, u64::MAX)
@@ -318,8 +399,7 @@ impl UciEngine {
             fixed_time: movetime.is_some(),
             infinite: infinite
                 || ponder
-                || (wtime.is_none()
-                    && btime.is_none()
+                || (own_clock.is_none()
                     && movetime.is_none()
                     && depth.is_none()
                     && nodes.is_none()),
@@ -358,7 +438,9 @@ impl UciEngine {
         let hold_for_thread = hold.clone();
         let printed_for_thread = printed.clone();
         let flush_for_thread = flush.clone();
-        let handle = thread::spawn(move || {
+        let handle = thread::Builder::new()
+            .stack_size(SEARCH_STACK_BYTES)
+            .spawn(move || {
             let mut tt = tt;
             let searched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut searcher =
@@ -416,7 +498,8 @@ impl UciEngine {
                     // TT is lost; the main thread recreates it on join failure.
                 }
             }
-        });
+        })
+            .expect("spawn search thread");
 
         self.worker = Some(WorkerHandle {
             join: handle,
@@ -508,18 +591,20 @@ impl UciEngine {
             "hash" => match value
                 .parse::<usize>()
                 .ok()
-                .filter(|&v| (1..=4096).contains(&v))
+                .filter(|&v| (1..=MAX_HASH_MB).contains(&v))
             {
                 Some(mb) => {
                     self.stop_and_join();
                     self.hash_mb = mb;
                     self.tt = Some(TranspositionTable::new(mb));
                 }
-                None => eprintln!("info string option Hash expects 1..4096 MiB, got {value:?}"),
+                None => {
+                    println!("info string option Hash expects 1..{MAX_HASH_MB} MiB, got {value:?}")
+                }
             },
             "threads" => {
                 if value != "1" {
-                    eprintln!("info string option Threads: this build is single-threaded; value {value:?} ignored (1 thread used)");
+                    println!("info string option Threads: this build is single-threaded; value {value:?} ignored (1 thread used)");
                 }
             }
             "multipv" => match value
@@ -528,7 +613,7 @@ impl UciEngine {
                 .filter(|&v| (1..=256).contains(&v))
             {
                 Some(n) => self.multi_pv = n,
-                None => eprintln!("info string option MultiPV expects 1..256, got {value:?}"),
+                None => println!("info string option MultiPV expects 1..256, got {value:?}"),
             },
             other => {
                 if self.stderr_log {
@@ -575,6 +660,9 @@ impl UciEngine {
     }
 }
 
+/// Stack for the search worker: recursion reaches MAX_PLY plies, and each ply holds move lists.
+const SEARCH_STACK_BYTES: usize = 16 * 1024 * 1024;
+
 pub fn clock_limits(
     side: usize,
     wtime: u64,
@@ -605,7 +693,11 @@ pub fn clock_limits(
     // engine never plans past the remaining clock.
     let reserve = (t / 16).clamp(300, 8_000);
     let usable = t.saturating_sub(reserve);
-    let soft = (usable / mtg + inc / 2).max(20).min(t);
+    let soft = usable
+        .saturating_div(mtg)
+        .saturating_add(inc / 2)
+        .max(20)
+        .min(t);
     let cap = t.saturating_sub(reserve / 2).max(soft);
     let hard = soft
         .saturating_mul(4)
@@ -671,6 +763,59 @@ mod tests {
         assert_eq!((sw, hw), (67, 268));
         // t=250: reserve floor 300 > t -> usable 0 -> 20 ms floor moves.
         assert_eq!((sb, hb), (20, 20));
+    }
+
+    #[test]
+    fn clock_limits_saturate_instead_of_wrapping() {
+        // AUDIT-SEARCH-02: `usable / movestogo + increment / 2` overflowed u64 with a huge clock.
+        let (soft, hard) = clock_limits(WHITE, u64::MAX, u64::MAX, u64::MAX, u64::MAX, Some(1));
+        assert!(hard >= soft);
+        assert!(soft > 1_000_000_000, "soft budget wrapped to {soft}");
+    }
+
+    #[test]
+    fn bounded_line_reader_splits_lines_and_survives_bad_bytes() {
+        use std::io::Cursor;
+        let mut input = Cursor::new(b"uci\n\xff\xfe x\r\nlast".to_vec());
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_bounded_line(&mut input, &mut buf, 64),
+            Ok(LineRead::Line)
+        ));
+        assert_eq!(buf, b"uci");
+        assert!(matches!(
+            read_bounded_line(&mut input, &mut buf, 64),
+            Ok(LineRead::Line)
+        ));
+        assert_eq!(buf, b"\xff\xfe x\r");
+        assert!(matches!(
+            read_bounded_line(&mut input, &mut buf, 64),
+            Ok(LineRead::Line)
+        ));
+        assert_eq!(buf, b"last", "unterminated final line is still delivered");
+        assert!(matches!(
+            read_bounded_line(&mut input, &mut buf, 64),
+            Ok(LineRead::Eof)
+        ));
+    }
+
+    #[test]
+    fn bounded_line_reader_discards_oversized_line_and_resyncs() {
+        use std::io::Cursor;
+        let mut data = vec![b'a'; 200];
+        data.extend_from_slice(b"\nok\n");
+        let mut input = Cursor::new(data);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_bounded_line(&mut input, &mut buf, 50),
+            Ok(LineRead::TooLong)
+        ));
+        assert!(buf.is_empty());
+        assert!(matches!(
+            read_bounded_line(&mut input, &mut buf, 50),
+            Ok(LineRead::Line)
+        ));
+        assert_eq!(buf, b"ok", "the line after an oversized one is read intact");
     }
 
     #[test]
