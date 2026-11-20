@@ -464,10 +464,11 @@ fn closed_stdout_ends_the_process_quietly() {
     e.read_until("uciok", Duration::from_secs(10));
     // Dropping the line receiver ends the reader thread on its next line. That closes the
     // engine's stdout read end, so the engine's next writes hit a broken pipe.
+    //
+    // The reader may drain several `readyok` lines in one read, close stdout, and leave the engine
+    // with no further output to write. So keep asking for output until the engine exits: the
+    // first write after the close fails with a broken pipe.
     e.lines = channel().1;
-    for _ in 0..3 {
-        e.send("isready");
-    }
     let deadline = Instant::now() + Duration::from_secs(10);
     let status = loop {
         if let Some(st) = e.child.try_wait().expect("try_wait") {
@@ -477,6 +478,7 @@ fn closed_stdout_ends_the_process_quietly() {
             Instant::now() < deadline,
             "engine did not exit after its stdout was closed"
         );
+        e.send("isready");
         thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(status.code(), Some(0), "exit status after closed stdout");
