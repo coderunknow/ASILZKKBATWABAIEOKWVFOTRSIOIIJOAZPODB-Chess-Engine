@@ -143,3 +143,18 @@ RATING-100 remains BLOCKED and V1 remains NOT complete.
 
 Run the artifact's `flawless.exe` under CrispChess Extended to confirm the engine is added without the
 exit-2 error. Not done: no GUI is available in this environment.
+
+## Review round 2 (CodeRabbit on PR #3, head `df0097e`)
+
+CodeRabbit was triggered manually (comment on PR #3). Its review found four items; each was checked against the code:
+
+| Finding | Verdict | Action |
+|---|---|---|
+| bestmove regex rejects `bestmove X ponder Y` | valid | regex accepts the optional ponder suffix; unit-tested |
+| bench timeout blocks staging | valid | bench is informational; a timeout records `unavailable (…)` and staging continues; unit-tested |
+| `quit` sent with `go depth 2` can stop the search at depth 0 | valid, confirmed (see FAILURE_LEDGER entry) | smoke test is interactive: `quit` only after `bestmove`, with bounded waits |
+| checkout keeps credentials during PR-code build | valid hardening | `persist-credentials: false` on the windows artifact checkout |
+
+Also fixed: a missing `--rustc-version-file` produced a traceback instead of a clean failure.
+
+Known gap, not changed: the pre-existing ci.yml step "UCI bestmove smoke test (search depth 2)" uses a pipe with `quit` in the same input and therefore can pass at depth 0 (see FAILURE_LEDGER). The Rust lifecycle test covers the synchronised path.

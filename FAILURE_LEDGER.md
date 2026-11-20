@@ -433,3 +433,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **Result:** fixed in the session branch. Regression tests (no-argument lifecycle and handshake parity) fail on the old `src/main.rs` and pass on the fix. Exact-head CI and the Windows artifact are recorded in the audit report.
 - **Learned:** a UCI engine must treat "no arguments" as UCI mode. Tests that only exercise the explicit subcommand cannot cover GUI launch behaviour.
 - **Next experiment:** run the Windows artifact `flawless.exe` under a real UCI GUI launcher (CrispChess Extended) to confirm the engine is added without the exit-2 error. Not done in this session: no GUI is available here.
+
+## 2026-11-19 — UCI smoke could accept a depth-0 bestmove when `quit` follows `go` in the same input
+
+- **Attempted:** pipe `uci / isready / position startpos / go depth 2 / quit` into the release binary, as the CI smoke steps and the first version of the artifact checker did.
+- **Observed:** the pipe run prints `bestmove a2a3` and no `info` lines. The same position in an interactive session (wait for each reply) prints `info depth 1` and `info depth 2`, then `bestmove b1c3 ponder b8c6`. Found during CodeRabbit review of PR #3 at `df0097e` (finding: "Wait for bestmove before sending quit").
+- **Root cause (verified from source):** `src/uci.rs` `quit` calls `stop_and_join`, which sets the stop flag. Input already buffered when the search starts therefore stops it at depth 0, and the fallback root move is printed. The pipeline does not wait for a search reply.
+- **Impact:** the existing CI step "UCI bestmove smoke test (search depth 2)" checks only the bestmove shape and legality, so it passes on a depth-0 result. It proves less than its name says. The Rust lifecycle test in `tests/uci_smoke.rs` is not affected: it reads `bestmove` before sending `quit`.
+- **Conditions:** Linux, Rust 1.99.0, release build, commit `df0097e`. Engine behaviour is unchanged by this session; the pre-existing CI step was not changed.
+- **Fix in this session:** `scripts/windows_artifact.py` now drives an interactive session and sends `quit` only after `bestmove` is read, with bounded waits. Its `bestmove` parser accepts the `ponder` suffix.
+- **Open:** the existing ci.yml pipe-based smoke step should be made interactive or removed in favour of the Rust test. Not changed here; flagged for a decision.
+- **Learned:** a protocol smoke test must synchronise on replies. A bestmove that is merely legal does not prove a search ran.

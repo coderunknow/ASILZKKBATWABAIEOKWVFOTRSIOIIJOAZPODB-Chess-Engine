@@ -58,7 +58,7 @@ jobs:
             exit $status
           fi
           "$PY" -c "import chess; print('::notice::chess', chess.__version__)"
-          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py; do
+          for suite in scripts/test_match.py scripts/test_rating_estimator.py scripts/test_reduced_sample.py scripts/test_make_batch_dispatch.py scripts/test_power_analysis.py scripts/test_merge_batch_runs.py scripts/test_windows_artifact.py; do
             if ! "$PY" "$suite" > suite-out.txt 2>&1; then
               echo "::error::$suite FAILED"
               # Surface the REAL diagnostic through annotations (logs are unreadable
@@ -162,6 +162,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Install Rust (pinned, x86_64-pc-windows-msvc)
         uses: dtolnay/rust-toolchain@master

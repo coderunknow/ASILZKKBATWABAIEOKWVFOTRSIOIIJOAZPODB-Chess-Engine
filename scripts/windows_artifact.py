@@ -22,18 +22,23 @@ import argparse
 import datetime
 import hashlib
 import os
+import queue
 import re
 import shutil
 import struct
 import subprocess
 import sys
+import threading
 
 EXE_NAME = "flawless.exe"
 EXPECTED_MACHINE = 0x8664  # IMAGE_FILE_MACHINE_AMD64
 EXPECTED_TARGET = "x86_64-pc-windows-msvc"
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 SMOKE_TIMEOUT = 120  # seconds, per child process
-BESTMOVE_RE = re.compile(r"^bestmove ([a-h][1-8][a-h][1-8][qrbn]?)$")
+# Group 1 is the selected move. An optional " ponder <move>" suffix is valid UCI.
+BESTMOVE_RE = re.compile(
+    r"^bestmove ([a-h][1-8][a-h][1-8][qrbn]?)(?: ponder [a-h][1-8][a-h][1-8][qrbn]?)?$"
+)
 
 
 class CheckError(Exception):
@@ -72,7 +77,11 @@ def pe_machine(path):
 
 
 def run_engine(exe, args, stdin_text):
-    """Run the engine to completion with a bounded wait; return (code, stdout, stderr)."""
+    """Run the engine to completion with a bounded wait; return (code, stdout, stderr).
+
+    Only for commands that exit by themselves (CLI subcommands). UCI sessions use
+    Session below, because `quit` stops an in-flight search.
+    """
     try:
         proc = subprocess.run(
             [exe] + args,
@@ -92,9 +101,90 @@ def run_engine(exe, args, stdin_text):
     )
 
 
-def check_uci_lines_only(label, stdout):
+class Session:
+    """Interactive UCI session: write a command, then wait for its reply.
+
+    A reader thread feeds stdout lines into a queue so every wait is bounded.
+    The caller must send `quit` only after the search reply has been read,
+    because `quit` stops an in-flight search.
+    """
+
+    def __init__(self, exe, args):
+        try:
+            self.proc = subprocess.Popen(
+                [exe] + args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as e:
+            fail(f"could not execute {exe}: {e}")
+        self.lines = []
+        self.q = queue.Queue()
+        self.stderr_chunks = []
+        threading.Thread(target=self._read_stdout, daemon=True).start()
+        threading.Thread(target=self._read_stderr, daemon=True).start()
+
+    def _read_stdout(self):
+        for raw in iter(self.proc.stdout.readline, b""):
+            self.q.put(raw.decode("utf-8", "replace").rstrip("\r\n"))
+        self.q.put(None)  # EOF marker
+
+    def _read_stderr(self):
+        self.stderr_chunks.append(self.proc.stderr.read())
+
+    def send(self, cmd):
+        try:
+            self.proc.stdin.write((cmd + "\n").encode("ascii"))
+            self.proc.stdin.flush()
+        except OSError as e:
+            self.kill()
+            fail(f"could not send {cmd!r} to engine: {e}")
+
+    def read_until(self, pred, what):
+        """Collect stdout lines until pred(line) is true; return all lines read."""
+        import time
+
+        deadline = time.monotonic() + SMOKE_TIMEOUT
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.kill()
+                fail(f"timed out after {SMOKE_TIMEOUT}s waiting for {what}; stdout so far: {self.lines[-5:]}")
+            try:
+                line = self.q.get(timeout=min(remaining, 0.25))
+            except queue.Empty:
+                continue
+            if line is None:
+                fail(f"engine closed stdout while waiting for {what}; stdout: {self.lines[-5:]}")
+            self.lines.append(line)
+            if pred(line):
+                return self.lines
+
+    def finish(self):
+        """Close stdin (EOF) and wait for a clean exit; return the exit code."""
+        try:
+            self.proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            return self.proc.wait(timeout=SMOKE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            self.kill()
+            fail(f"engine did not exit within {SMOKE_TIMEOUT}s after quit/EOF")
+
+    def kill(self):
+        if self.proc.poll() is None:
+            self.proc.kill()
+        self.proc.wait()
+
+    def stderr_text(self):
+        return b"".join(self.stderr_chunks).decode("utf-8", "replace").replace("\r\n", "\n")
+
+
+def check_uci_lines_only(label, lines):
     allowed = ("uciok", "readyok", "id ", "option name ", "info ", "bestmove ")
-    for line in stdout.splitlines():
+    for line in lines:
         if line == "":
             continue
         if not line.startswith(allowed):
@@ -103,33 +193,49 @@ def check_uci_lines_only(label, stdout):
             fail(f"{label}: usage banner leaked to stdout: {line!r}")
 
 
+def uci_session_bestmove(exe, args, label):
+    """Handshake, isready, position startpos, go depth 2, wait for bestmove, then quit.
+
+    Returns (handshake_lines, bestmove_token, exit_code). quit is sent only after the
+    bestmove line has been read, so the search is complete when the engine is stopped.
+    """
+    s = Session(exe, args)
+    try:
+        s.send("uci")
+        hs = s.read_until(lambda l: l == "uciok", f"{label}: uciok")
+        s.send("isready")
+        s.read_until(lambda l: l == "readyok", f"{label}: readyok")
+        s.send("position startpos")
+        s.send("isready")
+        s.read_until(lambda l: l == "readyok", f"{label}: readyok after position")
+        s.send("go depth 2")
+        lines = s.read_until(lambda l: l.startswith("bestmove"), f"{label}: bestmove")
+        s.send("quit")
+        code = s.finish()
+    finally:
+        s.kill()
+    check_uci_lines_only(label, s.lines)
+    bestmoves = [m for m in (BESTMOVE_RE.match(l) for l in lines) if m]
+    if len(bestmoves) != 1:
+        fail(f"{label}: expected exactly one bestmove line, got {len(bestmoves)}")
+    return hs, bestmoves[0].group(1), code
+
+
 def smoke_test(exe):
     """Exercise the exact executable. Returns a dict of evidence values."""
     evidence = {}
 
     # --- 1. zero-argument launch: the GUI shape (Process.start(path, [])) ---
-    code, out, err = run_engine(
-        exe, [], "uci\nisready\nposition startpos\ngo depth 2\nquit\n"
-    )
+    hs, bestmove, code = uci_session_bestmove(exe, [], "no-argument launch")
     if code != 0:
-        fail(f"no-argument UCI session exited with {code}; stderr={err!r}")
-    check_uci_lines_only("no-argument launch", out)
-    lines = out.splitlines()
-    if "uciok" not in lines:
-        fail("no-argument launch: missing uciok")
-    if "id name Flawless" not in lines:
+        fail(f"no-argument session exited with {code}")
+    if "id name Flawless" not in hs:
         fail("no-argument launch: missing `id name Flawless`")
-    if "readyok" not in lines:
-        fail("no-argument launch: missing readyok")
-    bestmoves = [m for m in (BESTMOVE_RE.match(l) for l in lines) if m]
-    if len(bestmoves) != 1:
-        fail(f"no-argument launch: expected exactly one bestmove, got {len(bestmoves)}")
-    bestmove = bestmoves[0].group(1)
 
     # Cross-check the bestmove against the engine's own legal-move generator.
-    code, mv_out, _ = run_engine(exe, ["moves"], START_FEN + "\n")
-    if code != 0 or not mv_out.startswith("ok "):
-        fail(f"`moves` command failed: exit {code}, out={mv_out!r}")
+    code_m, mv_out, _ = run_engine(exe, ["moves"], START_FEN + "\n")
+    if code_m != 0 or not mv_out.startswith("ok "):
+        fail(f"`moves` command failed: exit {code_m}, out={mv_out!r}")
     legal = mv_out.split()[2:]
     if bestmove not in legal:
         fail(f"bestmove {bestmove} is not legal from startpos (legal={legal})")
@@ -137,21 +243,30 @@ def smoke_test(exe):
     evidence["startpos_legal_moves"] = len(legal)
 
     # --- 2. explicit `uci` launch must match the zero-argument handshake ---
-    code2, out2, _ = run_engine(exe, ["uci"], "uci\nisready\nquit\n")
+    hs2, bestmove2, code2 = uci_session_bestmove(exe, ["uci"], "explicit uci launch")
     if code2 != 0:
         fail(f"explicit `uci` session exited with {code2}")
-    hs_noargs = out.split("uciok")[0]
-    hs_explicit = out2.split("uciok")[0]
-    if hs_noargs != hs_explicit:
+    if hs != hs2:
         fail("handshake differs between no-argument and explicit `uci` launch")
+    if bestmove2 not in legal:
+        fail(f"explicit uci bestmove {bestmove2} is not legal from startpos")
     evidence["handshake_identical"] = True
 
-    # --- 3. the process must not exit before the first command (empty stdin) ---
-    code3, out3, err3 = run_engine(exe, [], "")
+    # --- 3. no commands at all: the process must wait, then exit 0 on EOF ---
+    s = Session(exe, [])
+    try:
+        import time
+
+        time.sleep(0.5)
+        if s.proc.poll() is not None:
+            fail(f"no-argument launch exited before receiving any command (code {s.proc.returncode})")
+        if s.lines:
+            fail(f"no-argument launch wrote stdout before any command: {s.lines!r}")
+        code3 = s.finish()
+    finally:
+        s.kill()
     if code3 != 0:
-        fail(f"no-argument launch with immediate EOF exited with {code3}; stderr={err3!r}")
-    if out3.strip():
-        fail(f"no-argument launch with no commands wrote stdout: {out3!r}")
+        fail(f"no-argument launch: EOF exit code {code3}; stderr={s.stderr_text()!r}")
 
     # --- 4. existing CLI behaviour ---
     code4, out4, _ = run_engine(exe, ["perft", "3"], "")
@@ -173,12 +288,18 @@ def smoke_test(exe):
 
 
 def bench_signature(exe):
-    """Informational: the depth-10 bench signature on this Windows build."""
-    code, out, _ = run_engine(exe, ["bench"], "")
+    """Informational only: the depth-10 bench signature of this Windows build.
+
+    A failure or timeout here must not block staging; it is recorded as unavailable.
+    """
+    try:
+        code, out, _ = run_engine(exe, ["bench"], "")
+    except CheckError as e:
+        return f"unavailable ({e})"
     if code != 0:
-        return f"bench-exit-{code}"
+        return f"unavailable (bench exit {code})"
     m = re.search(r"bench signature: ([0-9a-f]{16})", out)
-    return m.group(1) if m else "not-found"
+    return m.group(1) if m else "unavailable (signature not printed)"
 
 
 def main(argv=None):
@@ -202,8 +323,11 @@ def main(argv=None):
             if head_sha != args.commit:
                 fail(f"checkout HEAD {head_sha} != --commit {args.commit}")
 
-        with open(args.rustc_version_file, encoding="utf-8") as f:
-            rustc_v = f.read()
+        try:
+            with open(args.rustc_version_file, encoding="utf-8") as f:
+                rustc_v = f.read()
+        except OSError as e:
+            fail(f"cannot read --rustc-version-file {args.rustc_version_file}: {e}")
         host = re.search(r"^host: (\S+)$", rustc_v, re.M)
         rustc_line = rustc_v.splitlines()[0] if rustc_v.strip() else "unknown"
         if not host or host.group(1) != EXPECTED_TARGET:
