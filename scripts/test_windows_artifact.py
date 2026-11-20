@@ -118,7 +118,7 @@ class DepthEvidence(unittest.TestCase):
                         return self.lines
                 raise wa.CheckError(f"no line for {what}")
 
-            def finish(self):
+            def finish(self, eof=True):
                 return 0
 
             def kill(self):
@@ -192,6 +192,8 @@ for raw in sys.stdin:
         print("info depth 2 score cp 10 pv e2e4", flush=True)
         print("bestmove e2e4", flush=True)
     elif cmd == "quit":
+        if mode == "noquit":
+            continue  # ignores quit: only EOF would end it
         if mode == "trailing":
             print("Thinking about the position", flush=True)
         sys.exit(0)
@@ -227,6 +229,18 @@ class StdoutCapture(unittest.TestCase):
         os.environ["FAKE_MODE"] = "trailing"
         with self.assertRaises(wa.CheckError):
             wa.uci_session_bestmove(sys.executable, [self.script], "trailing")
+
+    def test_engine_ignoring_quit_is_not_passed_by_eof(self):
+        # Regression: finish() used to close stdin before waiting, so EOF let an engine that
+        # ignores `quit` exit "cleanly". Now quit must make it exit by itself.
+        os.environ["FAKE_MODE"] = "noquit"
+        old_timeout = wa.SMOKE_TIMEOUT
+        wa.SMOKE_TIMEOUT = 3  # the engine never exits on its own; keep the test short
+        try:
+            with self.assertRaises(wa.CheckError):
+                wa.uci_session_bestmove(sys.executable, [self.script], "noquit")
+        finally:
+            wa.SMOKE_TIMEOUT = old_timeout
 
     def test_banner_before_any_command_is_captured(self):
         s = self.session("banner")

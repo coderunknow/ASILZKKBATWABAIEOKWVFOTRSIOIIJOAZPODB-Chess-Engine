@@ -20,7 +20,7 @@ OPENINGS = [
 ]
 
 # Termination reasons that make a game a failure (the script exits non-zero if any occur).
-FAILURE_PREFIXES = ("ENGINE_TERMINATED", "ILLEGAL_OR_NULL_MOVE", "FLAG_FALL", "TIMEOUT", "BAD_EXIT", "PLY_CAP")
+FAILURE_PREFIXES = ("ENGINE_TERMINATED", "ENGINE_ERROR", "ILLEGAL_OR_NULL_MOVE", "FLAG_FALL", "TIMEOUT", "BAD_EXIT", "PLY_CAP")
 GRACE_S = 5.0  # client-side slack beyond the clock budget before a search counts as hung
 
 def play_with_deadline(eng, board, limit, deadline_s):
@@ -94,6 +94,10 @@ def play(engine_path, name, fen, outdir, base_ms, inc_ms, max_plies=400):
             log["termination"] = (log["termination"] or "") + f" BAD_EXIT status={code}"
     except chess.engine.EngineTerminatedError as e:
         log["termination"] = f"ENGINE_TERMINATED: {e}"
+    except chess.engine.EngineError as e:
+        # Protocol-level failure (e.g. a malformed or unexpected reply). Recorded as a failure;
+        # the moves completed so far stay in the log.
+        log["termination"] = f"ENGINE_ERROR: {type(e).__name__}: {e}"
     finally:
         try:
             eng.close()
@@ -107,7 +111,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("engine"); ap.add_argument("outdir")
     ap.add_argument("--tc", default="3000+50", help="base_ms+inc_ms")
-    ap.add_argument("--only", default=None)
+    ap.add_argument("--only", default=None, choices=[name for name, _ in OPENINGS],
+                    help="run one opening; an unknown name is an argument error, not an empty run")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
     base, inc = (int(x) for x in a.tc.split("+"))

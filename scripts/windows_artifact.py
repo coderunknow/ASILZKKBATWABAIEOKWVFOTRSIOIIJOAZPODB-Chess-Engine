@@ -161,23 +161,32 @@ class Session:
             if pred(line):
                 return self.lines
 
-    def finish(self):
-        """Close stdin (EOF), wait for a clean exit, and drain all remaining stdout.
+    def finish(self, eof=True):
+        """Wait for a clean exit, then drain all remaining stdout.
+
+        eof=True: close stdin first (the no-command EOF test).
+        eof=False: the caller already sent `quit`; wait WITHOUT closing stdin, so EOF cannot
+        end an engine that ignores `quit`. Such an engine fails here.
 
         Every stdout line written before exit is appended to self.lines, so checks that
         run afterwards see the complete transcript, including output after bestmove.
         """
         import time
 
-        try:
-            self.proc.stdin.close()
-        except OSError:
-            pass
+        if eof:
+            try:
+                self.proc.stdin.close()
+            except OSError:
+                pass
         try:
             code = self.proc.wait(timeout=SMOKE_TIMEOUT)
         except subprocess.TimeoutExpired:
             self.kill()
-            fail(f"engine did not exit within {SMOKE_TIMEOUT}s after quit/EOF")
+            fail(f"engine did not exit within {SMOKE_TIMEOUT}s after quit (it must exit on quit, not on EOF)")
+        try:
+            self.proc.stdin.close()
+        except OSError:
+            pass
         deadline = time.monotonic() + SMOKE_TIMEOUT
         while True:
             remaining = deadline - time.monotonic()
@@ -232,7 +241,7 @@ def uci_session_bestmove(exe, args, label):
         s.send("go depth 2")
         s.read_until(lambda l: l.startswith("bestmove"), f"{label}: bestmove")
         s.send("quit")
-        code = s.finish()  # drains all stdout through EOF
+        code = s.finish(eof=False)  # the engine must exit on quit itself; drains stdout to EOF
     finally:
         s.kill()
     lines = s.lines

@@ -512,3 +512,9 @@ Scope: panic sites in src/, input parsing (go/setoption/position), search root h
 - `clock_limits`: soft/hard clamped to remaining time; zero and tiny clocks handled by the existing unit test.
 - `setoption`: Hash 1..=4096 MiB, MultiPV 1..=256, Threads ignored (single-threaded build). Hash 4096 MiB can exceed memory on small machines; the advertised maximum is kept, and this is recorded as a limitation, not a bug.
 - Not changed: stderr diagnostics for setoption (`info string` goes to stderr; the UCI protocol does not forbid it).
+
+## 2026-11-20 — CodeRabbit review of 9336913 (3 findings): triage
+
+- scripts/selfplay_games.py `--only`: an unknown name silently ran zero games → FIXED (argparse `choices`). Checked: exit 2 with the valid list.
+- scripts/selfplay_games.py: a protocol-level EngineError escaped play() without a log → FIXED (recorded as ENGINE_ERROR, a failure prefix; completed moves kept).
+- scripts/windows_artifact.py finish(): stdin was closed before waiting after `quit`, so EOF could pass an engine that ignores quit → FIXED (quit callers use finish(eof=False); the EOF test keeps eof=True). Fake-engine regression test `test_engine_ignoring_quit_is_not_passed_by_eof` added; the local suite passes 19/19 (about 3 s).
