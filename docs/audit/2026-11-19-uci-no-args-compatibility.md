@@ -168,3 +168,11 @@ Known gap, not changed: the pre-existing ci.yml step "UCI bestmove smoke test (s
   - The artifact smoke test now applies the same depth-2 requirement.
   - The CI step used bare `python`; it now resolves `python3`/`python` like the other steps.
 - Documentation: AGENTS_LOG push-policy claim corrected (the `gh workflow run` dispatch was refused with 403).
+
+## Review round 4 (head a7b7eda, CodeRabbit findings fixed in the harness)
+
+- CI on `a7b7eda` (run `44668848037`): ubuntu-latest, windows-latest, msrv (rust 1.80), windows x64 artifact job, anchor-verify `44668848066` all success. The new depth-2 step (`scripts/uci_bestmove_smoke.py`) passed on both OSes.
+- Artifact `flawless-windows-x64-a7b7eda99ba466ee5ca35f3e273d8347d3230206` (186746 bytes) is listed. Download fails from this sandbox (blob-storage EOF), so its SHA-256, manifest, and PE machine check are NOT VERIFIED here.
+- CodeRabbit on `a7b7eda`: 3 actionable findings (all in `scripts/windows_artifact.py`), all valid and fixed in the harness. Regression tests added (15/15 pass).
+- No Rust code changed in round 4, so the round-3 Rust gate results still apply. Engine behaviour is unchanged.
+

@@ -143,5 +143,70 @@ class DepthEvidence(unittest.TestCase):
             self.run_with_lines(lines)
 
 
+
+
+FAKE_ENGINE = r'''
+import os, sys
+mode = os.environ.get("FAKE_MODE", "")
+if mode == "banner":
+    print("usage: flawless <command>", flush=True)
+for raw in sys.stdin:
+    cmd = raw.strip()
+    if cmd == "uci":
+        print("id name Flawless", flush=True)
+        print("uciok", flush=True)
+    elif cmd == "isready":
+        print("readyok", flush=True)
+    elif cmd.startswith("go"):
+        # Search output differs from the handshake; the handshake snapshot must not change.
+        print("info depth 2 score cp 10 pv e2e4", flush=True)
+        print("bestmove e2e4", flush=True)
+    elif cmd == "quit":
+        if mode == "trailing":
+            print("Thinking about the position", flush=True)
+        sys.exit(0)
+'''
+
+
+class StdoutCapture(unittest.TestCase):
+    def setUp(self):
+        fd, self.script = tempfile.mkstemp(suffix=".py")
+        with os.fdopen(fd, "w") as f:
+            f.write(FAKE_ENGINE)
+        self._old_mode = os.environ.get("FAKE_MODE")
+
+    def tearDown(self):
+        os.unlink(self.script)
+        if self._old_mode is None:
+            os.environ.pop("FAKE_MODE", None)
+        else:
+            os.environ["FAKE_MODE"] = self._old_mode
+
+    def session(self, mode):
+        os.environ["FAKE_MODE"] = mode
+        return wa.Session(sys.executable, [self.script])
+
+    def test_handshake_snapshot_unaffected_by_search_output(self):
+        hs, bestmove, code, lines = wa.uci_session_bestmove(sys.executable, [self.script], "fake")
+        self.assertEqual(hs, ["id name Flawless", "uciok"])
+        self.assertEqual(bestmove, "e2e4")
+        self.assertEqual(code, 0)
+        self.assertTrue(any(l.startswith("info depth 2") for l in lines))
+
+    def test_stdout_after_quit_is_checked(self):
+        os.environ["FAKE_MODE"] = "trailing"
+        with self.assertRaises(wa.CheckError):
+            wa.uci_session_bestmove(sys.executable, [self.script], "trailing")
+
+    def test_banner_before_any_command_is_captured(self):
+        s = self.session("banner")
+        try:
+            code = s.finish()  # EOF straight away; finish must drain the banner
+        finally:
+            s.kill()
+        self.assertEqual(code, 0)
+        self.assertEqual(s.lines, ["usage: flawless <command>"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

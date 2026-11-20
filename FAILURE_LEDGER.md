@@ -450,3 +450,7 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - The CI step "UCI bestmove smoke test (search depth 2)" is replaced by `scripts/uci_bestmove_smoke.py`. It waits for each reply, sends `quit` only after `bestmove`, and requires a completed `info depth 2` line before `bestmove`. A depth-0 fallback is rejected; `scripts/test_windows_artifact.py` covers both paths.
 - The Windows artifact smoke test uses the same session and depth check.
 - Verification of the new step: local run against the release binary passed (`info depth 2 … bestmove b1c3 ponder b8c6`). The CI result is recorded in the audit report.
+
+## 2026-11-19 — CodeRabbit a7b7eda findings: harness false-passes (fixed)
+
+- Three checker bugs could hide defects in the Windows artifact harness: aliased handshake snapshot, unchecked stdout after `quit`, and an unreachable no-command stdout check. None affected the engine, which passed all probes. Fixed in the harness; regression tests added.

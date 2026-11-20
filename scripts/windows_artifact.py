@@ -162,16 +162,35 @@ class Session:
                 return self.lines
 
     def finish(self):
-        """Close stdin (EOF) and wait for a clean exit; return the exit code."""
+        """Close stdin (EOF), wait for a clean exit, and drain all remaining stdout.
+
+        Every stdout line written before exit is appended to self.lines, so checks that
+        run afterwards see the complete transcript, including output after bestmove.
+        """
+        import time
+
         try:
             self.proc.stdin.close()
         except OSError:
             pass
         try:
-            return self.proc.wait(timeout=SMOKE_TIMEOUT)
+            code = self.proc.wait(timeout=SMOKE_TIMEOUT)
         except subprocess.TimeoutExpired:
             self.kill()
             fail(f"engine did not exit within {SMOKE_TIMEOUT}s after quit/EOF")
+        deadline = time.monotonic() + SMOKE_TIMEOUT
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                fail(f"stdout did not reach EOF within {SMOKE_TIMEOUT}s after exit")
+            try:
+                line = self.q.get(timeout=min(remaining, 0.25))
+            except queue.Empty:
+                continue
+            if line is None:
+                break
+            self.lines.append(line)
+        return code
 
     def kill(self):
         if self.proc.poll() is None:
@@ -204,25 +223,26 @@ def uci_session_bestmove(exe, args, label):
     s = Session(exe, args)
     try:
         s.send("uci")
-        hs = s.read_until(lambda l: l == "uciok", f"{label}: uciok")
+        hs = list(s.read_until(lambda l: l == "uciok", f"{label}: uciok"))  # snapshot
         s.send("isready")
         s.read_until(lambda l: l == "readyok", f"{label}: readyok")
         s.send("position startpos")
         s.send("isready")
         s.read_until(lambda l: l == "readyok", f"{label}: readyok after position")
         s.send("go depth 2")
-        lines = s.read_until(lambda l: l.startswith("bestmove"), f"{label}: bestmove")
+        s.read_until(lambda l: l.startswith("bestmove"), f"{label}: bestmove")
         s.send("quit")
-        code = s.finish()
+        code = s.finish()  # drains all stdout through EOF
     finally:
         s.kill()
-    check_uci_lines_only(label, s.lines)
+    lines = s.lines
+    check_uci_lines_only(label, lines)
     bestmoves = [m for m in (BESTMOVE_RE.match(l) for l in lines) if m]
     if len(bestmoves) != 1:
         fail(f"{label}: expected exactly one bestmove line, got {len(bestmoves)}")
-    if not any(l.startswith("info depth 2 ") for l in s.lines):
+    if not any(l.startswith("info depth 2 ") for l in lines):
         fail(f"{label}: no completed `info depth 2` line before bestmove; search did not reach depth 2")
-    return hs, bestmoves[0].group(1), code, s.lines
+    return hs, bestmoves[0].group(1), code, lines
 
 
 def smoke_test(exe):
@@ -264,11 +284,11 @@ def smoke_test(exe):
         time.sleep(0.5)
         if s.proc.poll() is not None:
             fail(f"no-argument launch exited before receiving any command (code {s.proc.returncode})")
-        if s.lines:
-            fail(f"no-argument launch wrote stdout before any command: {s.lines!r}")
-        code3 = s.finish()
+        code3 = s.finish()  # EOF: engine must exit 0; drains any stdout it wrote
     finally:
         s.kill()
+    if s.lines:
+        fail(f"no-argument launch wrote stdout before any command: {s.lines!r}")
     if code3 != 0:
         fail(f"no-argument launch: EOF exit code {code3}; stderr={s.stderr_text()!r}")
 

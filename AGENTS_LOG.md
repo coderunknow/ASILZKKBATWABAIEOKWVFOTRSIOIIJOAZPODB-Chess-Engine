@@ -428,3 +428,11 @@
 ## 2026-11-19 — correction to the push-policy note above
 
 - The entry above says exact-head CI is dispatched with `gh workflow run ci.yml --ref <branch>`. That was attempted and refused with HTTP 403 (`Resource not accessible by integration`). Exact-head CI for this branch ran via draft PR #3 (`pull_request` trigger), with the operator's approval. No workflow file or trigger was changed for this.
+
+## 2026-11-19 — CodeRabbit review on a7b7eda (3 findings, all valid, fixed)
+
+- Handshake aliasing: `hs` was the live transcript list, so the no-args vs `uci` comparison included later search output. Now a snapshot.
+- Post-quit stdout was not checked: `finish()` now drains stdout through EOF before validation.
+- The "no stdout before any command" check was dead code (it read `s.lines` before any drain). It now runs after `finish()`.
+- Regression tests added to `scripts/test_windows_artifact.py` using a fake engine through the real `Session` (15/15 pass).
+- Artifact download for `a7b7eda` still fails with blob-storage EOF; the artifact remains NOT VERIFIED.
