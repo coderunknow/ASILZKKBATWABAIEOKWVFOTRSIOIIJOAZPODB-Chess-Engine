@@ -313,7 +313,9 @@ fn infinite_then_stop_returns_one_legal_bestmove() {
     // readyok is sent after any bestmove the engine still owes, so counting only after it
     // detects a duplicate bestmove.
     e.send("isready");
-    e.until(Duration::from_secs(2), "readyok after stop", |l| l == "readyok");
+    e.until(Duration::from_secs(2), "readyok after stop", |l| {
+        l == "readyok"
+    });
     let bms = e.seen.iter().filter(|l| l.starts_with("bestmove")).count();
     assert_eq!(bms, 1, "expected exactly one bestmove");
     e.quit_and_expect_exit(Duration::from_secs(5));
