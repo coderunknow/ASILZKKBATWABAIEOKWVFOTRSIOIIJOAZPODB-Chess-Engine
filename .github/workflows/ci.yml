@@ -115,12 +115,13 @@ jobs:
           echo "$out" | grep -q '^uciok$' || { echo "missing uciok"; exit 1; }
           echo "$out" | grep -q '^readyok$' || { echo "missing readyok"; exit 1; }
 
-      - name: UCI bestmove smoke test (search depth 2)
+      - name: UCI bestmove smoke test (search depth 2, synchronised)
         shell: bash
+        # Waits for each reply and sends quit only after bestmove; requires a completed
+        # depth-2 info line. The former pipe-based version could pass on a depth-0 move.
         run: |
-          out=$(printf 'uci\nisready\nposition startpos\ngo depth 2\nquit\n' | ./target/release/flawless uci)
-          echo "$out"
-          echo "$out" | grep -Eq '^bestmove [a-h][1-8][a-h][1-8]([qrbn])?' || { echo "no legal bestmove"; exit 1; }
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/uci_bestmove_smoke.py ./target/release/flawless
 
       - name: Perft sanity (depth 3 startpos)
         shell: bash

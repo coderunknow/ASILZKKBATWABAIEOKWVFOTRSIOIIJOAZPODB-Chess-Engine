@@ -158,3 +158,13 @@ CodeRabbit was triggered manually (comment on PR #3). Its review found four item
 Also fixed: a missing `--rustc-version-file` produced a traceback instead of a clean failure.
 
 Known gap, not changed: the pre-existing ci.yml step "UCI bestmove smoke test (search depth 2)" uses a pipe with `quit` in the same input and therefore can pass at depth 0 (see FAILURE_LEDGER). The Rust lifecycle test covers the synchronised path.
+
+## Review round 3 (final head, this section supersedes earlier head references)
+
+- Full-review request sent to CodeRabbit on `8693045` (the incremental re-review request on `8693045` had no review posted after about 25 minutes).
+- Engine probes, no bug found: CRLF input, `go infinite` + `stop`, `go movetime`, `go` without `position`, `setoption` (Threads>1 is reported on stderr and ignored).
+- Bugs found and fixed in the test tooling:
+  - The pipe-based CI bestmove step could pass on a depth-0 fallback move (see FAILURE_LEDGER). It is replaced by `scripts/uci_bestmove_smoke.py`, which requires a completed `info depth 2` line.
+  - The artifact smoke test now applies the same depth-2 requirement.
+  - The CI step used bare `python`; it now resolves `python3`/`python` like the other steps.
+- Documentation: AGENTS_LOG push-policy claim corrected (the `gh workflow run` dispatch was refused with 403).

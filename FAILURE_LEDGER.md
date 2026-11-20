@@ -444,3 +444,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - **Fix in this session:** `scripts/windows_artifact.py` now drives an interactive session and sends `quit` only after `bestmove` is read, with bounded waits. Its `bestmove` parser accepts the `ponder` suffix.
 - **Open:** the existing ci.yml pipe-based smoke step should be made interactive or removed in favour of the Rust test. Not changed here; flagged for a decision.
 - **Learned:** a protocol smoke test must synchronise on replies. A bestmove that is merely legal does not prove a search ran.
+
+## 2026-11-19 — resolution: pipe-based bestmove smoke replaced by a synchronised check
+
+- The CI step "UCI bestmove smoke test (search depth 2)" is replaced by `scripts/uci_bestmove_smoke.py`. It waits for each reply, sends `quit` only after `bestmove`, and requires a completed `info depth 2` line before `bestmove`. A depth-0 fallback is rejected; `scripts/test_windows_artifact.py` covers both paths.
+- The Windows artifact smoke test uses the same session and depth check.
+- Verification of the new step: local run against the release binary passed (`info depth 2 … bestmove b1c3 ponder b8c6`). The CI result is recorded in the audit report.

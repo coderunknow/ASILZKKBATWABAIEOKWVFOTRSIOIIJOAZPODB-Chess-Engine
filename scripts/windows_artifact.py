@@ -196,8 +196,10 @@ def check_uci_lines_only(label, lines):
 def uci_session_bestmove(exe, args, label):
     """Handshake, isready, position startpos, go depth 2, wait for bestmove, then quit.
 
-    Returns (handshake_lines, bestmove_token, exit_code). quit is sent only after the
-    bestmove line has been read, so the search is complete when the engine is stopped.
+    Returns (handshake_lines, bestmove_token, exit_code, all_lines). quit is sent only
+    after the bestmove line has been read, so the search is complete when the engine is
+    stopped. The search must also have reported a completed depth-2 iteration: a
+    depth-0 fallback move (e.g. from a stop that arrived early) is rejected.
     """
     s = Session(exe, args)
     try:
@@ -218,7 +220,9 @@ def uci_session_bestmove(exe, args, label):
     bestmoves = [m for m in (BESTMOVE_RE.match(l) for l in lines) if m]
     if len(bestmoves) != 1:
         fail(f"{label}: expected exactly one bestmove line, got {len(bestmoves)}")
-    return hs, bestmoves[0].group(1), code
+    if not any(l.startswith("info depth 2 ") for l in s.lines):
+        fail(f"{label}: no completed `info depth 2` line before bestmove; search did not reach depth 2")
+    return hs, bestmoves[0].group(1), code, s.lines
 
 
 def smoke_test(exe):
@@ -226,7 +230,7 @@ def smoke_test(exe):
     evidence = {}
 
     # --- 1. zero-argument launch: the GUI shape (Process.start(path, [])) ---
-    hs, bestmove, code = uci_session_bestmove(exe, [], "no-argument launch")
+    hs, bestmove, code, _ = uci_session_bestmove(exe, [], "no-argument launch")
     if code != 0:
         fail(f"no-argument session exited with {code}")
     if "id name Flawless" not in hs:
@@ -243,7 +247,7 @@ def smoke_test(exe):
     evidence["startpos_legal_moves"] = len(legal)
 
     # --- 2. explicit `uci` launch must match the zero-argument handshake ---
-    hs2, bestmove2, code2 = uci_session_bestmove(exe, ["uci"], "explicit uci launch")
+    hs2, bestmove2, code2, _ = uci_session_bestmove(exe, ["uci"], "explicit uci launch")
     if code2 != 0:
         fail(f"explicit `uci` session exited with {code2}")
     if hs != hs2:

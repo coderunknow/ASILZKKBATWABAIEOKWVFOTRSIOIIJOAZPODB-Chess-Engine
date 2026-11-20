@@ -424,3 +424,7 @@
 - **Negative control:** the three new no-argument tests fail against the pre-change `src/main.rs` ("engine exited before receiving any command") and pass after the fix.
 - **Tooling check:** the artifact script rejects a Linux ELF, and on a stubbed-PE local run it passes the smoke tests, writes checksums, and `sha256sum -c` verifies them. The real PE check runs only in CI.
 - **Push policy:** only the session branch is pushed. No tags, releases, merges, force-pushes, or PR creation without authorization. Exact-head CI is dispatched with `gh workflow run ci.yml --ref <branch>`, because the CI push trigger is limited to `main`.
+
+## 2026-11-19 — correction to the push-policy note above
+
+- The entry above says exact-head CI is dispatched with `gh workflow run ci.yml --ref <branch>`. That was attempted and refused with HTTP 403 (`Resource not accessible by integration`). Exact-head CI for this branch ran via draft PR #3 (`pull_request` trigger), with the operator's approval. No workflow file or trigger was changed for this.

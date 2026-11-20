@@ -95,5 +95,53 @@ class BenchIsInformational(unittest.TestCase):
             wa.run_engine = orig
 
 
+class DepthEvidence(unittest.TestCase):
+    """uci_session_bestmove must reject a bestmove with no completed depth-2 info line."""
+
+    def run_with_lines(self, emitted):
+        orig = wa.Session
+
+        class Fake:
+            def __init__(self, exe, args):
+                self.lines = []
+                self.feed = list(emitted)
+                self.stderr_chunks = []
+
+            def send(self, cmd):
+                pass
+
+            def read_until(self, pred, what):
+                while self.feed:
+                    line = self.feed.pop(0)
+                    self.lines.append(line)
+                    if pred(line):
+                        return self.lines
+                raise wa.CheckError(f"no line for {what}")
+
+            def finish(self):
+                return 0
+
+            def kill(self):
+                pass
+
+        wa.Session = Fake
+        try:
+            return wa.uci_session_bestmove("flawless", [], "t")
+        finally:
+            wa.Session = orig
+
+    base = ["id name Flawless", "uciok", "readyok", "readyok"]
+
+    def test_depth2_accepted(self):
+        lines = self.base + ["info depth 1 seldepth 1 multipv 1 score cp 37 nodes 53", "info depth 2 seldepth 4 multipv 1 score cp 12", "bestmove b1c3 ponder b8c6"]
+        _, bm, code, _ = self.run_with_lines(lines)
+        self.assertEqual((bm, code), ("b1c3", 0))
+
+    def test_depth0_fallback_rejected(self):
+        lines = self.base + ["bestmove a2a3"]
+        with self.assertRaises(wa.CheckError):
+            self.run_with_lines(lines)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
