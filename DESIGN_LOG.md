@@ -419,3 +419,8 @@ DRAFT ONLY — no code changes under this entry.
 - **Dependency and search impact:** none. Zero external dependencies; no search, evaluation or move-generation code changed. Bench signature `141943aa23b3fc68` is unchanged.
 - **Identity impact:** the release binary changes, so ENGINE-2 hash pins in the rating documents do not describe this build. No rating evidence is reused.
 - **Verification boundary:** local Linux results and exact-head CI (Linux, Windows, MSRV, Windows x64 artifact) are recorded in `docs/audit/2026-11-19-uci-no-args-compatibility.md`.
+
+## 2026-11-19 — movetime soft-budget behaviour (observed, deliberately unchanged)
+
+- Observation: `go movetime N` returns after roughly 38–100% of N (interactive, startpos/kiwipete/pos3). Cause: iterative deepening stops when the predicted next iteration (3× the last iteration time) would exceed the soft limit (`src/search.rs`).
+- Decision: keep the current behaviour. Changing it alters the timing under which the rating evidence was collected. Any change needs its own evidence and a preregistration note.

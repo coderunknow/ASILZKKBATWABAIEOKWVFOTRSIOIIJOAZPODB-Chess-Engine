@@ -454,3 +454,7 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 ## 2026-11-19 — CodeRabbit a7b7eda findings: harness false-passes (fixed)
 
 - Three checker bugs could hide defects in the Windows artifact harness: aliased handshake snapshot, unchecked stdout after `quit`, and an unreachable no-command stdout check. None affected the engine, which passed all probes. Fixed in the harness; regression tests added.
+
+## 2026-11-19 — repeat of the quit-in-same-input pattern during the release validation
+
+- An early movetime measurement sent `go` and `quit` in one stdin burst, so the engine returned a depth-0 fallback (`bestmove a2a3`) and gave a misleading "6–10% of budget" result. Caught before any conclusion was drawn. All timing claims now use interactive waits. The probe scripts document this.

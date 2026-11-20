@@ -436,3 +436,11 @@
 - The "no stdout before any command" check was dead code (it read `s.lines` before any drain). It now runs after `finish()`.
 - Regression tests added to `scripts/test_windows_artifact.py` using a fake engine through the real `Session` (15/15 pass).
 - Artifact download for `a7b7eda` still fails with blob-storage EOF; the artifact remains NOT VERIFIED.
+
+## 2026-11-19 — full-release validation pass (see docs/audit/2026-11-19-release-validation.md)
+
+- Perft: 22/22 standard positions (d1–d4) and deeper counts match python-chess and CPW; diftest 2,321/0.
+- Full games: 6 engine-vs-engine games with python-chess referee and clocks (benches/games-20261119/); all moves legal on replay; castling and promotions occurred; stalemate and threefold draws detected.
+- UCI probes: 10/10 lifecycle and 37/37 malformed-input cases pass (scripts/uci_protocol_probe.py, scripts/uci_malformed_probe.py).
+- Finding recorded, not changed: `go movetime` returns after 38–100% of budget (search.rs soft-budget rule). Changing it would invalidate rating-evidence timing.
+- No merge, tag, or release performed. Release gates still open: CodeRabbit on final head (rate-limited), artifact verification (download EOF), real GUI test (not possible here), Windows runtime, and the rating/V1 gates.
