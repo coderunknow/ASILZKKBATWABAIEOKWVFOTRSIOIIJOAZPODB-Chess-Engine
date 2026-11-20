@@ -432,3 +432,9 @@ DRAFT ONLY — no code changes under this entry.
 - Clock-based searches (`wtime`/`btime`) keep the prediction rule. `ponderhit` clears `fixed_time` when it recalculates clock limits.
 - Known consequence: a fixed-time search can still stop early at `MAX_DEPTH`/`max_depth` 64, or on a forced single-move root, which is legal UCI behaviour.
 - Evidence: `tests/movetime_smoke.rs` (fails when the old rule is restored, verified by mutation in a scratch copy); `benches/movetime-20261119/movetime-after-fix.txt`; bench signature `141943aa23b3fc68` unchanged (fixed depth).
+
+## 2026-11-19 — naming decision (user answer)
+
+- The Cargo package stays `flawless` (binary `flawless`). The user declined a rename because it would break crate imports and CI paths.
+- `Cargo.toml` `repository` now points to the verified remote `https://github.com/coderunknow/FlawLessChess`. The earlier `Flawless-Chess-Engine` URL is recorded as historical and was not used by CI.
+- The product name remains FlawLessChess.
