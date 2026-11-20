@@ -13,8 +13,10 @@ Exit status 1 if any case violates a check.
 """
 from __future__ import annotations
 
+import queue
 import subprocess
 import sys
+import threading
 import time
 
 import chess
@@ -27,6 +29,15 @@ class Session:
     def __init__(self) -> None:
         self.p = subprocess.Popen([ENGINE], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        # A reader thread feeds a queue. Never call select() on the pipe while the buffered text
+        # stream is in use: select() reports "no data" once readline() has buffered several lines.
+        self.lines: queue.Queue[str | None] = queue.Queue()
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def _pump(self) -> None:
+        for line in self.p.stdout:
+            self.lines.put(line)
+        self.lines.put(None)
 
     def send(self, line: str) -> None:
         self.p.stdin.write(line + "\n")
@@ -34,19 +45,18 @@ class Session:
 
     def read_until(self, prefix: str, timeout: float) -> list[str]:
         seen: list[str] = []
-        import select
         deadline = time.monotonic() + timeout
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(f"no {prefix!r} within {timeout}s; saw {seen[-3:]}")
-            r, _, _ = select.select([self.p.stdout], [], [], remaining)
-            if not r:
+            try:
+                item = self.lines.get(timeout=remaining)
+            except queue.Empty:
                 continue
-            line = self.p.stdout.readline()
-            if line == "":
+            if item is None:
                 raise RuntimeError(f"engine closed stdout; saw {seen[-3:]}")
-            line = line.strip()
+            line = item.strip()
             seen.append(line)
             if line.startswith(prefix):
                 return seen

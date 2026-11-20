@@ -482,3 +482,10 @@ DRAFT ONLY — no code changes under this entry.
   must not turn into a second panic at the next print.
 - Note on the ponder clock (not changed): `go ponder movetime N` counts the movetime from `go`, so `ponderhit` does not
   restart it. Recorded in FAILURE_LEDGER as an open GUI-conformance question.
+
+## 2026-11-20 (late, stretch 2) — Negative time values mean "no time left"
+
+- Question: what should `go wtime -1000` (or `go movetime -5`) do?
+- Decision: answer at once, as `wtime 0` does. A negative time is how a GUI reports that the clock has run out; treating
+  it as "no limit" would search forever and lose on time. Overflow above `u64::MAX` saturates to a huge limit.
+- Not changed: `go mate N` is parsed and ignored (see FAILURE_LEDGER). Unparseable values are still dropped.

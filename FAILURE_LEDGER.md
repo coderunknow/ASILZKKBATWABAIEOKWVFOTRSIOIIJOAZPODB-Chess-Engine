@@ -594,3 +594,31 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   1000 ms movetime answers at about 1.15 s, not 1.0 s after the hit. This matches the regression test
   `ponder_movetime_ponderhit_keeps_the_movetime_deadline` and is a deliberate, documented choice. Open question for
   GUI conformance: some GUIs expect the clock to start at `ponderhit`. Not changed in this stretch.
+
+## 2026-11-20 (late, stretch 2) — F-15: negative clock or movetime made the search unbounded
+
+- F-15 FIXED (MEDIUM, time management): `go wtime -1000 btime -1000` and `go movetime -5` searched with NO time limit and
+  never answered without `stop`. `wtime`, `btime`, and `movetime` were parsed as `u64`, so `-1000` failed to parse and the
+  token was dropped, which means "no clock". A GUI that reports a flagged clock as a negative number would therefore lose
+  on time. Fix: `parse_time_ms` in `src/uci.rs`. A negative value is 0 (the time is already gone, so the engine answers
+  at once, as `wtime 0` already did). A digits-only value above `u64::MAX` saturates to `u64::MAX`, not dropped. Winc/binc
+  use the same parser. Non-numeric values are still ignored, as before.
+  Regression: `protocol_regressions::negative_time_values_answer_at_once` (fails on HEAD: no bestmove within 5 s).
+- Found by `scripts/uci_extreme_args_probe.py` (new, committed). 39 cases: `go` with 0, 1, negative, u64::MAX, i64::MAX,
+  and malformed limits, plus 14 `setoption` values (Hash, MultiPV, Threads, Clear Hash, missing values). Result after the
+  fix: 0 failures. Unbounded cases answer after `stop` (checked). Not defects by UCI design: `go depth 99999999999`,
+  `go movetime 18446744073709551615`, and the other u64-maximum values are searches with an effectively infinite
+  limit; `stop` ends them.
+- Known limitation (not changed, LOW): `go mate N` is parsed but not implemented. The search runs until `stop`, as
+  for `go infinite`. A GUI that expects a mate search will get a search without a mate target. Implementing it is a
+  feature, not an audit fix.
+- Informational: `go depth 0`, `go depth -1`, and `go nodes 0` answer at once with a root move that was not searched
+  (a zero budget). UCI does not define those values. No illegal move is produced.
+- Probe defect, NOT an engine defect (`scripts/time_budget_probe.py`, committed in 1d2cd24): `read_until` called
+  `select()` on the raw stdout descriptor while `readline()` had already buffered the rest of the handshake. The
+  probe then waited for data that was already in its buffer and failed with `no 'uciok' within 10s; saw ['id name
+  Flawless']`. Fixed with a reader thread and a queue (no `select()` on a buffered stream). Two runs after the fix: 8/8
+  each. Gate run on df6417d recorded `time_budget_probe rc=1` before this fix. Only this probe had the pattern (grep).
+- Scratch checks (in `/tmp/fuzz`, not in the repository): `uci_fuzz.py` seeds 41 (150 sessions), 42, 43, 44 (300 each):
+  0 failures. `fuzz_fen.py` seeds 1, 2 (3,000 FEN lines each through `moves`): every line answered, rc 0. The repository
+  has no `scripts/fuzz_uci.py`; the queue item named a file that was never committed.

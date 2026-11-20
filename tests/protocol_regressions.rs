@@ -610,3 +610,26 @@ fn insufficient_material_root_is_searched_and_yields_a_pv() {
         e.quit_and_expect_exit(Duration::from_secs(10));
     }
 }
+
+/// Regression (time management): a negative `wtime`/`btime`/`movetime` value used to fail to parse,
+/// so the token was dropped and `go` ran with no time limit (it never answered without `stop`).
+/// A negative value means the time is already gone, so the engine must answer at once. A
+/// positive value above `u64::MAX` must still be accepted as a (huge) limit, not dropped.
+#[test]
+fn negative_time_values_answer_at_once() {
+    for cmd in [
+        "go wtime -1000 btime -1000",
+        "go movetime -5",
+        "go wtime 0 btime -1 winc -3 binc 18446744073709551616",
+    ] {
+        let mut e = Engine::start();
+        e.send("uci");
+        e.read_until("uciok", Duration::from_secs(10));
+        e.send("position startpos");
+        e.send(cmd);
+        let lines = e.read_until("bestmove", Duration::from_secs(5));
+        let mv = bestmove_line(&lines);
+        assert!(mv.starts_with("bestmove "), "{cmd}: no move: {lines:?}");
+        e.quit_and_expect_exit(Duration::from_secs(10));
+    }
+}

@@ -14,6 +14,10 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   searches the root (interior nodes keep the draw rule), so `bestmove` comes from the search. Test:
   `protocol_regressions::insufficient_material_root_is_searched_and_yields_a_pv` (fails on the previous code).
   Bench node total: 2,311,437 (signature unchanged `849a85bf7e8e1eba`).
+- **Fixed (MEDIUM, F-15): a negative `wtime`/`btime`/`movetime` made the search unbounded.** The value failed to parse,
+  so `go` had no time limit and never answered without `stop`. A negative time is now 0 (answer at once); values above
+  `u64::MAX` saturate. Test: `protocol_regressions::negative_time_values_answer_at_once` (fails on the previous code).
+  Probe: `scripts/uci_extreme_args_probe.py`.
 - **Hardened:** stdout-ordering locks recover from poisoning instead of panicking. Piece-bitboard invariant test over
   random legal games: `correctness::piece_bitboards_stay_in_sync_over_random_games`.
 - **CI:** the test workflow declares `permissions: contents: read`; `dtolnay/rust-toolchain` is pinned to a commit SHA

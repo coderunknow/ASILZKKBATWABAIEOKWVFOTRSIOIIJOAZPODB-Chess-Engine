@@ -119,6 +119,27 @@ fn lock_ignoring_poison(m: &Mutex<()>) -> std::sync::MutexGuard<'_, ()> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// Parses a `go` time value in milliseconds (`wtime`, `btime`, `winc`, `binc`, `movetime`).
+///
+/// A negative value means the time is already gone (a GUI reports a flagged clock this way), so
+/// it is 0: the search answers at once. Before this, `-1000` failed to parse and the token was
+/// dropped, so the search had no time limit at all and never answered. A value above `u64::MAX`
+/// saturates. Anything else that is not a number is `None`, as before.
+fn parse_time_ms(text: &str) -> Option<u64> {
+    let digits = text.strip_prefix('-');
+    match digits {
+        Some(d) if !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()) => Some(0),
+        Some(_) => None,
+        None => match text.parse::<u64>() {
+            Ok(v) => Some(v),
+            Err(_) if !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()) => {
+                Some(u64::MAX)
+            }
+            Err(_) => None,
+        },
+    }
+}
+
 fn print_bestmove(result: &SearchResult) {
     // The total spent on the search, including any iteration that was aborted by a limit. The
     // last `info depth` line reports only the last completed iteration (S-08).
@@ -345,19 +366,19 @@ impl UciEngine {
                     i += 1;
                 }
                 "wtime" => {
-                    wtime = args.get(i + 1).and_then(|s| s.parse().ok());
+                    wtime = args.get(i + 1).and_then(|s| parse_time_ms(s));
                     i += 2;
                 }
                 "btime" => {
-                    btime = args.get(i + 1).and_then(|s| s.parse().ok());
+                    btime = args.get(i + 1).and_then(|s| parse_time_ms(s));
                     i += 2;
                 }
                 "winc" => {
-                    winc = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    winc = args.get(i + 1).and_then(|s| parse_time_ms(s)).unwrap_or(0);
                     i += 2;
                 }
                 "binc" => {
-                    binc = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    binc = args.get(i + 1).and_then(|s| parse_time_ms(s)).unwrap_or(0);
                     i += 2;
                 }
                 "movestogo" => {
@@ -373,7 +394,7 @@ impl UciEngine {
                     i += 2;
                 }
                 "movetime" => {
-                    movetime = args.get(i + 1).and_then(|s| s.parse().ok());
+                    movetime = args.get(i + 1).and_then(|s| parse_time_ms(s));
                     i += 2;
                 }
                 other => {
