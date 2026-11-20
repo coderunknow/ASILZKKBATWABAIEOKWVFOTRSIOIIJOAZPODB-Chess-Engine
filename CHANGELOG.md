@@ -2,6 +2,28 @@
 
 All notable changes are documented here. SemVer 2.0.0. Versions before the V1 release gate are `0.x`.
 
+## [0.1.0] — pre-V1 release candidate (2026-11-19, not yet tagged)
+
+**Pre-V1. Not v1.0.0. The V1 rating gate is not met and no absolute rating is claimed.**
+Product name: FlawLessChess. UCI engine name: Flawless. Cargo package: `flawless`.
+
+- **Fixed: `go movetime N` returned after only 39–100% of N.** Iterative deepening stopped on a
+  growth prediction that was meant only for clock budgets. A fixed-time search now runs until the
+  requested time (measured 100–101% of N at 300, 1000 and 3000 ms). Clock-based searches are unchanged.
+  Regression tests: `tests/movetime_smoke.rs` (real process, interactive waits; fails on the old rule).
+- **Fixed: no-argument launch starts UCI mode** (see the next section).
+- **Added:** `tests/movetime_smoke.rs` (8 real-process timing and lifecycle tests); CI steps for
+  `scripts/uci_protocol_probe.py`, `scripts/uci_malformed_probe.py` and `scripts/selfplay_games.py`
+  (python-chess referee, full games).
+- **Added:** the Windows artifact manifest records the product name, package version and the
+  `--version` output of the exact exe; the artifact job refuses an exe whose version differs from
+  `Cargo.toml`.
+- **Added:** `docs/WINDOWS_GUI_TEST.md` (Arena / Cute Chess test checklist) and
+  `docs/audit/2026-11-19-v0.1.0-release-candidate.md` (gate table).
+- **Version:** `0.1.0-dev.1` → `0.1.0`. `flawless --version` prints `Flawless 0.1.0`.
+- **Not claimed:** GUI playability (not yet tested by the project), Windows artifact integrity (not yet
+  inspected by hand), independent review (pending), V1 status (not met).
+
 ## [Unreleased] — UCI no-argument startup compatibility + Windows x64 artifact (2026-11-19)
 
 - **Fixed: launching `flawless` with no command-line arguments now starts UCI mode** (stdin/stdout).

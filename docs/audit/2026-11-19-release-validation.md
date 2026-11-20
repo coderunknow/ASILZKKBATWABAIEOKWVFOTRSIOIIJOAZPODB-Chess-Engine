@@ -82,3 +82,10 @@ Unchanged; needs a decision.
 
 No merge, tag or GitHub Release is made by this document. The release gates above that are NOT VERIFIED
 block a release, and the project's own gates (STATUS.md) say v1.0.0 is not authorised.
+
+## Superseded by the v0.1.0 candidate
+
+- Finding 1 above (movetime early return, "deliberately left") is **superseded**: the fixed-time
+  stop rule was changed in the v0.1.0 candidate. See `docs/audit/2026-11-19-v0.1.0-release-candidate.md`
+  and `benches/movetime-20261119/`. The original text is kept as the historical record.
+

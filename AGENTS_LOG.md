@@ -444,3 +444,13 @@
 - UCI probes: 10/10 lifecycle and 37/37 malformed-input cases pass (scripts/uci_protocol_probe.py, scripts/uci_malformed_probe.py).
 - Finding recorded, not changed: `go movetime` returns after 38–100% of budget (search.rs soft-budget rule). Changing it would invalidate rating-evidence timing.
 - No merge, tag, or release performed. Release gates still open: CodeRabbit on final head (rate-limited), artifact verification (download EOF), real GUI test (not possible here), Windows runtime, and the rating/V1 gates.
+
+## 2026-11-19 — v0.1.0 pre-V1 release-candidate remediation (local work)
+
+- Version `0.1.0` (`Cargo.toml`, `Cargo.lock`). Package stays `flawless` (decision pending; the approved name `Flawless-Chess-Engine` does not match the repository).
+- movetime fix: `fixed_time` flag; tests `tests/movetime_smoke.rs` (8 tests). Old rule re-inserted in a scratch copy: 2 tests fail. Restored: all pass.
+- Self-review of the full Rust diff (not independent review): `ponderhit` now clears `fixed_time` with the clock recalculation; checked `ponderhit` after 400 ms ponder returns immediately (correct, the budget is already spent).
+- Probes added to CI (both OSes): `scripts/uci_protocol_probe.py`, `scripts/uci_malformed_probe.py`, `scripts/selfplay_games.py` (python-chess 1.11.2 referee).
+- `scripts/windows_artifact.py`: manifest now records `product`, `package_version`, `engine_version_output`; the exe must report `Flawless <Cargo version>`.
+- Gates run locally on this tree: fmt, clippy `--all-targets -D warnings`, `cargo test --release --locked` (all suites green), build, bench `141943aa23b3fc68`, perft d3 8902 / d4 197281, diftest 2321/0, 6 full games (all legal), 10/10 UCI probes, 37/37 malformed, Python harness suites (test_match 111/0, estimator 65/0, etc.).
+- Not done: merge, tag, release, asset upload; independent AI review (pending the user's decision).

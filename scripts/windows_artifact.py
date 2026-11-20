@@ -326,6 +326,17 @@ def bench_signature(exe):
     return m.group(1) if m else "unavailable (signature not printed)"
 
 
+def cargo_package_version():
+    """Version of the [package] table in Cargo.toml (the release version)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "Cargo.toml"), encoding="utf-8") as f:
+        text = f.read()
+    m = re.search(r'^\[package\].*?^version = "([^"]+)"', text, re.M | re.S)
+    if not m:
+        fail("cannot read [package] version from Cargo.toml")
+    return m.group(1)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--exe", required=True, help="path to the built flawless.exe")
@@ -372,6 +383,13 @@ def main(argv=None):
         # 2. Smoke-test the exact file that will be packaged.
         evidence = smoke_test(exe)
         print(f"ok: smoke test passed: {evidence}")
+        # Version identity: the exact exe must report the Cargo package version.
+        pkg_version = cargo_package_version()
+        code_v, out_v, _ = run_engine(exe, ["--version"], "")
+        engine_version = out_v.strip()
+        if code_v != 0 or engine_version != f"Flawless {pkg_version}":
+            fail(f"--version reports {engine_version!r}, want 'Flawless {pkg_version}' (exit {code_v})")
+        print(f"ok: version {engine_version}")
         bench = "skipped" if args.skip_bench else bench_signature(exe)
         print(f"info: bench signature (informational): {bench}")
 
@@ -394,6 +412,10 @@ def main(argv=None):
         )
         lines = [
             "Flawless Windows x64 release build manifest",
+            "product=FlawLessChess",
+            f"engine_name=Flawless",
+            f"package_version={pkg_version}",
+            f"engine_version_output={engine_version}",
             f"git_commit={args.commit}",
             f"target_triple={EXPECTED_TARGET}",
             f"rustc={rustc_line}",

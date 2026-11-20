@@ -458,3 +458,11 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 ## 2026-11-19 — repeat of the quit-in-same-input pattern during the release validation
 
 - An early movetime measurement sent `go` and `quit` in one stdin burst, so the engine returned a depth-0 fallback (`bestmove a2a3`) and gave a misleading "6–10% of budget" result. Caught before any conclusion was drawn. All timing claims now use interactive waits. The probe scripts document this.
+
+## 2026-11-19 — FIXED: `go movetime N` returned after 39–100% of N
+
+- Root cause: `src/search.rs` iterative deepening stopped when `now + 3 × last_iteration > soft_budget`. With `movetime`, soft equals the full budget, so the search stopped early (measured 39–100% of N, depth 7–16).
+- Severity: medium (play strength and time use; no illegal moves, no hang).
+- Fix: `fixed_time` flag disables the prediction stop for fixed-time searches only. Clock searches unchanged.
+- Regression: `tests/movetime_smoke.rs` (restoring the old rule makes 2 tests fail: `movetime_uses_its_budget_within_tolerance` at 81 ms for 200 ms, and `repeated_movetime_searches_in_one_process`).
+- Note: an earlier measurement of this symptom used `quit` in the same input as `go`, which is an invalid method (see the entry above). The fixed numbers use interactive waits.

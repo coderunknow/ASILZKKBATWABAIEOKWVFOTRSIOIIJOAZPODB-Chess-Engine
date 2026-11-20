@@ -36,6 +36,10 @@ pub struct SearchLimits {
     pub hard_ms: u64,
     pub infinite: bool,
     pub ponder: bool,
+    /// True for `go movetime N`: the budget is a fixed per-move time, not a clock slice.
+    /// Such a search runs iterative deepening until the hard deadline instead of stopping
+    /// early on the growth prediction (which is meant only to protect clock budgets).
+    pub fixed_time: bool,
 }
 
 impl Default for SearchLimits {
@@ -47,6 +51,7 @@ impl Default for SearchLimits {
             hard_ms: u64::MAX,
             infinite: false,
             ponder: false,
+            fixed_time: false,
         }
     }
 }
@@ -352,10 +357,11 @@ impl<'a> Searcher<'a> {
             let l = self.lim();
             let now = self.start.elapsed().as_millis() as u64;
             let iter_ms = now.saturating_sub(iter_begin);
-            if !l.infinite
-                && (self.soft_ms_reached()
-                    || now.saturating_add(iter_ms.saturating_mul(SOFT_GROWTH_FACTOR)) > l.soft_ms)
-            {
+            // For a fixed movetime the soft budget equals the time to spend, so only the
+            // deadline itself ends the search; the growth prediction would stop it early.
+            let predicted_overrun = !l.fixed_time
+                && now.saturating_add(iter_ms.saturating_mul(SOFT_GROWTH_FACTOR)) > l.soft_ms;
+            if !l.infinite && (self.soft_ms_reached() || predicted_overrun) {
                 break;
             }
             depth += 1;

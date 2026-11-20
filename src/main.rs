@@ -165,6 +165,7 @@ fn cmd_bench() {
             hard_ms: u64::MAX,
             infinite: false,
             ponder: false,
+            fixed_time: false,
         }));
         let mut tt = TranspositionTable::new(16);
         let result =

@@ -100,7 +100,8 @@ def t_movetime():
     dt = time.monotonic() - t
     # UCI requires no overrun. The engine's soft budget may stop early (observed 38-100%
     # of movetime; see docs/audit), so only the upper bound is asserted here.
-    assert dt < 0.3 * 1.5 + 0.5, f"movetime 300ms returned after {dt:.3f}s (overrun)"
+    # Shared CI runners are noisy; the tight 80%-300ms tolerance lives in tests/movetime_smoke.rs.
+    assert dt < 1.5, f"movetime 300ms returned after {dt:.3f}s (overrun)"
     e.send("quit"); assert e.close() == 0
 
 def t_infinite_stop():

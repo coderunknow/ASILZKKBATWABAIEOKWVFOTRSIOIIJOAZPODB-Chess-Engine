@@ -4,7 +4,8 @@ An independent, from-scratch chess engine written in Rust. **Not a Stockfish der
 
 - **Engine name (UCI):** `Flawless`
 - **License:** Apache-2.0 (see `LICENSE`)
-- **Status:** development (`0.x`). V1 gates NOT met — and **no calibrated absolute rating exists in
+- **Product:** FlawLessChess · **UCI engine name:** Flawless · **Cargo package:** `flawless` · **Version:** 0.1.0 (pre-V1 release candidate, not yet tagged)
+- **Status:** pre-V1 (`0.x`). V1 gates NOT met — and **no calibrated absolute rating exists in
   either direction** (it has not been measured; see `STATUS.md`). In-sandbox relative probes vs pinned
   Stockfish 19 WASM (e.g. ~0.44–0.53 score vs Skill 5) are internal trend signals only, never an Elo
   rating. No official CCRL/CEGT rating exists. See `STATUS.md` for the live checklist and
@@ -27,6 +28,15 @@ when they start a custom engine. Explicit subcommands remain available and uncha
 
 Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `bench_eval` · `eval [fen]` · `moves` · `hash` · `uci` · `--version` · `--help` / `-h`.
 
+## Using FlawLessChess in a chess GUI
+
+1. Build or download `flawless` (Windows: `flawless.exe`).
+2. In the GUI (Arena, Cute Chess, or any UCI client), add an engine, choose the executable, protocol `UCI`.
+3. Time controls and `go movetime` are supported. `go movetime N` searches for about N ms.
+4. Windows GUI test instructions and a checklist: `docs/WINDOWS_GUI_TEST.md`.
+
+GUI playability has not yet been verified by the project; see the release-candidate report.
+
 ## What works (V1 scope)
 
 Standard chess legal move generation · FEN · PGN export from match tooling (no PGN reader exists) ·
@@ -46,6 +56,14 @@ opponents; do not present them as official ratings).
 
 `ARCHITECTURE.md` (RFC) · `docs/adr/` · `TESTING.md` · `BENCHMARKING.md` · `RESEARCH_ROADMAP.md` ·
 `DESIGN_LOG.md` · `AGENTS_LOG.md` · `FAILURE_LEDGER.md` · `STATUS.md` · `CHANGELOG.md` · `AGENTS.md`
+
+## Known limitations (pre-V1)
+
+- Single-threaded search (`Threads` is fixed at 1).
+- Classical evaluation only; no opening book; no tablebases.
+- Search strength is not calibrated; no official rating exists.
+- Windows artifact integrity and GUI playability are verified only when the release-candidate
+  checklist in `docs/audit/2026-11-19-v0.1.0-release-candidate.md` is completed.
 
 ## Building on Windows
 

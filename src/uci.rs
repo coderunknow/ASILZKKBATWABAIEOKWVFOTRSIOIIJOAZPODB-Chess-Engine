@@ -308,6 +308,7 @@ impl UciEngine {
             max_nodes,
             soft_ms,
             hard_ms,
+            fixed_time: movetime.is_some(),
             infinite: infinite
                 || ponder
                 || (wtime.is_none()
@@ -324,6 +325,7 @@ impl UciEngine {
             hard_ms: limits.hard_ms,
             infinite: limits.infinite,
             ponder: limits.ponder,
+            fixed_time: limits.fixed_time,
         }));
 
         // Fallback legal move in case the search thread dies unexpectedly —
@@ -431,6 +433,8 @@ impl UciEngine {
                             clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
                         lim.soft_ms = soft;
                         lim.hard_ms = hard;
+                        // The budget is now a clock slice, so the growth-prediction stop applies again.
+                        lim.fixed_time = false;
                         lim.infinite = false;
                     }
                     lim.ponder = false;

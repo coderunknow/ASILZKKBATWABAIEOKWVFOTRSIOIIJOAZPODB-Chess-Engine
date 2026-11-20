@@ -424,3 +424,11 @@ DRAFT ONLY — no code changes under this entry.
 
 - Observation: `go movetime N` returns after roughly 38–100% of N (interactive, startpos/kiwipete/pos3). Cause: iterative deepening stops when the predicted next iteration (3× the last iteration time) would exceed the soft limit (`src/search.rs`).
 - Decision: keep the current behaviour. Changing it alters the timing under which the rating evidence was collected. Any change needs its own evidence and a preregistration note.
+
+## 2026-11-19 — REVERSAL of the movetime "keep current behaviour" entry above
+
+- The earlier entry decided to keep the soft-budget early stop for `go movetime`. The user then authorised a fix. The earlier entry is kept unchanged as history.
+- Decision now: `SearchLimits.fixed_time` is set only for `go movetime`. For such searches the growth-prediction stop is disabled; the hard deadline (= N) ends the search, so the search runs to about N (measured 100–101% at 300/1000/3000 ms).
+- Clock-based searches (`wtime`/`btime`) keep the prediction rule. `ponderhit` clears `fixed_time` when it recalculates clock limits.
+- Known consequence: a fixed-time search can still stop early at `MAX_DEPTH`/`max_depth` 64, or on a forced single-move root, which is legal UCI behaviour.
+- Evidence: `tests/movetime_smoke.rs` (fails when the old rule is restored, verified by mutation in a scratch copy); `benches/movetime-20261119/movetime-after-fix.txt`; bench signature `141943aa23b3fc68` unchanged (fixed depth).
