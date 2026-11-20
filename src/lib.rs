@@ -17,6 +17,17 @@ macro_rules! out_line {
     }};
 }
 
+/// `eprintln!` for diagnostics. A closed or broken stderr must not end the process, so write
+/// errors are ignored (audit finding F-13: `eprintln!` panics on a broken pipe, which ended the
+/// session with exit status 101 after an oversized input line).
+#[macro_export]
+macro_rules! err_line {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr().lock(), $($arg)*);
+    }};
+}
+
 pub mod attack;
 pub mod eval;
 pub mod movegen;

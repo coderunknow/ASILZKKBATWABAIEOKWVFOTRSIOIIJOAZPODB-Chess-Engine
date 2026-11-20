@@ -28,8 +28,8 @@ fn main() {
             flawless::out_line!("{ENGINE_NAME} {ENGINE_VERSION}")
         }
         Some(other) => {
-            eprintln!("unknown command: {other}");
-            eprintln!("run `{ENGINE_NAME} --help` for the list of commands");
+            flawless::err_line!("unknown command: {other}");
+            flawless::err_line!("run `{ENGINE_NAME} --help` for the list of commands");
             std::process::exit(2);
         }
     }
@@ -62,7 +62,7 @@ fn cmd_perft(args: &[String]) {
         .first()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| {
-            eprintln!("usage: perft <depth> [fen]");
+            flawless::err_line!("usage: perft <depth> [fen]");
             std::process::exit(2);
         });
     let fen = args.get(1).map(|s| s.as_str());
@@ -70,14 +70,14 @@ fn cmd_perft(args: &[String]) {
         Some(f) => match Position::from_fen(f) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("error: {e}");
+                flawless::err_line!("error: {e}");
                 std::process::exit(1);
             }
         },
         None => Position::startpos(),
     };
     flawless::attack::init_attacks();
-    eprintln!("magic sliders active: {}", flawless::attack::magic_ready());
+    flawless::err_line!("magic sliders active: {}", flawless::attack::magic_ready());
     let t = Instant::now();
     let nodes = movegen::perft(&mut pos, depth);
     let dt = t.elapsed();
@@ -93,13 +93,13 @@ fn cmd_divide(args: &[String]) {
         .first()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| {
-            eprintln!("usage: divide <depth> [fen]");
+            flawless::err_line!("usage: divide <depth> [fen]");
             std::process::exit(2);
         });
     let fen = args.get(1).map(|s| s.as_str());
     let mut pos = match fen {
         Some(f) => Position::from_fen(f).unwrap_or_else(|e| {
-            eprintln!("error: {e}");
+            flawless::err_line!("error: {e}");
             std::process::exit(1);
         }),
         None => Position::startpos(),
@@ -158,7 +158,7 @@ fn cmd_bench() {
 
     for (i, fen) in positions.iter().enumerate() {
         let mut pos = Position::from_fen(fen).unwrap_or_else(|e| {
-            eprintln!("bench FEN {i} invalid: {e}");
+            flawless::err_line!("bench FEN {i} invalid: {e}");
             std::process::exit(1);
         });
         let stop = Arc::new(AtomicBool::new(false));
@@ -208,20 +208,42 @@ fn cmd_bench() {
 }
 
 /// Batch mode: read FENs (one per line) from stdin; print the engine's legal moves for each.
-fn cmd_moves(_args: &[String]) {
-    use std::io::{BufRead, Write};
+/// Longest accepted batch line for `moves` and `hash`. A FEN is under 100 bytes.
+const MAX_BATCH_LINE_BYTES: usize = 64 * 1024;
+
+/// Calls `f` once per stdin line, in order. `Some(text)` is a valid UTF-8 line; `None` is a line
+/// that is not valid UTF-8 or is longer than `MAX_BATCH_LINE_BYTES`. Such a line does not end the
+/// batch: the caller answers it and reading continues (audit finding F-12).
+fn for_each_stdin_line(mut f: impl FnMut(Option<String>)) {
+    use flawless::uci::{read_bounded_line, LineRead};
     let stdin = std::io::stdin();
+    let mut reader = stdin.lock();
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        match read_bounded_line(&mut reader, &mut buf, MAX_BATCH_LINE_BYTES) {
+            Ok(LineRead::Eof) | Err(_) => break,
+            Ok(LineRead::TooLong) => f(None),
+            Ok(LineRead::Line) => match std::str::from_utf8(&buf) {
+                Ok(text) => f(Some(text.to_string())),
+                Err(_) => f(None),
+            },
+        }
+    }
+}
+
+fn cmd_moves(_args: &[String]) {
+    use std::io::Write;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     flawless::attack::init_attacks();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
+    for_each_stdin_line(|line| {
+        let Some(line) = line else {
+            let _ = writeln!(out, "error input line is not valid UTF-8 or too long");
+            return;
         };
         let fen = line.trim();
         if fen.is_empty() || fen.starts_with('#') {
-            continue;
+            return;
         }
         match Position::from_fen(fen) {
             Ok(mut pos) => {
@@ -234,12 +256,12 @@ fn cmd_moves(_args: &[String]) {
                 let _ = writeln!(out, "error {e}");
             }
         }
-    }
+    });
 }
 
 /// Print the Zobrist hash of the given FEN (or stdin FENs, one per line).
 fn cmd_hash(args: &[String]) {
-    use std::io::{BufRead, Write};
+    use std::io::Write;
     flawless::attack::init_attacks();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -247,21 +269,20 @@ fn cmd_hash(args: &[String]) {
         match Position::from_fen(fen) {
             Ok(pos) => flawless::out_line!("{:016x}", pos.hash),
             Err(e) => {
-                eprintln!("error: {e}");
+                flawless::err_line!("error: {e}");
                 std::process::exit(1);
             }
         }
         return;
     }
-    let stdin = std::io::stdin();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
+    for_each_stdin_line(|line| {
+        let Some(line) = line else {
+            let _ = writeln!(out, "error input line is not valid UTF-8 or too long");
+            return;
         };
         let fen = line.trim();
         if fen.is_empty() {
-            continue;
+            return;
         }
         match Position::from_fen(fen) {
             Ok(pos) => {
@@ -271,14 +292,14 @@ fn cmd_hash(args: &[String]) {
                 let _ = writeln!(out, "error {fen}");
             }
         }
-    }
+    });
 }
 
 fn cmd_eval(args: &[String]) {
     let fen = args.first().map(|s| s.as_str());
     let pos = match fen {
         Some(f) => Position::from_fen(f).unwrap_or_else(|e| {
-            eprintln!("error: {e}");
+            flawless::err_line!("error: {e}");
             std::process::exit(1);
         }),
         None => Position::startpos(),

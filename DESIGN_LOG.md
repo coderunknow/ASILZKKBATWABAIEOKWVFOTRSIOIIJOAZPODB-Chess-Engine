@@ -464,3 +464,21 @@ DRAFT ONLY — no code changes under this entry.
 - Decision: exactly N. The cap is checked on every node in search and quiescence, so UCI output and the bench
   reflect the requested limit. The cost is one comparison per node, and the bench change (`849a85bf7e8e1eba`) includes it.
 - Related: S-14 colour symmetry fixed by a colour-relative move tie-break, not by disabling LMR (LMR off costs 18× the nodes).
+
+## 2026-11-20 (late) — Batch input, stderr writes, root search with insufficient material, lock poisoning
+
+- Question: what should `flawless moves` and `flawless hash` do with a stdin line that is not UTF-8 or is too long?
+- Decision: answer that line with one `error` line and keep reading. A batch of FENs is a list of independent requests;
+  one bad line must not drop the replies to the rest. Same bounded reader and 64 KiB cap as the UCI loop.
+- Question: should a failed write to stderr end the process?
+- Decision: no. Diagnostics go through `err_line!`, which ignores write errors, the same policy as `out_line!` for
+  stdout (F-10). A failed diagnostic must never change the protocol outcome.
+- Question: with insufficient material at the root, should single-PV search return at once?
+- Decision: no. The root is searched like any other position, so the PV and `bestmove` come from the search. Only
+  interior nodes take the insufficient-material draw (`ply > 0`). This mirrors the repetition rule, which already
+  exempts the root (R-02a). Cost: the bench node total changes by 30 (2,311,437); the signature does not change.
+- Question: what should a poisoned stdout-ordering mutex do?
+- Decision: recover and continue. The lock guards only the order of stdout writes and holds no data. A panic elsewhere
+  must not turn into a second panic at the next print.
+- Note on the ponder clock (not changed): `go ponder movetime N` counts the movetime from `go`, so `ponderhit` does not
+  restart it. Recorded in FAILURE_LEDGER as an open GUI-conformance question.

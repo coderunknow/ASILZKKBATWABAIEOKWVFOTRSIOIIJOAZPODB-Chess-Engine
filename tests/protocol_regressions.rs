@@ -4,7 +4,7 @@
 //! asserts on protocol output. Every child is bounded by a timeout and is killed on failure so a
 //! hung engine fails the test instead of hanging the suite.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread;
@@ -514,4 +514,99 @@ fn oversized_position_line_does_not_leave_the_old_position_in_use() {
         "a valid position command must clear the invalid mark: {lines:?}"
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (F-13): a failed write to stderr used to panic (`eprintln!`), exiting 101 before
+/// `readyok`. Here stderr is a pipe whose read end is already closed, so every write fails with
+/// EPIPE. Status messages now go through a write that ignores errors, so the session keeps
+/// answering. (A closed fd 2 cannot be produced on every platform: some runtimes reopen fds 0-2.)
+#[test]
+fn stderr_write_failure_does_not_stop_the_session_on_an_oversized_line() {
+    use std::os::unix::io::{FromRawFd, OwnedFd};
+    let (reader, writer): (OwnedFd, OwnedFd) = {
+        let mut fds = [0i32; 2];
+        // SAFETY: `pipe` writes two valid fds into `fds` on success; we check the return value
+        // and take ownership of each fd exactly once.
+        let rc = unsafe { libc_pipe(fds.as_mut_ptr()) };
+        assert_eq!(rc, 0, "pipe()");
+        // SAFETY: both fds were just created by `pipe` and are owned by nothing else.
+        unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
+    };
+    drop(reader); // no reader: every write to `writer` fails with EPIPE
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flawless"))
+        .arg("uci")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(writer))
+        .spawn()
+        .expect("spawn flawless");
+    let mut stdin = child.stdin.take().expect("stdin piped");
+    let stdout = child.stdout.take().expect("stdout piped");
+    let mut big = String::from("position startpos moves e2e4");
+    while big.len() < 200 * 1024 {
+        big.push_str(" e2e4");
+    }
+    big.push('\n');
+    // Written before reading: the engine answers in order and the output is small.
+    stdin.write_all(b"uci\n").expect("write uci");
+    stdin
+        .write_all(big.as_bytes())
+        .expect("write oversized line");
+    stdin.write_all(b"isready\nquit\n").expect("write isready");
+    drop(stdin);
+    let mut out = String::new();
+    std::io::BufReader::new(stdout)
+        .read_to_string(&mut out)
+        .unwrap_or_default();
+    let status = child.wait().expect("wait");
+    assert!(
+        out.lines().any(|l| l == "readyok"),
+        "no readyok after an oversized line with stderr unwritable"
+    );
+    assert_eq!(status.code(), Some(0), "exit status with stderr unwritable");
+}
+
+extern "C" {
+    #[link_name = "pipe"]
+    fn libc_pipe(fds: *mut i32) -> i32;
+}
+
+/// Regression (F-14): in single-PV mode, a root position with insufficient material returned at
+/// once, after one node, with an empty PV, so `bestmove` was the first root move in move order
+/// rather than a move from the search. The root must be searched like any other position: the
+/// last `info depth` line must carry a non-empty PV whose first move is the `bestmove`.
+#[test]
+fn insufficient_material_root_is_searched_and_yields_a_pv() {
+    for fen in [
+        "8/8/8/4k3/8/8/8/4K3 w - - 0 1",   // K v K
+        "8/8/8/4k3/8/8/3B4/4K3 w - - 0 1", // K+B v K
+        "8/8/8/4k3/8/8/8/3NK3 b - - 0 1",  // K v K+N, black to move
+    ] {
+        let mut e = Engine::start();
+        e.send("uci");
+        e.read_until("uciok", Duration::from_secs(10));
+        e.send(&format!("position fen {fen}"));
+        e.send("go depth 3");
+        let lines = e.read_until("bestmove", Duration::from_secs(30));
+        let info = lines
+            .iter()
+            .rev()
+            .find(|l| l.starts_with("info depth "))
+            .unwrap_or_else(|| panic!("{fen}: no `info depth` line: {lines:?}"));
+        let pv: Vec<&str> = info
+            .split(" pv ")
+            .nth(1)
+            .unwrap_or_else(|| panic!("{fen}: no pv in {info}"))
+            .split_whitespace()
+            .collect();
+        assert!(!pv.is_empty(), "{fen}: empty PV: {info}");
+        let best = bestmove_line(&lines)
+            .trim_start_matches("bestmove ")
+            .split(' ')
+            .next()
+            .unwrap()
+            .to_string();
+        assert_eq!(pv[0], best, "{fen}: bestmove is not the PV's first move");
+        e.quit_and_expect_exit(Duration::from_secs(10));
+    }
 }

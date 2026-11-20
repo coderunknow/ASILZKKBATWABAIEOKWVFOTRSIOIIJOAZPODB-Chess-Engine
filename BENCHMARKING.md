@@ -141,7 +141,7 @@ The initial reduced-suite bytes were rejected by the Python standard-library sel
 
 - Change: `relative_move_key` in `src/search.rs` orders equal-score moves by a colour-relative key, so the search
   no longer depends on the side's raw square numbering. Found by `scripts/eval_symmetry_probe.py` (see FAILURE_LEDGER S-14).
-- Current hosted reference: fixed-depth-10 bench signature `849a85bf7e8e1eba` (12 fixed positions, 2,311,407 nodes
+- Current hosted reference: fixed-depth-10 bench signature `849a85bf7e8e1eba` (12 fixed positions, 2,311,437 nodes after F-14; 2,311,407 before it,
   in about 6.1 s on the local release build, 380k–391k nps). This replaces `141943aa23b3fc68` as the active reference.
 - Comparison on this change: disabling LMR also makes the depth-4 probe symmetric (0/120), but needs 45,805,850 nodes
   for the same bench (about 18× more nodes, 117 s). LMR stays enabled.

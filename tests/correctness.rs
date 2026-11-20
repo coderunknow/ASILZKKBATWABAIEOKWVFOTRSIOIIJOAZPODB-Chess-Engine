@@ -758,3 +758,77 @@ fn node_cap_is_spent_exactly() {
         }
     }
 }
+
+/// Invariant sweep for the piece bitboards. `Position::piece_on` ends in `unreachable!` if the
+/// occupancy bitboards and the per-piece bitboards disagree, so this walks random legal games
+/// (make and unmake) and checks, on every ply, that each occupied square has exactly one piece,
+/// that `occ` and `occ_all` agree with `pieces`, and that `piece_on` answers for every square.
+#[test]
+fn piece_bitboards_stay_in_sync_over_random_games() {
+    fn check(pos: &Position) {
+        let mut union = 0u64;
+        for c in 0..2 {
+            let mut side = 0u64;
+            for p in 0..6 {
+                let bb = pos.pieces[c * 6 + p];
+                assert_eq!(side & bb, 0, "two pieces of one colour share a square");
+                side |= bb;
+            }
+            assert_eq!(side, pos.occ[c], "occ[{c}] differs from its piece boards");
+            assert_eq!(union & side, 0, "both colours occupy one square");
+            union |= side;
+        }
+        assert_eq!(
+            union, pos.occ_all,
+            "occ_all differs from occ[WHITE] | occ[BLACK]"
+        );
+        for sq in 0..64u8 {
+            let b = 1u64 << sq;
+            let found = pos.piece_on(sq);
+            match found {
+                None => assert_eq!(pos.occ_all & b, 0, "empty answer on occupied square {sq}"),
+                Some((c, p)) => assert_ne!(pos.pieces[c * 6 + p] & b, 0, "piece_on lies at {sq}"),
+            }
+        }
+    }
+
+    let starts = [
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+    ];
+    let mut seed = 0x5EED_1234_u64;
+    let mut plies = 0usize;
+    for fen in starts {
+        for _ in 0..40 {
+            let mut pos = Position::from_fen(fen).expect("fixture FEN");
+            let mut history = Vec::new();
+            for _ in 0..120 {
+                check(&pos);
+                let legal = movegen::generate_legal(&mut pos);
+                if legal.as_slice().is_empty() {
+                    break;
+                }
+                let m = legal.as_slice()[(rng(&mut seed) % legal.as_slice().len() as u64) as usize];
+                let undo = pos.make_move(m);
+                check(&pos);
+                history.push((m, undo));
+                plies += 1;
+            }
+            while let Some((m, undo)) = history.pop() {
+                pos.unmake_move(m, &undo);
+                check(&pos);
+            }
+            assert_eq!(
+                pos.to_fen(),
+                fen,
+                "unmake did not restore the start position"
+            );
+        }
+    }
+    assert!(
+        plies > 5_000,
+        "sweep too short to mean anything: {plies} plies"
+    );
+}

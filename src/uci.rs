@@ -52,7 +52,8 @@ pub struct UciEngine {
 /// about 3 KB); longer lines are discarded without unbounded buffering.
 const MAX_INPUT_LINE_BYTES: usize = 64 * 1024;
 
-enum LineRead {
+/// Result of [`read_bounded_line`].
+pub enum LineRead {
     Line,
     TooLong,
     Eof,
@@ -61,7 +62,7 @@ enum LineRead {
 /// Read one `\n`-terminated line as raw bytes, keeping at most `max` bytes. A longer line is
 /// consumed completely and reported as `TooLong`. A final line without a newline is returned as a
 /// line; end of input with nothing buffered is `Eof`.
-fn read_bounded_line<R: BufRead>(
+pub fn read_bounded_line<R: BufRead>(
     reader: &mut R,
     buf: &mut Vec<u8>,
     max: usize,
@@ -110,6 +111,12 @@ fn read_bounded_line<R: BufRead>(
             });
         }
     }
+}
+
+/// Takes the stdout ordering lock. The guarded value is `()`, so a poisoned lock (a panic while
+/// another thread held it) carries no state to protect; recovering keeps the UCI loop alive.
+fn lock_ignoring_poison(m: &Mutex<()>) -> std::sync::MutexGuard<'_, ()> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn print_bestmove(result: &SearchResult) {
@@ -170,7 +177,7 @@ impl UciEngine {
                     // rejected `position` does: `go` then answers `bestmove 0000` until a valid
                     // `position` command arrives (the next valid one clears the flag).
                     self.position_invalid = true;
-                    eprintln!(
+                    crate::err_line!(
                         "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
                     );
                     crate::out_line!(
@@ -236,7 +243,7 @@ impl UciEngine {
             }
             other => {
                 if self.stderr_log {
-                    eprintln!("info string unknown command: {other}");
+                    crate::err_line!("info string unknown command: {other}");
                 }
             }
         }
@@ -257,7 +264,7 @@ impl UciEngine {
         // search and makes the next `go` answer `bestmove 0000`, so a GUI or runner error
         // is visible instead of silently searching a different position.
         let rejected = |why: String, flag: &mut bool| {
-            eprintln!("info string position error: {why}");
+            crate::err_line!("info string position error: {why}");
             crate::out_line!("info string position error: {why}");
             *flag = true;
         };
@@ -371,7 +378,7 @@ impl UciEngine {
                 }
                 other => {
                     if self.stderr_log {
-                        eprintln!("info string skipping unknown go token: {other}");
+                        crate::err_line!("info string skipping unknown go token: {other}");
                     }
                     i += 1;
                 }
@@ -487,7 +494,7 @@ impl UciEngine {
                     // One critical section covers the hold-check/print AND the channel
                     // publish, so a concurrent ponderhit can never see "not printed yet"
                     // and "no message yet" at the same time: exactly one side prints.
-                    let _g = flush_for_thread.lock().unwrap();
+                    let _g = lock_ignoring_poison(&flush_for_thread);
                     // For infinite/ponder searches the main thread prints bestmove
                     // after stop/ponderhit; otherwise we print as soon as we're done.
                     if !hold_for_thread.load(Ordering::Acquire)
@@ -502,8 +509,8 @@ impl UciEngine {
                     // Search thread panicked; unblock the GUI with a legal fallback.
                     // The marker goes to stdout so GUIs and the match runner can see it.
                     crate::out_line!("info string search thread panicked; emitting fallback bestmove");
-                    eprintln!("info string search thread panicked; emitting fallback bestmove");
-                    let _g = flush_for_thread.lock().unwrap();
+                    crate::err_line!("info string search thread panicked; emitting fallback bestmove");
+                    let _g = lock_ignoring_poison(&flush_for_thread);
                     if !hold_for_thread.load(Ordering::Acquire)
                         && !printed_for_thread.swap(true, Ordering::AcqRel)
                     {
@@ -566,7 +573,7 @@ impl UciEngine {
             // Synchronize with the worker's end-of-search flush: whichever side gets the
             // mutex first decides, so the bestmove is printed exactly once regardless of
             // ordering. `hold` is cleared inside the critical section.
-            let _g = worker.flush.lock().unwrap();
+            let _g = lock_ignoring_poison(&worker.flush);
             worker.hold.store(false, Ordering::Release);
             // If the search already ended while bestmove was held (rare, e.g. hit max_depth
             // territory before the GUI reacted), flush the suppressed result now.
@@ -639,7 +646,7 @@ impl UciEngine {
             },
             other => {
                 if self.stderr_log {
-                    eprintln!("info string unknown option: {other}");
+                    crate::err_line!("info string unknown option: {other}");
                 }
             }
         }
@@ -665,7 +672,7 @@ impl UciEngine {
             }
             Err(_) => {
                 if !worker.consumed.load(Ordering::Relaxed) {
-                    eprintln!("info string search thread ended without result");
+                    crate::err_line!("info string search thread ended without result");
                 }
                 if self.tt.is_none() {
                     self.tt = Some(TranspositionTable::new(self.hash_mb));

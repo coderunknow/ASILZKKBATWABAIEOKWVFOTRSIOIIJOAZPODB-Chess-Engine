@@ -505,7 +505,10 @@ impl<'a> Searcher<'a> {
             return self.static_eval(pos);
         }
         // Draw rules (FIDE 5.2.2 / 9.2 / 9.3), applied in the order the rules require:
-        //  * insufficient material: a certain draw at every node, checked or not;
+        //  * insufficient material: a certain draw at every node below the root. The root
+        //    searches its moves like the repetition rule below, so it always yields a PV and a
+        //    bestmove that come from the search (audit finding F-14: single-PV search returned
+        //    at the root with an empty PV, while MultiPV searched it);
         //  * in-tree repetition (2-fold along the search path) is scored as a draw at every
         //    ply EXCEPT the root, so the root always searches its moves (R-02a). A checked node
         //    with no legal reply is still checkmate (mate precedence, R-02b);
@@ -514,7 +517,7 @@ impl<'a> Searcher<'a> {
         //    normally, its value is clamped to >= DRAW, and TT score cutoffs and pruning are
         //    skipped there (R-12).
         let in_chk = in_check(pos);
-        if pos.insufficient_material() {
+        if ply > 0 && pos.insufficient_material() {
             return DRAW_SCORE;
         }
         if ply > 0 && pos.is_repetition() {

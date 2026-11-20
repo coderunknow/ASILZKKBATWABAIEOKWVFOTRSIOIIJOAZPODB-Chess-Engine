@@ -532,3 +532,65 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - T-02 (test, valid, fixed): `closed_stdout_ends_the_process_quietly` read the handshake without a deadline and had no kill-on-failure. It now uses the bounded harness; `Engine` kills the child on drop.
 - D-01 (docs, valid, fixed): the audit document's blocker list still named the superseded head `c64b743`; the Phase H "Note on SHAs" claimed current HEAD was source-identical to `8370bed`. Both corrected; the historical gate table is unchanged.
 - CI-1 (test, fixed): CI on c4fb22f failed in `Tests (release)` on ubuntu-latest (exit 101) and windows-latest (exit 1); `msrv`, the windows artifact job and anchor-verify passed. Logs could not be downloaded (results host EOF) and a rerun was refused (403), so the failing test was not seen directly. Cause (inferred from the code, not reproduced): `closed_stdout_ends_the_process_quietly` sent three `isready` lines after closing the reader. The reader can drain all three `readyok` lines in one read, close stdout, and leave the engine with nothing left to write, so the engine would wait on stdin and never exit. Fix: keep sending `isready` until the engine exits (the first write after the close fails). Locally: 30/30 isolated runs and the full release suite pass; the CI failure is not reproduced. Status: the cause is inferred; re-run CI on the next SHA is the check.
+
+## 2026-11-20 (late) — Audit stretch: F-12, F-13 (corrected), F-14, S-08 provenance, CI hardening
+
+- F-12 FIXED (MEDIUM): the batch modes `flawless moves` and `flawless hash` stopped at the first stdin line that was not
+  valid UTF-8 (`lines()` plus `break`), so every later FEN got no reply. Probe before the fix: three input lines, one
+  output line. Fix: `for_each_stdin_line` reads bytes with the bounded reader (64 KiB cap). A bad or overlong line gets one
+  `error input line is not valid UTF-8 or too long` reply and the batch continues. Regression: `tests/cli_batch.rs`
+  (3 tests). The two non-UTF-8 tests fail on the previous `main.rs`; the overlong-line test passes on both (coverage only).
+- F-13 FIXED (LOW), with a CORRECTED reproduction. Earlier notes said closed stderr (`2>&-`) made the engine exit 101.
+  That could not be reproduced in this sandbox: Rust's runtime reopens fds 0-2 at startup (a probe shows `fd 2` present
+  and writes returning `Ok`). The real panic is a FAILED WRITE to stderr. With stderr a pipe whose reader is gone (EPIPE),
+  the previous binary exits 101 before `readyok` on an oversized input line; the fixed binary exits 0 and answers
+  `readyok`. Fix: `flawless::err_line!` (`src/lib.rs`) ignores write errors; all 17 diagnostic `eprintln!` sites in
+  `uci.rs` and `main.rs` use it. Regression: `protocol_regressions::stderr_write_failure_does_not_stop_the_session_on_an_oversized_line`
+  (fails on HEAD: no `readyok`; passes on the fix). The test uses a raw `pipe()` binding (test code only, with SAFETY comments).
+- F-14 FIXED (LOW): in single-PV mode, a root position with insufficient material (K v K, K+B v K, K v K+N) returned after
+  one node with an EMPTY PV. `bestmove` was then the first root move in move order, not a move from the search. Probe on
+  HEAD: `info depth 1 seldepth 0 multipv 1 score cp 0 nodes 1 nps 1 time 0 pv ` (empty) and `bestmove e1d1`. Fix in
+  `search()` (`src/search.rs`): the insufficient-material draw applies only at `ply > 0`, as the repetition rule already
+  does, so the root is searched and yields a PV. The fixed build gives `pv e...` with nodes 6-13. Regression:
+  `protocol_regressions::insufficient_material_root_is_searched_and_yields_a_pv` (fails on HEAD: "empty PV").
+  No illegal move was ever produced (255 random insufficient-material positions, 0 illegal bestmoves on HEAD).
+  Side effect: the bench node total changes from 2,311,407 to 2,311,437 (position 9, an insufficient-material
+  position, now searches 40 nodes instead of 10). The bench SIGNATURE is unchanged (`849a85bf7e8e1eba`), because the
+  signature covers (fen, depth, bestmove) only and bestmove is the same. BENCHMARKING.md is updated.
+- Earlier false alarm, closed: an intermediate probe showed `go depth 3` on K v K answering `info nodes 1` with no
+  depth line. Cause: the probe sent `go` and `quit` in one burst, and `quit` stopped the search before its first
+  iteration. This is a probing artifact: wait for `bestmove` before sending `quit`. Not an engine defect.
+- S-08 PROVENANCE: the overshoot came from the cap check `check_time` running only when `nodes & 1023 == 1023`. That
+  mask was introduced in `7c065c2` (2026-11-14, "Phase 3/4 checkpoint"), found by `git log -S"nodes & 1023"` after a
+  deepen of the shallow clone. It predates this audit and the base commit `c25e65e`.
+- F-11 MUTATION CHECK (was pending): removing `self.position_invalid = true;` from the TooLong branch makes
+  `oversized_position_line_does_not_leave_the_old_position_in_use` fail (`bestmove b1c3` where `0000` is expected).
+  With the line, it passes. The regression is effective.
+- CI-1 (cause still INFERRED, not reproduced): 40 runs of `closed_stdout_ends_the_process_quietly` under two CPU-bound
+  processes on the current code: 0 failures. The inferred cause is unchanged (a reader that drained several `readyok`
+  lines, so the engine had nothing to write and was waiting on stdin). The current test waits for exit, not for a line,
+  so it does not depend on that timing.
+- Hardening (no reproduced defect): the three `flush` mutex `unwrap()`s in `uci.rs` now recover a poisoned lock
+  (`lock_ignoring_poison`). The guarded value is `()`, so there is no state to protect. The `unwrap()`s at
+  `uci.rs` L333, L661, and L664 are guarded by an `is_some()`/`is_ok()` check on the line above, so they cannot panic.
+  `position.rs:177` (`unreachable!("occupancy out of sync")`): reached only if the occupancy and piece boards disagree.
+  New test `correctness::piece_bitboards_stay_in_sync_over_random_games` walks 160 random legal games (make and unmake)
+  and checks every ply. Passes in release and debug (debug enables the `debug_assert!` sites).
+- CI hardening: `ci.yml` has an explicit `permissions: contents: read` (the test workflow pushes nothing). All four
+  `dtolnay/rust-toolchain@master` references (ci.yml x3, rating-run.yml x1) are pinned to the commit `master` pointed to
+  on 2026-11-20, `df2a88e9fe4098bad09cb42c3dec7187f15861fc`. The same code runs; it can no longer change silently.
+- Probes passed on this tree (not a gate by themselves; see FINAL_AUDIT_PROGRESS.md for the exact list): random-position
+  perft differential seeds 2-7 (0 mismatches); debug search sweep seeds 2-6 (`scripts/search_sweep.py`, 0 failures);
+  UCI grammar fuzz seeds 31-34 (200 sessions each, 0 failures); legal differential seeds 8-10 (all agree; 19 rejections,
+  each justified by the material bound, checked by an independent necessary condition in the harness).
+- Known limit, documented as a design choice (not changed): `position fen` rejects some legal-looking FENs that cannot
+  arise from a real game (more than 16 pieces per side, more than 8 pawns, or promoted pieces above the missing pawns).
+  DESIGN_LOG 2026-11-20 states the trade-off.
+- Resource checks: 1,200 `go` cycles: threads 1-2, fds 3, RSS flat at about 69 MiB (Hash 64). Hash 1024: RSS grows only
+  while the table fills (the table is lazily zeroed); increments fall from +90 to +9 MiB per 4 s search; the 1 GiB table
+  is a single fixed allocation, so RSS cannot exceed it plus baseline. Resizing down releases the old table (1024 → 64
+  gives 5 MiB).
+- `ponderhit` with `go ponder movetime N`: the movetime deadline counts from `go`, so a `ponderhit` at 0.3 s of a
+  1000 ms movetime answers at about 1.15 s, not 1.0 s after the hit. This matches the regression test
+  `ponder_movetime_ponderhit_keeps_the_movetime_deadline` and is a deliberate, documented choice. Open question for
+  GUI conformance: some GUIs expect the clock to start at `ponderhit`. Not changed in this stretch.

@@ -4,6 +4,21 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
 
 ## [Unreleased] — independent audit remediation (2026-11-20)
 
+- **Fixed (MEDIUM, F-12): `flawless moves` and `flawless hash` stopped at the first non-UTF-8 stdin line.** Later
+  FENs got no reply. Each bad or overlong line now gets one `error` reply and the batch continues. Tests:
+  `tests/cli_batch.rs` (3 tests).
+- **Fixed (LOW, F-13): a failed stderr write panicked the engine (exit 101).** Diagnostics now use `err_line!`, which
+  ignores write errors, so an oversized input line no longer ends the session. Test:
+  `protocol_regressions::stderr_write_failure_does_not_stop_the_session_on_an_oversized_line` (fails on the previous code).
+- **Fixed (LOW, F-14): a root position with insufficient material returned an empty PV.** Single-PV search now
+  searches the root (interior nodes keep the draw rule), so `bestmove` comes from the search. Test:
+  `protocol_regressions::insufficient_material_root_is_searched_and_yields_a_pv` (fails on the previous code).
+  Bench node total: 2,311,437 (signature unchanged `849a85bf7e8e1eba`).
+- **Hardened:** stdout-ordering locks recover from poisoning instead of panicking. Piece-bitboard invariant test over
+  random legal games: `correctness::piece_bitboards_stay_in_sync_over_random_games`.
+- **CI:** the test workflow declares `permissions: contents: read`; `dtolnay/rust-toolchain` is pinned to a commit SHA
+  (was `@master`) in `ci.yml` and `rating-run.yml`.
+
 - **Fixed (LOW, F-10): closed stdout panicked the engine.** When the reader closed the pipe, the next
   `println!` panicked with `Broken pipe` (exit 101). All protocol and CLI output now goes through
   `out_line!`, which exits with status 0. Test: `protocol_regressions::closed_stdout_ends_the_process_quietly`
