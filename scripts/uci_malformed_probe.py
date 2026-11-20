@@ -6,6 +6,7 @@ within a bounded time, then `quit` (exit 0). A panic shows up as a non-zero exit
 'panicked' message on stderr. Usage: python3 scripts/uci_malformed_probe.py <exe>
 """
 import queue, subprocess, sys, threading, time
+import chess  # referee: every bestmove is checked for legality (python-chess, pinned in CI)
 
 EXE = sys.argv[1]
 CASES = [
@@ -49,23 +50,28 @@ CASES = [
 ]
 
 def run(line):
-    """One interactive session. `go` lines are followed by a wait for `bestmove` (bounded)
-    before `quit`; sending `go` and `quit` in one burst lets quit stop the search at depth 0,
-    which would hide a missing or illegal bestmove."""
+    """One interactive session. A `go` line waits for its `bestmove` before `isready`/`quit`:
+    sending `go` and `quit` in one burst lets quit stop the search at depth 0, and sending
+    `isready` first can consume a bestmove that arrives before readyok. The engine starts from
+    the start position (no `position` is sent), so each bestmove must be legal there.
+    Every stdout line is kept and validated, including output after the final readyok."""
     p = subprocess.Popen([EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out_lines, err_chunks = [], []
-    threading.Thread(target=lambda: err_chunks.append(p.stderr.read()), daemon=True).start()
+    err_reader = threading.Thread(target=lambda: err_chunks.append(p.stderr.read()), daemon=True)
+    err_reader.start()
     q = queue.Queue()
     def reader():
         for raw in iter(p.stdout.readline, b""):
             q.put(raw.decode("utf-8", "replace").rstrip("\r\n"))
         q.put(None)
-    threading.Thread(target=reader, daemon=True).start()
+    out_reader = threading.Thread(target=reader, daemon=True)
+    out_reader.start()
 
     def send(s):
         p.stdin.write((s + "\n").encode("utf-8", "replace")); p.stdin.flush()
 
     def until(pred, timeout):
+        """Next line matching pred (every line seen is recorded), or None on timeout/EOF."""
         end = time.monotonic() + timeout
         while True:
             r = end - time.monotonic()
@@ -82,22 +88,23 @@ def run(line):
                 return l
 
     def finish(status):
-        err = b"".join(err_chunks).decode("utf-8", "replace") if err_chunks else ""
+        """Kill if still running, join the readers (bounded), and return the full transcript."""
+        if p.poll() is None:
+            p.kill()
+        p.wait()
+        out_reader.join(5); err_reader.join(5)
+        err = b"".join(err_chunks).decode("utf-8", "replace")
         return status, "\n".join(out_lines), err
 
+    code = None
     try:
         send("uci")
         if until(lambda l: l == "uciok", 10) is None:
-            p.kill(); return finish("NO_UCIOK")
+            return finish("NO_UCIOK")
         send(line)
-        is_go = line.split()[:1] == ["go"]
-        if is_go:
-            send("isready")
-            if until(lambda l: l == "readyok", 10) is None:
-                p.kill(); return finish("EOF_BEFORE_READYOK")
-            # A search with no effective limit (an unparseable depth/movetime/searchmoves is
-            # treated as absent) runs until `stop`. Give limited searches 2 s to answer on their
-            # own; otherwise send `stop` and require the bestmove afterwards.
+        if line.split()[:1] == ["go"]:
+            # Give limited searches 2 s to answer on their own. Otherwise send `stop` and require
+            # the bestmove. An unparseable limit is treated as absent, so the search runs until stop.
             got = until(lambda l: l.startswith("bestmove"), 2)
             stopped = False
             if got is None:
@@ -105,22 +112,42 @@ def run(line):
                 stopped = True
                 got = until(lambda l: l.startswith("bestmove"), 15)
             if got is None:
-                p.kill(); return finish("NO_BESTMOVE")
+                return finish("NO_BESTMOVE")
             if stopped:
                 out_lines.append("# probe-note: unlimited search ended by stop")
-            if got.split()[1:2] == []:
-                p.kill(); return finish("EMPTY_BESTMOVE")
+            parts = got.split()
+            if len(parts) < 2:
+                return finish("EMPTY_BESTMOVE")
+            mv = parts[1]
+            if mv in ("0000", "(none)"):
+                return finish(f"NULL_BESTMOVE {mv} from the start position")
+            try:
+                legal = chess.Move.from_uci(mv) in chess.Board().legal_moves
+            except ValueError:
+                legal = False
+            if not legal:
+                return finish(f"ILLEGAL_BESTMOVE {mv} from the start position")
         send("isready")
         if until(lambda l: l == "readyok", 10) is None:
-            p.kill(); return finish("NO_READYOK")
+            return finish("NO_READYOK")
         send("quit")
         try:
             code = p.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            p.kill(); return finish("HANG")
+            return finish("HANG")
     finally:
         if p.poll() is None:
-            p.kill()
+            p.kill(); p.wait()
+    # Quit path: drain stdout through EOF (bounded) so output after the final readyok is validated.
+    end = time.monotonic() + 5
+    while time.monotonic() < end:
+        try:
+            l = q.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if l is None:
+            break
+        out_lines.append(l)
     status, out, err = finish("OK")
     if code != 0:
         return f"EXIT {code}", out, err

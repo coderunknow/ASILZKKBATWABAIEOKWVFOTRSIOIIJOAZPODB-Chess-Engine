@@ -107,6 +107,7 @@ impl Engine {
     /// output that arrived during a sleep.
     fn drain(&mut self) {
         while let Ok(line) = self.rx.try_recv() {
+            assert!(!line.contains("panicked"), "panic marker on stdout: {line}");
             self.seen.push(line);
         }
     }
@@ -411,5 +412,34 @@ fn bare_go_ponder_keeps_searching_until_stop() {
     e.until(Duration::from_secs(2), "bestmove after stop", |l| {
         l.starts_with("bestmove")
     });
+    e.quit_and_expect_exit(Duration::from_secs(5));
+}
+
+#[test]
+fn ponder_node_cap_is_enforced_after_ponderhit() {
+    // Regression: `go ponder nodes N` keeps `infinite` set while pondering. The ponderhit
+    // fallback arm used to leave it set, so the node cap was never checked and the search ran
+    // until `stop`. After ponderhit the cap must end the search on its own.
+    let _serial = timing_lock();
+    let mut e = Engine::spawn();
+    e.handshake();
+    e.position(START_FEN);
+    e.send("go ponder nodes 20000");
+    thread::sleep(Duration::from_millis(200));
+    e.drain();
+    assert!(
+        !e.seen.iter().any(|l| l.starts_with("bestmove")),
+        "bestmove before ponderhit"
+    );
+    let start = Instant::now();
+    e.send("ponderhit");
+    e.until(Duration::from_secs(5), "bestmove from node cap", |l| {
+        l.starts_with("bestmove")
+    });
+    assert!(
+        start.elapsed() < Duration::from_secs(4),
+        "node cap not enforced after ponderhit: {:?}",
+        start.elapsed()
+    );
     e.quit_and_expect_exit(Duration::from_secs(5));
 }

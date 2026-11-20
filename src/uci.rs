@@ -450,8 +450,14 @@ impl UciEngine {
                         _ if lim.fixed_time => {
                             lim.infinite = false;
                         }
-                        // Bare `go ponder`: keep searching until an explicit `stop`.
-                        _ => {}
+                        // Bare `go ponder`: keep searching until an explicit `stop`. A node cap
+                        // (`go ponder nodes N`) is still a limit, so it must be enforced after
+                        // ponderhit; clearing `infinite` is what lets should_stop_now check it.
+                        _ => {
+                            if lim.max_nodes != u64::MAX {
+                                lim.infinite = false;
+                            }
+                        }
                     }
                     lim.ponder = false;
                 }

@@ -479,3 +479,15 @@ Review text read from PR #3 (review posted 05:54:53Z). Each item checked against
 - ci.yml wording item: the selfplay step already fails on exit code; the script now sets that exit code.
 
 Environment note: the sandbox was re-provisioned. The local clone was reset to the `main` base with the branch's working tree kept. Rust (1.99 sysroot) and /tmp/chessvenv are gone. Recovered with `git reset --mixed origin/arena/2d2d30b4-flawlesschess`; no commits were lost. A backup of the working tree is in /tmp (not in the repo).
+
+## 2026-11-20 — CodeRabbit review of e029dff (6 findings) and the remaining release checks
+
+Triage (each checked against the code):
+
+- src/uci.rs ponderhit fallback: `go ponder nodes N` kept `infinite` set, so the node cap was never enforced after ponderhit → FIXED (fallback clears `infinite` when a node cap is set). Regression test `ponder_node_cap_is_enforced_after_ponderhit` added. CI-verified only (no Rust toolchain).
+- tests/movetime_smoke.rs drain(): panic marker not checked → FIXED (same assertion as until()).
+- scripts/uci_malformed_probe.py: a bestmove could be consumed while waiting for readyok → FIXED (go lines wait for bestmove before isready). The stderr snapshot now follows the reader join. Output after the final readyok is drained and validated. Each bestmove is checked for legality against the start position (the engine's default, confirmed in src/uci.rs `Position::startpos()`). Mechanics verified with a fake engine: 37/37 with a legal engine, 26/37 with an illegal-move engine (rejected).
+- Resource probe: added to CI on Linux (`if: runner.os == 'Linux'`), since it reads /proc.
+- En passant: `t_en_passant_capture` added to scripts/uci_protocol_probe.py. It forces the engine's root with `go searchmoves` to a single en passant capture (two positions: after 1.e4 a6 2.e5 d5, and the FEN with ep square f6). The test setup is checked with python-chess (both are legal en passant). Fake engine correctly FAILs it.
+
+Still unverified in this session: the Windows GUI test (needs a human and Windows), the Windows artifact (blob EOF on every attempt), and any run of the real engine on this head beyond CI.

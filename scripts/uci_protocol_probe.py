@@ -165,6 +165,33 @@ def t_fen_position():
     assert chess.Move.from_uci(mv) in chess.Board(fen).legal_moves, f"illegal {mv}"
     e.send("quit"); assert e.close() == 0
 
+def t_en_passant_capture():
+    """En passant must be generated, accepted as a root move, and returned as bestmove.
+    `go searchmoves` restricts the root to the single en passant capture, so the engine's
+    answer is forced to be that capture; python-chess confirms it is en passant."""
+    cases = [
+        # 1.e4 a6 2.e5 d5: white e5xd6 en passant
+        ("startpos moves e2e4 a7a6 e4e5 d7d5", None, "e5d6"),
+        # position with ep square f6 after f7-f5 (white pawn on e5)
+        (None, "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3", "e5f6"),
+    ]
+    for pos_moves, fen, want in cases:
+        e = Eng(); e.send("uci"); e.until(lambda l: l == "uciok", 10, "uciok")
+        e.send(f"position {'fen ' + fen if fen else pos_moves}")
+        e.send("isready"); e.until(lambda l: l == "readyok", 10, "readyok")
+        board = chess.Board(fen) if fen else chess.Board()
+        if not fen:
+            for m in pos_moves.split()[2:]:
+                board.push_uci(m)
+        target = chess.Move.from_uci(want)
+        assert target in board.legal_moves, f"{want} is not legal here (test setup)"
+        assert board.is_en_passant(target), f"{want} is not an en passant capture (test setup)"
+        e.send(f"go depth 2 searchmoves {want}")
+        lines = e.until(lambda l: l.startswith("bestmove"), 20, "bestmove")
+        mv = bestmove_of(lines)
+        assert mv == want, f"expected en passant {want}, got {mv}"
+        e.send("quit"); assert e.close() == 0
+
 def t_stalemate_position_no_legal_move():
     # Black to move, stalemated: engine must not invent a move; it should report bestmove 0000 or none.
     e = Eng(); e.send("uci"); e.until(lambda l: l == "uciok", 10, "uciok")
@@ -182,7 +209,8 @@ for name, fn in [("handshake", t_handshake), ("no banner", t_no_banner_on_stdout
                  ("10ms clock no hang", t_tiny_clock_no_hang), ("movetime 300", t_movetime),
                  ("infinite+stop", t_infinite_stop), ("quit during infinite", t_quit_during_infinite),
                  ("setoption/junk tolerant", t_setoption_and_unknown),
-                 ("position fen promo", t_fen_position), ("stalemate", t_stalemate_position_no_legal_move)]:
+                 ("position fen promo", t_fen_position), ("stalemate", t_stalemate_position_no_legal_move),
+                 ("en passant capture", t_en_passant_capture)]:
     check(name, fn)
 
 for n, s, d in results:

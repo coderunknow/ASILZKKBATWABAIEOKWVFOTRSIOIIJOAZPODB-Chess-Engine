@@ -137,6 +137,16 @@ jobs:
           "$PY" scripts/selfplay_games.py "$exe" "${RUNNER_TEMP:-/tmp}/selfplay" --tc 3000+50 \
             || { echo "::error::selfplay_games failed"; exit 1; }
 
+      - name: Resource probe (Linux /proc; wall, CPU, peak RSS for 1 s searches)
+        if: runner.os == 'Linux'
+        shell: bash
+        # Interactive: waits for every reply. Fails on timeout, EOF, a missing bestmove, or a
+        # non-zero exit after quit. The printed numbers are evidence, not a pass threshold.
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/resource_probe.py ./target/release/flawless 1000 16 64 256 \
+            || { echo "::error::resource_probe failed"; exit 1; }
+
       - name: Perft sanity (depth 3 startpos)
         shell: bash
         run: |
