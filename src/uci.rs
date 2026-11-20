@@ -429,6 +429,16 @@ impl UciEngine {
             .take()
             .unwrap_or_else(|| TranspositionTable::new(self.hash_mb));
         let mut pos = self.pos.clone();
+        // `searchmoves` that names no legal move: the search widens to all legal moves (see
+        // `Searcher::search_root`). That is a deliberate choice (a null move is never useful here),
+        // so it is reported on stdout rather than done silently.
+        if let Some(ref named) = search_moves {
+            let mut probe = self.pos.clone();
+            let legal = generate_legal(&mut probe);
+            if legal.len > 0 && !legal.iter().any(|m| named.contains(m)) {
+                println!("info string searchmoves names no legal move in this position; searching all legal moves");
+            }
+        }
         let stop_for_search = stop.clone();
         let multi_pv = self.multi_pv;
         let start_instant = Instant::now();

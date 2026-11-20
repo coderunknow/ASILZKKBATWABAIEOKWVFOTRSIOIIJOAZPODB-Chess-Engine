@@ -500,3 +500,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Probes waited without a deadline (eval symmetry, en passant forced search) and the en passant probe ignored a failed quit. Fixed.
 - The Rust protocol harness could block on a stdin write before its reply deadline. Fixed with a writer thread.
 - A test named "double check" used a position with a single check (knight on g1). Fixed; the position is now a verified double check.
+
+## 2026-11-20 — final-head review and symmetry diagnosis
+
+- F-09 (LOW, UCI wording): Codex P2 on `3a280df` (`src/search.rs`): `go searchmoves` with no legal named move widens the search to all legal moves, outside the requested set. Decision recorded in DESIGN_LOG 2026-11-20. Fixed in part: the widening is now announced on stdout (`info string`). Kept by design: a null move is the defect the mission names. Tests: `illegal_only_searchmoves_still_returns_a_legal_move` (now asserts the notice), `legal_searchmoves_are_respected_without_widening_notice` (control).
+- S-14 DIAGNOSED (informational, not a defect): the depth-4 search mismatch comes from Late Move Reductions. Evidence: static evaluation equal on each pair (`flawless eval`: 353/353 and 743/743; the depth-3 pair 44/44). In a scratch build outside the repo, disabling LMR makes both depth-4 pairs symmetric (446/446, 1262/1262); disabling null-move pruning alone does not (446/493 and 1284/1262). Mechanism: LMR reduces by move index, and the mirror position generates moves in a different order. No search change made; the hard symmetry gate is `static_evaluation_is_colour_symmetric`.
+- Windows artifact `flawless-windows-x64-3a280dff77fcf1042dd49789b7442e63fd50a496`: retried at 13:26Z; `gh run download` still fails with EOF from `productionresultssa10.blob.core.windows.net` (curl to that host returns no HTTP status). Unverified. Not retried again in this session.

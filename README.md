@@ -60,6 +60,8 @@ opponents; do not present them as official ratings).
 ## Known limitations (pre-V1)
 
 - Single-threaded search (`Threads` is fixed at 1).
+- `Hash` accepts 1–1024 MiB. The transposition table is capped at 1 GiB (2^27 entries), so larger values are rejected with an `info string` on stdout.
+- `go searchmoves` that names only illegal moves does not return `bestmove 0000`. The search considers all legal moves and prints an `info string` saying so. This departs from the UCI wording ("restrict the search"); see DESIGN_LOG 2026-11-20.
 - Classical evaluation only; no opening book; no tablebases.
 - Search strength is not calibrated; no official rating exists.
 - Windows artifact integrity and GUI playability are verified only when the release-candidate

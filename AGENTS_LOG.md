@@ -541,3 +541,9 @@ Scope: panic sites in src/, input parsing (go/setoption/position), search root h
 - All comments are addressed. Details and evidence are in FINAL_AUDIT_PROGRESS.md, "Phase E".
 - The one Major item (fuzz final readiness) and the CI-relevant one (malformed bestmove in the Windows artifact checker) were real defects in my or in pre-existing harness code, and both are now covered by tests or self-tests.
 - Qodo (billing-blocked), Kilo (out of credits) and CodeRabbit's walkthrough are not counted as passed reviews. CodeRabbit's inline review is addressed; a re-review of the new head is requested.
+
+## 2026-11-20 — correction to the batch-1 gate entry (L522–528)
+
+- That entry said clippy was run as `cargo clippy --release --all-targets -- -D warnings`. That is the only clippy line it records. The debug invocation `cargo clippy --all-targets -- -D warnings` was run in the same session but is not in that entry. The release and debug logs are in `/tmp/gates/` (clippy_release.log, clippy_debug.log); both are re-run on the final commit.
+- That entry says `protocol_regressions (7 process tests)`. The count at 49fdecf was 6 (`#[test]` count at the commit); 8 at 3a280df; 9 after the searchmoves control test. Counts are taken from `#[test]` attributes, not from the entry.
+- Historical entries are left as written.

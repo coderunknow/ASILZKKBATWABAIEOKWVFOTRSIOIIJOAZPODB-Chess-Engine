@@ -263,6 +263,13 @@ fn illegal_only_searchmoves_still_returns_a_legal_move() {
         bm, "bestmove 0000",
         "illegal-only searchmoves gave a null move"
     );
+    // The widening is a documented choice, so it must be announced on stdout, not silent.
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string searchmoves names no legal move")),
+        "illegal-only searchmoves widened the search without an info string: {lines:?}"
+    );
     let mv = bm
         .trim_start_matches("bestmove ")
         .split(' ')
@@ -275,6 +282,35 @@ fn illegal_only_searchmoves_still_returns_a_legal_move() {
     assert!(
         START_LEGAL.contains(&mv),
         "bestmove {mv} is not a legal start move"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Control for the searchmoves notice: when a named move is legal, no widening notice is printed
+/// and the result is restricted to the named moves.
+#[test]
+fn legal_searchmoves_are_respected_without_widening_notice() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position startpos");
+    e.send("go depth 2 searchmoves e2e4 d2d4");
+    let lines = e.read_until("bestmove", Duration::from_secs(20));
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.starts_with("info string searchmoves")),
+        "legal searchmoves printed a widening notice: {lines:?}"
+    );
+    let bm = bestmove_line(&lines);
+    let mv = bm
+        .trim_start_matches("bestmove ")
+        .split(' ')
+        .next()
+        .unwrap();
+    assert!(
+        mv == "e2e4" || mv == "d2d4",
+        "searchmoves e2e4 d2d4 returned {bm}"
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }

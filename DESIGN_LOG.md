@@ -446,3 +446,10 @@ DRAFT ONLY — no code changes under this entry.
 - FEN material limits: >16 pieces per side, >8 pawns per side, or promoted pieces exceeding the missing pawns are rejected. Such positions cannot arise from a legal game from startpos. Positions from other sources may be rejected, which is the intended trade-off.
 - Naming: the Cargo package stays `flawless` (ADR 0002). The GitHub repository and product name are `FlawLessChess` / `Flawless-Chess-Engine`. This is not a rename.
 - Threads: stays a single-threaded build. The option is advertised as 1..1 and non-1 values are reported on stdout. No multithreaded search is claimed.
+
+## 2026-11-20 — searchmoves with no legal named move (PR #4 Codex P2)
+
+- Question: `go searchmoves` names only illegal moves. Options were (a) return `bestmove 0000` (the defect the mission lists), (b) refuse the request, (c) search all legal moves.
+- Decision: (c). A null move answers nothing in a position that has legal moves. Refusing leaves the GUI with no move. Widening keeps the engine playing, and the widening is announced on stdout with `info string searchmoves names no legal move in this position; searching all legal moves` before the search starts.
+- Known departure: the UCI text says `searchmoves` restricts the search. In this one case it does not. The departure is documented in README (Known limitations) and tested: `illegal_only_searchmoves_still_returns_a_legal_move` asserts the notice; `legal_searchmoves_are_respected_without_widening_notice` is the control.
+- Revisit if a GUI reports a problem with widening; the alternative is option (b).
