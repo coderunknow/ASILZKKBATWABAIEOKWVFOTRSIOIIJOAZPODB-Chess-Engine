@@ -159,3 +159,57 @@ All other gates pass on `8370bed`. Release becomes possible once both are closed
 
 Note on SHAs: the ledger commit that records this phase changes only `FINAL_AUDIT_PROGRESS.md`. The source tree is identical to `8370bed`; this is checkable with `git diff --stat 8370bed HEAD`.
 
+
+## Phase I — final gates on source commit 7d5b489 (release decision, supersedes Phase H)
+
+Source commit: `7d5b489405b8b5c513c284532a0865bb1dc7a472` (pushed as a fast-forward `8557a5d..7d5b489`). Changes since Phase H: S-14 colour-relative tie-break in `src/search.rs`; exact `go nodes` cap (S-08); `out_line!` output path that exits 0 on a closed stdout (F-10); new tests; anchor-verify bench signature `849a85bf7e8e1eba`; CHANGELOG, README, ARCHITECTURE, BENCHMARKING, FAILURE_LEDGER, DESIGN_LOG. Gate script: `/tmp/gates/run_final.sh` (rerun on this SHA); logs and `summary.txt` with `commit 7d5b489…` and `dirty_files 0`: `/tmp/gates/final/`. The Phase H run is archived at `/tmp/gates/final-8370bed/`.
+
+| Gate | Command | Result |
+|---|---|---|
+| fmt | `cargo fmt --all -- --check` | rc 0 |
+| clippy | `cargo clippy --release --all-targets -- -D warnings`; `cargo clippy --all-targets -- -D warnings` | rc 0; rc 0 (0 warnings in both logs) |
+| build | `cargo build --release --locked` | rc 0 |
+| tests | `cargo test --release --locked` | rc 0 (lib 22, clock 3, correctness 39, movetime 11, protocol_regressions 12, uci_smoke 11) |
+| tests (debug) | `cargo test --locked` | rc 0 |
+| Python suites | all `scripts/test_*.py` in ci.yml, plus test_aggregate_60 and test_recover_download | all rc 0 |
+| opening subsets / power | `verify_opening_subsets.py`; `power_analysis.py --replicates 1000` | rc 0; rc 0 |
+| bench | `flawless bench` | signature `849a85bf7e8e1eba`, 2,311,407 nodes (6.22 s, 371k nps on this runner) |
+| perft | `flawless perft 3` | 8902 |
+| UCI probes | `uci_bestmove_smoke.py` (b1c3 at depth 2); `uci_protocol_probe.py` (12/12); `uci_malformed_probe.py` (37/37) | rc 0 each |
+| self-play | `selfplay_games.py --tc 3000+50` | rc 0 |
+| full game, en passant | `fullgame_en_passant_probe.py` | rc 0, PASS (every engine move legal; game reached its end) |
+| resource | `resource_probe.py 1000 16 64 256` | rc 0 (peak RSS 56.9 MiB at Hash 64, 88.0 MiB at Hash 256, 1 s movetime) |
+| fuzz UCI grammar | seeds 9 (100 sessions), 21 (100 sessions), 11 (100 sessions) | failures=0 each |
+| fuzz legal differential | seeds 1–7 (40 games each) | RESULT PASS each |
+| search symmetry (informational) | `eval_symmetry_probe.py --positions 120 --depth 4` | 0 mismatches (was 6 before S-14 fix) |
+| closed stdout | `protocol_regressions::closed_stdout_ends_the_process_quietly` | PASS; FAILS on the pre-fix source (exit-status assertion, test line 500; the old build panicked on the closed pipe) |
+
+Mutation checks: the S-14 correctness tests fail on the pre-fix `search.rs` (cap 1 searched 1024 nodes; a recorded pair gave 446 vs 493). `closed_stdout` fails on the pre-fix `src/`.
+
+CI on `7d5b489`: run 44753627798 (CI) success — `ubuntu-latest`, `windows-latest`, `msrv (rust 1.80)`, `windows x64 release artifact` all success. Run 44753628577 (anchor-verify) success. Kilo Code Review: `action_required` (billing; not bypassed).
+
+Reviews on `7d5b489`:
+- CodeRabbit: `@coderabbitai review` posted on PR #4 (comment 7042039996, 14:27Z). CodeRabbit replied "Review triggered" (comment 7042042371) and its check run stayed `in_progress` for about 3 minutes. No review with `commit_id` `7d5b489` exists at the time of writing. **G2 NOT OBTAINED. Not claimed.**
+- Codex: P2 reply on the searchmoves widening (comment 7041115063, 13:46Z) is visible on PR #4. Codex has not re-reviewed `7d5b489`.
+
+Windows artifact `flawless-windows-x64-7d5b489405b8b5c513c284532a0865bb1dc7a472` (artifact 14635798399, 206,405 bytes, not expired; run 44753627798): `gh run download -R coderunknow/FlawLessChess -n …` failed twice (EOF from `productionresultssa16.blob.core.windows.net`). The retry limit is reached and nothing more is attempted in this session. **G3 NOT VERIFIED.** The manifest and SHA256 were not inspected. The Windows-artifact tooling passes its own unit tests (`scripts/test_windows_artifact.py`, rc 0), but that does not verify this artifact.
+
+GUI: not part of the release. No GUI test was run and no GUI result is claimed (`docs/WINDOWS_GUI_TEST.md` is unexecuted).
+
+### Findings disposition (this phase)
+
+- EPIPE / closed stdout (F-10, LOW): found in the audit's pipe probe. Scope: in scope, because a GUI closing the pipe is a normal shutdown path. **Fixed** (`out_line!`, exit 0). Regression test added.
+- S-14 (MEDIUM): **Fixed** by a colour-relative tie-break. LMR stays on: disabling it also gives 0/120 but costs 18× the nodes. Bench reference updated.
+- S-08 (LOW): **Fixed**. `go nodes N` spends exactly N nodes. Regression tests added.
+- S-07 ponder cap: not reproduced. The regression test now asserts the exact cap after `ponderhit`.
+- S-06 illegal-only `searchmoves`: not reproduced. The regression test asserts the stdout notice and the legal move. Remaining decision: widening versus refusing is recorded in DESIGN_LOG 2026-11-20.
+
+### Release decision
+
+NOT RELEASED. PR #4 is NOT merged. Tag `v0.1.0` and the GitHub Release "FlawLessChess 0.1.0" are NOT created. Open hard gates:
+1. G2 CodeRabbit review on the final head: NOT OBTAINED for `7d5b489` (triggered, no review yet).
+2. G3 Windows x64 artifact manifest and SHA256: NOT VERIFIED (blob host returns EOF from this sandbox).
+
+All other gates pass on `7d5b489`. G5 local gates pass on `7d5b489`. G6 MSRV 1.80 passes in CI on `7d5b489`. G4 GUI is N/A.
+
+Note on SHAs: the ledger commit that records this phase changes only `FINAL_AUDIT_PROGRESS.md`. The source tree is identical to `7d5b489`; check with `git diff --stat 7d5b489 HEAD`.
