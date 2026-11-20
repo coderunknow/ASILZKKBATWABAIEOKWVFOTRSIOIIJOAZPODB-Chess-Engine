@@ -240,7 +240,10 @@ def uci_session_bestmove(exe, args, label):
     bestmoves = [m for m in (BESTMOVE_RE.match(l) for l in lines) if m]
     if len(bestmoves) != 1:
         fail(f"{label}: expected exactly one bestmove line, got {len(bestmoves)}")
-    if not any(l.startswith("info depth 2 ") for l in lines):
+    # Only output before the bestmove counts: a depth-2 line printed after the answer must not
+    # satisfy the check.
+    first_bm = next(i for i, l in enumerate(lines) if BESTMOVE_RE.match(l))
+    if not any(l.startswith("info depth 2 ") for l in lines[:first_bm]):
         fail(f"{label}: no completed `info depth 2` line before bestmove; search did not reach depth 2")
     return hs, bestmoves[0].group(1), code, lines
 

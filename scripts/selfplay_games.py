@@ -6,7 +6,7 @@ move the engine returns against its own legal-move generator, enforces wall-cloc
 time controls (wtime/btime/winc/binc sent via `go`), and records termination reasons.
 Usage: python3 scripts/selfplay_games.py <engine> <outdir> [--games N] [--tc ms+inc]
 """
-import argparse, json, os, time
+import argparse, json, os, sys, threading, time
 import chess
 import chess.engine
 
@@ -19,6 +19,27 @@ OPENINGS = [
     ("ep-setup", "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3"),
 ]
 
+# Termination reasons that make a game a failure (the script exits non-zero if any occur).
+FAILURE_PREFIXES = ("ENGINE_TERMINATED", "ILLEGAL_OR_NULL_MOVE", "FLAG_FALL", "TIMEOUT", "BAD_EXIT", "PLY_CAP")
+GRACE_S = 5.0  # client-side slack beyond the clock budget before a search counts as hung
+
+def play_with_deadline(eng, board, limit, deadline_s):
+    """Run eng.play in a daemon thread; return (result, None) or (None, reason) on timeout/error."""
+    box = {}
+    def worker():
+        try:
+            box["res"] = eng.play(board, limit)
+        except Exception as e:  # propagated to the caller as a termination reason
+            box["err"] = e
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(deadline_s)
+    if t.is_alive():
+        return None, f"TIMEOUT no bestmove within {deadline_s:.1f}s"
+    if "err" in box:
+        raise box["err"]
+    return box["res"], None
+
 def play(engine_path, name, fen, outdir, base_ms, inc_ms, max_plies=400):
     board = chess.Board(fen)
     eng = chess.engine.SimpleEngine.popen_uci([engine_path])
@@ -30,9 +51,13 @@ def play(engine_path, name, fen, outdir, base_ms, inc_ms, max_plies=400):
         while not board.is_game_over(claim_draw=True) and ply < max_plies:
             side = board.turn
             t0 = time.monotonic()
-            res = eng.play(board, chess.engine.Limit(
+            limit = chess.engine.Limit(
                 white_clock=clocks[chess.WHITE], black_clock=clocks[chess.BLACK],
-                white_inc=inc_ms / 1000.0, black_inc=inc_ms / 1000.0))
+                white_inc=inc_ms / 1000.0, black_inc=inc_ms / 1000.0)
+            res, timeout_reason = play_with_deadline(eng, board, limit, max(clocks[side], 0.0) + GRACE_S)
+            if timeout_reason:
+                log["termination"] = timeout_reason + f" at ply {ply}"
+                break
             spent = time.monotonic() - t0
             mv = res.move
             if mv is None or mv not in board.legal_moves:
@@ -54,9 +79,19 @@ def play(engine_path, name, fen, outdir, base_ms, inc_ms, max_plies=400):
                 log["termination"] = f"PLY_CAP {max_plies}"
         log["final_fen"] = board.fen()
         log["ply_count"] = len(log["moves"])
-        # Clean shutdown: engine must exit cleanly after quit.
-        eng.quit()
-        log["exit"] = "quit ok"
+        # Clean shutdown: the engine must exit with status 0 after quit.
+        try:
+            eng.quit()
+            code = eng.returncode.result(timeout=10)
+        except Exception as e:  # a hung engine cannot be quit; record it, never crash the run
+            code = None
+            log["exit"] = f"quit failed: {type(e).__name__}"
+            log["termination"] = (log["termination"] or "") + f" BAD_EXIT quit failed: {type(e).__name__}"
+        if code == 0:
+            log["exit"] = "quit ok"
+        elif code is not None:
+            log["exit"] = f"exit status {code}"
+            log["termination"] = (log["termination"] or "") + f" BAD_EXIT status={code}"
     except chess.engine.EngineTerminatedError as e:
         log["termination"] = f"ENGINE_TERMINATED: {e}"
     finally:
@@ -87,6 +122,12 @@ def main():
         summary.append({"opening": name, "plies": log.get("ply_count"), "termination": log["termination"], "wall_s": round(dt, 1)})
     with open(os.path.join(a.outdir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=1)
+    # Non-zero exit if any game failed, so CI cannot pass on a broken game.
+    failures = [g for g in summary if g["termination"] and g["termination"].startswith(FAILURE_PREFIXES)
+                or (g["termination"] and " BAD_EXIT" in g["termination"])]
+    if failures:
+        print(f"FAILED games: {[g['opening'] for g in failures]}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

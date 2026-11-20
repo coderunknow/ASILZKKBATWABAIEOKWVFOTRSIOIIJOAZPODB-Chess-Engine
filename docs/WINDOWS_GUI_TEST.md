@@ -19,7 +19,7 @@ Use it to test the Windows x64 engine in a UCI chess GUI and report results.
    ```
 
    The two hashes must match (case-insensitive). If not, do not use the file; report it.
-4. Check the version: `flawless.exe --version` must print `Flawless 0.1.0`.
+4. Check the version from the extracted folder, not from PATH: run `.\flawless.exe version` (in that folder) and confirm it prints `Flawless 0.1.0`.
 
 ## 2. Install in a GUI
 

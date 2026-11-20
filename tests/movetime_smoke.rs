@@ -103,6 +103,14 @@ impl Engine {
         self.seen.iter().rev().take(5).rev().cloned().collect()
     }
 
+    /// Moves every line already received (without blocking) into `seen`, so pre-stop checks see
+    /// output that arrived during a sleep.
+    fn drain(&mut self) {
+        while let Ok(line) = self.rx.try_recv() {
+            self.seen.push(line);
+        }
+    }
+
     fn handshake(&mut self) {
         self.send("uci");
         self.until(Duration::from_secs(10), "uciok", |l| l == "uciok");
@@ -291,6 +299,7 @@ fn infinite_then_stop_returns_one_legal_bestmove() {
     e.position(START_FEN);
     e.send("go infinite");
     thread::sleep(Duration::from_millis(400));
+    e.drain();
     assert!(
         !e.seen.iter().any(|l| l.starts_with("bestmove")),
         "premature bestmove on infinite"
@@ -301,6 +310,10 @@ fn infinite_then_stop_returns_one_legal_bestmove() {
         l.starts_with("bestmove")
     });
     assert!(start.elapsed() < Duration::from_secs(1));
+    // readyok is sent after any bestmove the engine still owes, so counting only after it
+    // detects a duplicate bestmove.
+    e.send("isready");
+    e.until(Duration::from_secs(2), "readyok after stop", |l| l == "readyok");
     let bms = e.seen.iter().filter(|l| l.starts_with("bestmove")).count();
     assert_eq!(bms, 1, "expected exactly one bestmove");
     e.quit_and_expect_exit(Duration::from_secs(5));
@@ -355,6 +368,7 @@ fn ponder_movetime_ponderhit_keeps_the_movetime_deadline() {
     e.position(START_FEN);
     e.send("go ponder movetime 1000");
     thread::sleep(Duration::from_millis(300));
+    e.drain();
     assert!(
         !e.seen.iter().any(|l| l.starts_with("bestmove")),
         "bestmove before ponderhit"
@@ -386,6 +400,7 @@ fn bare_go_ponder_keeps_searching_until_stop() {
     e.position(START_FEN);
     e.send("go ponder");
     thread::sleep(Duration::from_millis(800));
+    e.drain();
     assert!(
         !e.seen.iter().any(|l| l.starts_with("bestmove")),
         "bare go ponder answered without stop"

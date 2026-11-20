@@ -462,3 +462,20 @@
 - scripts/windows_artifact.py: git identity check fails closed; release profile read from Cargo.toml; version read from the [package] table only. Unit tests added (one caught a dropped hyphenated key before it shipped).
 - scripts/uci_protocol_probe.py: python-chess required; stderr drained; dead code and stale comment removed.
 - tests/movetime_smoke.rs: timing tests serialised with a static mutex.
+
+## 2026-11-20 — CodeRabbit review of 4bc9ff3 (10 actionable comments): triage
+
+Review text read from PR #3 (review posted 05:54:53Z). Each item checked against the code before acting.
+
+- selfplay_games.py: exit status not checked after quit → FIXED (`returncode` must be 0; BAD_EXIT recorded). Verified with a fake engine that exits 3: script exits 1.
+- selfplay_games.py: no client-side deadline around play → FIXED (play runs in a thread; deadline = clock + 5 s). Verified with a fake engine that never answers: TIMEOUT after 8 s, exit 1.
+- selfplay_games.py: failing outcomes did not fail the run → FIXED (non-zero exit on ENGINE_TERMINATED, ILLEGAL_OR_NULL_MOVE, FLAG_FALL, TIMEOUT, BAD_EXIT, PLY_CAP).
+- resource_probe.py: peak started at 0 and was sampled only on idle → FIXED (baseline included; sampled every loop). Deadline and cleanup added. Verified with fake engine (ok and hang paths).
+- uci_protocol_probe.py: no cleanup after a failed check → FIXED (registry kills and reaps every engine after each check). Verified: no leftover processes after a run against the fake engine.
+- uci_protocol_probe.py: lines before uciok not validated → FIXED (all stdout is checked at close; unknown lines fail). Fake-engine run exercised this path.
+- windows_artifact.py: depth-2 check accepted output after bestmove → FIXED (only lines before the first bestmove count). Covered by the next remote run only (needs a Windows binary).
+- tests/movetime_smoke.rs: pre-stop check ignored output in the channel → FIXED (`drain()` before each check). Duplicate-bestmove count now follows a readyok. NOT COMPILED LOCALLY: no Rust toolchain in this sandbox after re-provisioning; CI is the first check.
+- WINDOWS_GUI_TEST.md: version check relied on PATH → FIXED (run from the extracted folder).
+- ci.yml wording item: the selfplay step already fails on exit code; the script now sets that exit code.
+
+Environment note: the sandbox was re-provisioned. The local clone was reset to the `main` base with the branch's working tree kept. Rust (1.99 sysroot) and /tmp/chessvenv are gone. Recovered with `git reset --mixed origin/arena/2d2d30b4-flawlesschess`; no commits were lost. A backup of the working tree is in /tmp (not in the repo).

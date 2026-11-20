@@ -14,11 +14,18 @@ except ImportError:
 EXE = sys.argv[1]
 results = []
 
+ALLOWED_OUT = ("id ", "option ", "uciok", "readyok", "info ", "bestmove ")
+ENGINES = []  # every engine started by the current check; killed and reaped by check() on exit
+
+def unknown_lines(lines):
+    return [l for l in lines if l and not l.startswith(ALLOWED_OUT)]
+
 class Eng:
     def __init__(self):
         self.p = subprocess.Popen([EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.q = queue.Queue(); self.all = []; self.err = []
-        threading.Thread(target=self._r, daemon=True).start()
+        ENGINES.append(self)
+        self.reader = threading.Thread(target=self._r, daemon=True); self.reader.start()
         # Drain stderr so a chatty engine can never block on a full pipe.
         threading.Thread(target=lambda: self.err.append(self.p.stderr.read()), daemon=True).start()
     def _r(self):
@@ -38,9 +45,19 @@ class Eng:
             seen.append(l)
             if pred(l): return seen
     def close(self):
+        """Quit-by-EOF, wait bounded, drain every stdout line, then validate all of them."""
         try: self.p.stdin.close()
         except OSError: pass
-        code = self.p.wait(timeout=10)
+        try:
+            code = self.p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.p.kill(); self.p.wait(); raise AssertionError("engine did not exit after stdin EOF")
+        self.reader.join(5)
+        if self.reader.is_alive():
+            raise AssertionError("stdout not drained after exit")
+        bad = unknown_lines(self.all)
+        if bad:
+            raise AssertionError(f"unexpected stdout lines (all output is checked, incl. before uciok): {bad[:3]}")
         return code
 
 def check(name, fn):
@@ -50,6 +67,16 @@ def check(name, fn):
         results.append((name, "FAIL", str(e)))
     except Exception as e:
         results.append((name, "ERROR", repr(e)))
+    finally:
+        # Unconditional cleanup: kill, reap, and close pipes of every engine this check started.
+        for e in ENGINES:
+            if e.p.poll() is None:
+                e.p.kill()
+            e.p.wait()
+            for f in (e.p.stdin, e.p.stdout, e.p.stderr):
+                try: f.close()
+                except Exception: pass
+        ENGINES.clear()
 
 def bestmove_of(lines):
     bm = [l for l in lines if l.startswith("bestmove")]
