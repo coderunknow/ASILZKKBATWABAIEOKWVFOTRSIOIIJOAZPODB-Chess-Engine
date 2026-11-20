@@ -100,7 +100,7 @@ CodeRabbit posted 12 inline comments and 1 nitpick. All are addressed in the nex
 | G2 CodeRabbit review on the final head | NOT OBTAINED | The review of `b3a9480` (12 comments) is addressed. Re-review requests on `3a280df` (12:4x and 13:19Z, `@coderabbitai review`) returned "Review rate limited". Not claimed. |
 | G3 Windows artifact: SHA-256 and manifest checked against the executable | NOT VERIFIED (sandbox limit; retried 13:26Z, still EOF) | The artifact `flawless-windows-x64-3a280dff77fcf1042dd49789b7442e63fd50a496` and the job logs are served from `productionresultssa10.blob.core.windows.net`, which this sandbox cannot reach (EOF on download and log fetch). The CI steps that build the exe, check the PE machine type, smoke-test the exact exe, and write `SHA256SUMS.txt` and `BUILD-MANIFEST.txt` all succeeded. The bytes were not inspected locally. |
 | G4 GUI smoke test | NOT APPLICABLE | The release contains the UCI engine executable only. No GUI is shipped. `docs/WINDOWS_GUI_TEST.md` is an optional user test and has not been run. |
-| G5 Local gates on the final tree | PENDING (re-run on the final commit, see Phase G) | Earlier logs in /tmp/gates/ were produced before the searchmoves change and do not count for the final commit. |
+| G5 Local gates on the final tree | PASS on `8370bed` (Phase H) | Earlier logs in /tmp/gates/ were produced before the searchmoves change and do not count for the final commit. |
 | G6 MSRV 1.80 | PASS in CI | msrv job success on 3a280df. Not run locally (toolchain unavailable). |
 
 Decision: the release is NOT published and PR #4 is NOT merged. G2 and G3 are open. Merge, tag `v0.1.0`, and the GitHub Release wait for G2 (CodeRabbit on the final head) and G3 (artifact verified by the user or by a retry from a network that can reach the artifact host).
@@ -115,4 +115,47 @@ Decision: the release is NOT published and PR #4 is NOT merged. G2 and G3 are op
 | CodeRabbit re-review | NOT OBTAINED | Rate-limited again (13:19Z). |
 | Docs | DONE | README Known limitations (Hash 1–1024 MiB; searchmoves behaviour). ARCHITECTURE.md L71 (Hash range 1–1024). `docs/WINDOWS_GUI_TEST.md` already names the release PR head and excludes c64b743 (3a280df). AGENTS_LOG L513 remains historical. |
 | Ledger checks | DONE | F-08 is in FAILURE_LEDGER (batch-2 section) and in this file (batch-2 table, severity MEDIUM). AGENTS_LOG correction entry appended for the batch-1 clippy and protocol-test counts. |
-| Final gates on the final commit | PENDING | See the final section. |
+| Final gates on the final commit | DONE for `8370bed` | See Phase H. |
+
+## Phase H — final gates on source commit 8370bed (release decision)
+
+Source commit: `8370bed8b8914c907d2a3ff2af5d4f2d4bed0e5` (pushed as a fast-forward `3a280df..8370bed`). Working tree clean before the gate run (`dirty_files 0`). Gate script: `/tmp/gates/run_final.sh`; logs and `summary.txt`: `/tmp/gates/final/`.
+
+| Gate | Command | Result |
+|---|---|---|
+| fmt | `cargo fmt --all -- --check` | rc 0 |
+| clippy | `cargo clippy --release --all-targets -- -D warnings`; `cargo clippy --all-targets -- -D warnings` | rc 0; rc 0 |
+| build | `cargo build --release --locked` | rc 0 |
+| tests | `cargo test --release --locked` | rc 0: lib 22, clock 3, correctness 37, movetime 11, protocol_regressions 9, uci_smoke 11 |
+| tests (debug) | `cargo test --locked` | rc 0 (same suites; movetime 31 passed, 6 ignored, see log) |
+| Python suites | test_match, test_rating_estimator, test_reduced_sample, test_make_batch_dispatch, test_power_analysis, test_merge_batch_runs, test_windows_artifact, test_aggregate_60, test_recover_download | all rc 0 |
+| opening subsets / power | `verify_opening_subsets.py`; `power_analysis.py --replicates 1000` | rc 0; rc 0 |
+| bench | `flawless bench` | signature `141943aa23b3fc68`, 2,530,885 nodes |
+| perft | `flawless perft 3` | 8902 |
+| UCI probes | `uci_bestmove_smoke.py`; `uci_protocol_probe.py` (12/12); `uci_malformed_probe.py` (37/37) | rc 0 each |
+| self-play | `selfplay_games.py --tc 3000+50` | rc 0 |
+| full game, en passant | `fullgame_en_passant_probe.py` | PASS: 91 plies, en_passant=1, castles=2, threefold |
+| resource | `resource_probe.py 1000 16 64 256` | rc 0 |
+| fuzz UCI grammar | seeds 9 (120 sessions), 21 (300 sessions) | rc 0; rc 0 |
+| fuzz legal differential | seeds 7 (60 games), 1 (40 games) | rc 0; rc 0 |
+
+CI on `8370bed`: run 44747171541 (CI) success; run 44747171587 (anchor-verify) success. `gh pr checks 4`: 17 pass (ubuntu-latest, windows-latest, msrv (rust 1.80), windows x64 release artifact, verify-flawless, sf10-calibration, 11 build-* anchor jobs). CodeRabbit: skipping. Kilo Code Review: fail (billing; not bypassed).
+
+Reviews on `8370bed`:
+- CodeRabbit: `@coderabbitai review` (13:46Z) → "Review rate limited". NO CodeRabbit review of `8370bed` exists. Not claimed. The three inline comments that appear on this commit are the earlier batch re-anchored; CodeRabbit's replies say they were addressed in `3a280df`. Checked in the code: `measure_movetime.py` has try/finally cleanup; `uci_malformed_probe.py` counts bestmove over the complete drained transcript; `uci_protocol_probe.py` `close()` counts bestmove over the complete transcript after quit.
+- Codex: the P2 on `search.rs:250` (searchmoves widening) was answered on the PR (comment 7041115063). Decision kept: widening announced on stdout, `bestmove 0000` still refused. Codex has not re-reviewed; the disagreement is recorded, not hidden.
+
+Windows artifact `flawless-windows-x64-3a280dff77fcf1042dd49789b7442e63fd50a496`: NOT VERIFIED. The CI artifact job succeeded for `3a280df` (all 8 steps), but the artifact download fails with EOF from `productionresultssa10.blob.core.windows.net` (retried 13:26Z). Manifest and SHA256 were not inspected.
+
+GUI: not part of the release; GUI test not run (`docs/WINDOWS_GUI_TEST.md` is optional and unexecuted).
+
+### Release decision
+
+NOT RELEASED. PR #4 is NOT merged. Tag `v0.1.0` and the GitHub Release "FlawLessChess 0.1.0" are NOT created. Reason: two hard gates are open.
+1. CodeRabbit review on the final head: not obtained (rate-limited).
+2. Windows x64 artifact manifest and SHA256 verification: not possible from this sandbox.
+
+All other gates pass on `8370bed`. Release becomes possible once both are closed. Either close them and re-run CI on the final SHA, or the user verifies the artifact from a network that can reach the blob host and accepts the CodeRabbit state.
+
+Note on SHAs: the ledger commit that records this phase changes only `FINAL_AUDIT_PROGRESS.md`. The source tree is identical to `8370bed`; this is checkable with `git diff --stat 8370bed HEAD`.
+
