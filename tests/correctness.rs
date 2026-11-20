@@ -691,3 +691,70 @@ fn static_evaluation_is_colour_symmetric() {
     }
     assert!(pairs >= 300, "only {pairs} pairs checked");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Search regressions (S-08 node cap, S-14 colour symmetry). Library-level, deterministic.
+// ---------------------------------------------------------------------------------------------
+
+/// Runs one fresh search (new table, new searcher) and returns (score, nodes spent).
+fn fresh_search(fen: &str, max_depth: i32, max_nodes: u64) -> (i32, u64, Move) {
+    use flawless::search::{SearchLimits, Searcher};
+    use flawless::tt::TranspositionTable;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+    attack::init_attacks();
+    let mut pos = Position::from_fen(fen).expect("fen");
+    let mut tt = TranspositionTable::new(16);
+    let stop = AtomicBool::new(false);
+    let limits = SearchLimits {
+        max_depth,
+        max_nodes,
+        ..SearchLimits::default()
+    };
+    let mut s = Searcher::new(&mut tt, &stop, Arc::new(Mutex::new(limits)));
+    let r = s.search_root(&mut pos, None, 1, &mut |_| {});
+    (r.score_cp, s.nodes(), r.best_move)
+}
+
+/// Regression (S-14): a position and its colour mirror must search to the same score. Before the
+/// colour-relative move ordering, these 11 recorded pairs differed (6 of 120 positions at depth 4
+/// with seed 2026; 5 of 60 at depth 5 with seed 2027). Each mirror was checked with python-chess.
+#[test]
+fn search_scores_are_colour_symmetric_on_recorded_pairs() {
+    let data = include_str!("data/search_symmetry_pairs.tsv");
+    let mut pairs = 0;
+    for line in data
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+    {
+        let cols: Vec<&str> = line.split('\t').collect();
+        assert_eq!(cols.len(), 3, "malformed fixture row: {line}");
+        let depth: i32 = cols[0].parse().expect("depth");
+        let (a, _, _) = fresh_search(cols[1], depth, u64::MAX);
+        let (b, _, _) = fresh_search(cols[2], depth, u64::MAX);
+        assert_eq!(
+            a, b,
+            "search asymmetry at depth {depth}: {} -> {a}, mirror {} -> {b}",
+            cols[1], cols[2]
+        );
+        pairs += 1;
+    }
+    assert_eq!(pairs, 11, "fixture must hold the 11 recorded pairs");
+}
+
+/// Regression (S-08): the node cap is spent exactly. The cap used to be checked every 1024
+/// nodes, so `go nodes 1` searched 1024 nodes and small caps overshot. The count returned
+/// by the searcher must equal the cap for every cap that the search can reach.
+#[test]
+fn node_cap_is_spent_exactly() {
+    for &cap in &[1u64, 2, 100, 1000, 5000, 20000] {
+        for fen in [
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        ] {
+            let (_, nodes, best) = fresh_search(fen, 64, cap);
+            assert_eq!(nodes, cap, "cap {cap} on {fen}: searched {nodes} nodes");
+            assert_ne!(best, Move::NULL, "cap {cap}: no move returned on {fen}");
+        }
+    }
+}

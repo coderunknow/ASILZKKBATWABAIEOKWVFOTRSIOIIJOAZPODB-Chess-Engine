@@ -86,6 +86,9 @@ pub struct Searcher<'a> {
     history: [[i32; 64 * 64]; 2],
     lmr: [[i32; 256]; MAX_PLY as usize + 1],
     nodes: u64,
+    /// `max_nodes` from the limits at construction. Enforced exactly, per node, by
+    /// `node_cap_reached`; `go ponder` ignores it until `ponderhit`.
+    node_cap: u64,
     seldepth: i32,
     start: Instant,
     /// Legal moves allowed at the root (from `go searchmoves`). Applied at ply 0 only.
@@ -101,6 +104,10 @@ impl<'a> Searcher<'a> {
         stop: &'a AtomicBool,
         limits: Arc<Mutex<SearchLimits>>,
     ) -> Self {
+        let node_cap = match limits.lock() {
+            Ok(l) => l.max_nodes,
+            Err(e) => e.into_inner().max_nodes,
+        };
         Searcher {
             tt,
             stop,
@@ -110,6 +117,7 @@ impl<'a> Searcher<'a> {
             history: [[0; 64 * 64]; 2],
             lmr: build_lmr_table(),
             nodes: 0,
+            node_cap,
             seldepth: 0,
             start: Instant::now(),
             root_moves: None,
@@ -141,12 +149,28 @@ impl<'a> Searcher<'a> {
     #[inline]
     fn should_stop_now(&self) -> bool {
         let l = self.lim();
-        // go infinite / go ponder / bare go: clocks and node caps are inert until an
-        // external stop (or ponderhit, which flips infinite) arrives.
+        // go infinite / go ponder / bare go: clocks are inert until an external stop (or
+        // ponderhit, which flips infinite) arrives.
         if l.infinite {
             return false;
         }
-        self.start.elapsed().as_millis() as u64 >= l.hard_ms || self.nodes >= l.max_nodes
+        self.start.elapsed().as_millis() as u64 >= l.hard_ms
+    }
+
+    /// Exact node cap, checked at every node before the node is counted, so a search never
+    /// visits more than `max_nodes` nodes (S-08: the previous check ran every 1024 nodes and
+    /// overshot small caps, e.g. `go nodes 1` searched 1024). While `go ponder` is waiting for
+    /// `ponderhit` the cap is inert, as for any infinite search; it applies after the hit.
+    #[inline]
+    fn node_cap_reached(&mut self) -> bool {
+        if self.nodes < self.node_cap {
+            return false;
+        }
+        if self.lim().infinite {
+            return false;
+        }
+        self.stop.store(true, Ordering::Relaxed);
+        true
     }
 
     #[inline]
@@ -208,12 +232,20 @@ impl<'a> Searcher<'a> {
         for i in 0..moves.len {
             moves.scores[i] = self.move_order_score(pos, moves.moves[i], tt_move, ply);
         }
-        // stable insertion sort by descending score (lists are short; branch-friendly)
+        // Stable insertion sort by descending score (lists are short; branch-friendly). Equal
+        // scores are ordered by a colour-relative key (S-14), not by generation order: generation
+        // is by absolute square, a colour mirror reverses it, and LMR reduces by move index, so
+        // generation order made a position and its mirror search differently.
         for i in 1..moves.len {
             let s = moves.scores[i];
             let m = moves.moves[i];
             let mut j = i;
-            while j > 0 && moves.scores[j - 1] < s {
+            while j > 0
+                && (moves.scores[j - 1] < s
+                    || (moves.scores[j - 1] == s
+                        && relative_move_key(pos.side, moves.moves[j - 1])
+                            > relative_move_key(pos.side, m)))
+            {
                 moves.scores[j] = moves.scores[j - 1];
                 moves.moves[j] = moves.moves[j - 1];
                 j -= 1;
@@ -242,6 +274,8 @@ impl<'a> Searcher<'a> {
 
         let legal = generate_legal(pos);
         let mut roots: Vec<Move> = legal.iter().copied().collect();
+        // Root order is the tie-break order for equal scores (S-14): use the colour-relative key.
+        roots.sort_by_key(|&m| relative_move_key(pos.side, m));
         if let Some(ref only) = root_moves {
             // `searchmoves` restricts the search. If none of the named moves is legal, keep all
             // legal moves: answering a null move in a position with legal moves is never useful.
@@ -456,6 +490,9 @@ impl<'a> Searcher<'a> {
     }
 
     fn search(&mut self, pos: &mut Position, depth: i32, alpha: i32, beta: i32, ply: i32) -> i32 {
+        if self.node_cap_reached() {
+            return alpha;
+        }
         self.nodes += 1;
         if ply as usize >= self.seldepth as usize {
             self.seldepth = ply;
@@ -701,6 +738,9 @@ impl<'a> Searcher<'a> {
     }
 
     fn quiesce_core(&mut self, pos: &mut Position, alpha: i32, beta: i32, ply: i32) -> i32 {
+        if self.node_cap_reached() {
+            return alpha;
+        }
         self.nodes += 1;
         if ply as usize >= self.seldepth as usize {
             self.seldepth = ply;
@@ -790,7 +830,15 @@ impl<'a> Searcher<'a> {
     }
 }
 
+/// Colour-relative sort key of a move: squares are read from the side to move (black squares are
+/// mirrored with `^ 56`), so a move and its colour mirror get the same key. Used only to order
+/// equal move scores (S-14); see `order_and_score`.
 #[inline]
+fn relative_move_key(side: usize, m: Move) -> u32 {
+    let rel = |sq: Square| -> u32 { (if side == WHITE { sq } else { sq ^ 56 }) as u32 };
+    (rel(m.from) << 6) | rel(m.to)
+}
+
 fn captured_piece(pos: &Position, m: Move) -> Option<usize> {
     if let Some((_, p)) = pos.piece_on(m.to) {
         return Some(p);

@@ -506,3 +506,21 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - F-09 (LOW, UCI wording): Codex P2 on `3a280df` (`src/search.rs`): `go searchmoves` with no legal named move widens the search to all legal moves, outside the requested set. Decision recorded in DESIGN_LOG 2026-11-20. Fixed in part: the widening is now announced on stdout (`info string`). Kept by design: a null move is the defect the mission names. Tests: `illegal_only_searchmoves_still_returns_a_legal_move` (now asserts the notice), `legal_searchmoves_are_respected_without_widening_notice` (control).
 - S-14 DIAGNOSED (informational, not a defect): the depth-4 search mismatch comes from Late Move Reductions. Evidence: static evaluation equal on each pair (`flawless eval`: 353/353 and 743/743; the depth-3 pair 44/44). In a scratch build outside the repo, disabling LMR makes both depth-4 pairs symmetric (446/446, 1262/1262); disabling null-move pruning alone does not (446/493 and 1284/1262). Mechanism: LMR reduces by move index, and the mirror position generates moves in a different order. No search change made; the hard symmetry gate is `static_evaluation_is_colour_symmetric`.
 - Windows artifact `flawless-windows-x64-3a280dff77fcf1042dd49789b7442e63fd50a496`: retried at 13:26Z; `gh run download` still fails with EOF from `productionresultssa10.blob.core.windows.net` (curl to that host returns no HTTP status). Unverified. Not retried again in this session.
+
+## 2026-11-20 — S-14 fixed, F-10 found (closed stdout), gate status
+
+- S-14 FIXED (MEDIUM, supersedes the "informational, not a defect" wording above): a colour-relative tie-break
+  (`relative_move_key` in `src/search.rs`) removes the depth-4 colour mismatch. Results: depth 4, 120 positions,
+  default seed: 6 mismatches before, 0 after. Depth 5, 60 positions, seed 2027: 5 before, 0 after. The 11 recorded
+  pairs in `tests/data/search_symmetry_pairs.tsv` pass (they fail on the previous `search.rs`). Cause: equal-score
+  moves were ordered by raw square numbers, so the mirror could be searched in a different order; LMR is not
+  the fix (disabling it gives 0/120 but costs 18× the nodes). Bench signature `849a85bf7e8e1eba`, 2,311,407 nodes.
+- F-10 FIXED (LOW): when the reader closed stdout, the next `println!` panicked (`failed printing to stdout: Broken
+  pipe`, exit 101). Found by the audit's pipe probe. All protocol output now uses `out_line!` (`src/lib.rs`), which
+  exits 0 on a failed write. Regression: `protocol_regressions::closed_stdout_ends_the_process_quietly` (fails on
+  the previous code). Scope: the engine has no other way to end on a closed pipe, so this is in scope and fixed.
+- S-08 FIXED (LOW): `go nodes N` overshoot of up to 1,023 nodes came from checking the cap only every 1024 nodes.
+  The node cap is now checked per node. Probe before the fix: N=1000 → 1024 nodes, N=5000 → 5,121. Now exact.
+- Verification of this entry: fmt, clippy, and `cargo test --release --locked` pass on the working tree (see
+  FINAL_AUDIT_PROGRESS.md for the SHA and the exact commands). The Windows artifact and CodeRabbit status are
+  unchanged by this entry (NOT VERIFIED and NOT OBTAINED).

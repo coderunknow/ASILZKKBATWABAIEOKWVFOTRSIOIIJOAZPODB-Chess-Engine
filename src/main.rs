@@ -24,7 +24,9 @@ fn main() {
         Some("bench_eval") => cmd_bench_eval(),
         Some("moves") => cmd_moves(&args[2..]),
         Some("hash") => cmd_hash(&args[2..]),
-        Some("--version") | Some("version") => println!("{ENGINE_NAME} {ENGINE_VERSION}"),
+        Some("--version") | Some("version") => {
+            flawless::out_line!("{ENGINE_NAME} {ENGINE_VERSION}")
+        }
         Some(other) => {
             eprintln!("unknown command: {other}");
             eprintln!("run `{ENGINE_NAME} --help` for the list of commands");
@@ -35,22 +37,24 @@ fn main() {
 
 /// Explicit help (requested with `-h` / `--help`) goes to stdout, exit 0.
 fn print_help() {
-    println!("{ENGINE_NAME} {ENGINE_VERSION} — UCI chess engine");
-    println!();
-    println!("With no arguments, {ENGINE_NAME} starts the UCI protocol loop on stdin/stdout.");
-    println!();
-    println!("usage: {ENGINE_NAME} [command]");
-    println!("  (no command)              UCI mode (same as `uci`)");
-    println!("  uci                       UCI mode");
-    println!("  perft <depth> [fen]       count leaf nodes of the legal-move tree");
-    println!("  divide <depth> [fen]      perft split by root move");
-    println!("  bench                     fixed-depth search benchmark + signature");
-    println!("  eval [fen]                static evaluation breakdown");
-    println!("  bench_eval                evaluation timing benchmark");
-    println!("  moves                     read FENs on stdin, print legal moves");
-    println!("  hash [fen]                print Zobrist hash (FEN arg or stdin)");
-    println!("  version | --version       print the engine version");
-    println!("  -h | --help               print this help");
+    flawless::out_line!("{ENGINE_NAME} {ENGINE_VERSION} — UCI chess engine");
+    flawless::out_line!();
+    flawless::out_line!(
+        "With no arguments, {ENGINE_NAME} starts the UCI protocol loop on stdin/stdout."
+    );
+    flawless::out_line!();
+    flawless::out_line!("usage: {ENGINE_NAME} [command]");
+    flawless::out_line!("  (no command)              UCI mode (same as `uci`)");
+    flawless::out_line!("  uci                       UCI mode");
+    flawless::out_line!("  perft <depth> [fen]       count leaf nodes of the legal-move tree");
+    flawless::out_line!("  divide <depth> [fen]      perft split by root move");
+    flawless::out_line!("  bench                     fixed-depth search benchmark + signature");
+    flawless::out_line!("  eval [fen]                static evaluation breakdown");
+    flawless::out_line!("  bench_eval                evaluation timing benchmark");
+    flawless::out_line!("  moves                     read FENs on stdin, print legal moves");
+    flawless::out_line!("  hash [fen]                print Zobrist hash (FEN arg or stdin)");
+    flawless::out_line!("  version | --version       print the engine version");
+    flawless::out_line!("  -h | --help               print this help");
 }
 
 fn cmd_perft(args: &[String]) {
@@ -77,7 +81,7 @@ fn cmd_perft(args: &[String]) {
     let t = Instant::now();
     let nodes = movegen::perft(&mut pos, depth);
     let dt = t.elapsed();
-    println!(
+    flawless::out_line!(
         "perft({depth}) = {nodes}  ({:.3}s, {:.2}M nodes/s)",
         dt.as_secs_f64(),
         nodes as f64 / dt.as_secs_f64() / 1e6
@@ -105,12 +109,12 @@ fn cmd_divide(args: &[String]) {
     let total: u64 = movegen::perft_divide(&mut pos, depth)
         .iter()
         .map(|(m, n)| {
-            println!("{m}: {n}");
+            flawless::out_line!("{m}: {n}");
             n
         })
         .sum();
     let dt = t.elapsed();
-    println!("total = {total}  ({:.3}s)", dt.as_secs_f64());
+    flawless::out_line!("total = {total}  ({:.3}s)", dt.as_secs_f64());
 }
 
 /// Fixed-depth search benchmark over a fixed set of positions.
@@ -177,7 +181,7 @@ fn cmd_bench() {
         fnv(&DEPTH.to_le_bytes());
         fnv(bm.as_bytes());
         fnv(b"\n");
-        println!(
+        flawless::out_line!(
             "bench [{i:2}]: depth {} score {:6} nodes {} pv {}",
             result.depth,
             result.score_cp,
@@ -192,8 +196,8 @@ fn cmd_bench() {
     }
 
     let dt = t.elapsed().as_secs_f64();
-    println!("bench signature: {signature:016x}");
-    println!(
+    flawless::out_line!("bench signature: {signature:016x}");
+    flawless::out_line!(
         "bench: {} positions at depth {} — {} nodes in {:.2}s ({} nps)",
         positions.len(),
         DEPTH,
@@ -241,7 +245,7 @@ fn cmd_hash(args: &[String]) {
     let mut out = stdout.lock();
     if let Some(fen) = args.first() {
         match Position::from_fen(fen) {
-            Ok(pos) => println!("{:016x}", pos.hash),
+            Ok(pos) => flawless::out_line!("{:016x}", pos.hash),
             Err(e) => {
                 eprintln!("error: {e}");
                 std::process::exit(1);
@@ -282,15 +286,15 @@ fn cmd_eval(args: &[String]) {
     flawless::attack::init_attacks();
     let mut eval = ClassicalEvaluator;
     let b = eval.breakdown(&pos);
-    println!("total      {:>6} cp", b.total);
-    println!("material   {:>6}", b.material);
-    println!("pst        {:>6}", b.pst);
-    println!("mobility   {:>6}", b.mobility);
-    println!("pawns      {:>6}", b.pawns);
-    println!("king_safety{:>6}", b.king_safety);
-    println!("bishop_pair{:>6}", b.bishop_pair);
-    println!("rook_file  {:>6}", b.rook_file);
-    println!("tempo      {:>6}", b.tempo);
+    flawless::out_line!("total      {:>6} cp", b.total);
+    flawless::out_line!("material   {:>6}", b.material);
+    flawless::out_line!("pst        {:>6}", b.pst);
+    flawless::out_line!("mobility   {:>6}", b.mobility);
+    flawless::out_line!("pawns      {:>6}", b.pawns);
+    flawless::out_line!("king_safety{:>6}", b.king_safety);
+    flawless::out_line!("bishop_pair{:>6}", b.bishop_pair);
+    flawless::out_line!("rook_file  {:>6}", b.rook_file);
+    flawless::out_line!("tempo      {:>6}", b.tempo);
 }
 
 fn cmd_bench_eval() {
@@ -310,7 +314,7 @@ fn cmd_bench_eval() {
         for _ in 0..n {
             acc = acc.saturating_add(eval.evaluate(&pos));
         }
-        println!(
+        flawless::out_line!(
             "{:>6} cp  avg over {} evals in {:.3}s ({} ns/eval, checksum {})",
             acc / n,
             n,

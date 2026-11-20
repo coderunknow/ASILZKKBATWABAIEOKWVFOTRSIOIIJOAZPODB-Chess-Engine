@@ -2,7 +2,23 @@
 
 All notable changes are documented here. SemVer 2.0.0. Versions before the V1 release gate are `0.x`.
 
-## [Unreleased] — independent audit remediation (on top of 0.1.0 candidate)
+## [Unreleased] — independent audit remediation (2026-11-20)
+
+- **Fixed (LOW, F-10): closed stdout panicked the engine.** When the reader closed the pipe, the next
+  `println!` panicked with `Broken pipe` (exit 101). All protocol and CLI output now goes through
+  `out_line!`, which exits with status 0. Test: `protocol_regressions::closed_stdout_ends_the_process_quietly`
+  (fails on the previous code with the panic).
+- **Fixed (MEDIUM, S-14): search scores were not colour-symmetric.** Equal-score moves were ordered by raw square
+  numbers, so a position and its mirror could search differently at depth 4 (2 of 40 positions in the first probe,
+  6 of 120 in a later probe). A colour-relative tie-break removes this with no LMR change. Tests:
+  `correctness::search_scores_are_colour_symmetric_on_recorded_pairs` (11 pairs, `tests/data/search_symmetry_pairs.tsv`)
+  and the existing 303-pair static-evaluation check. The bench signature changes to `849a85bf7e8e1eba`.
+- **Fixed (LOW, S-08): `go nodes N` spent up to 1,023 extra nodes.** The cap is now checked on every node in
+  search and quiescence, so the search spends exactly N nodes. Tests: `correctness::node_cap_is_spent_exactly`,
+  `protocol_regressions::go_nodes_limit_is_spent_exactly_and_reported`.
+- **Tests:** `protocol_regressions::ponder_node_cap_is_enforced_after_ponderhit` now asserts the exact cap (20,000)
+  after the first `info depth`. `protocol_regressions::mixed_searchmoves_restricts_to_the_legal_named_move` covers
+  mixed legal and illegal `searchmoves`.
 
 - **Fixed (HIGH): a legal-looking FEN could crash the engine in release builds.** `position fen` accepted
   up to 27 white pieces (`KQQQQQBk/Q5RB/Q6Q/Q6Q/Q6Q/Q6Q/Q1QQ3Q/QR3QQQ w - - 0 1` has 22 queens), overflowing the
@@ -39,7 +55,7 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
   with a forced en passant capture; in CI), `scripts/eval_symmetry_probe.py` (informational search symmetry), and the
   static-evaluation colour-symmetry test over 303 pairs (`tests/data/eval_symmetry_fens.tsv`).
 
-## [0.1.0] — pre-V1 release candidate (2026-11-19, not yet tagged)
+## [0.1.0] — pre-V1 (2026-11-20 audit remediation; tag and Release pending the gates in FINAL_AUDIT_PROGRESS.md)
 
 **Pre-V1. Not v1.0.0. The V1 rating gate is not met and no absolute rating is claimed.**
 Product name: FlawLessChess. UCI engine name: Flawless. Cargo package: `flawless`.

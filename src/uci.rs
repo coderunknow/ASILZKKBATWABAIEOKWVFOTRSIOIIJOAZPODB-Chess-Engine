@@ -113,9 +113,12 @@ fn read_bounded_line<R: BufRead>(
 }
 
 fn print_bestmove(result: &SearchResult) {
+    // The total spent on the search, including any iteration that was aborted by a limit. The
+    // last `info depth` line reports only the last completed iteration (S-08).
+    crate::out_line!("info nodes {}", result.nodes);
     match result.ponder_move {
-        Some(p) => println!("bestmove {} ponder {}", result.best_move, p),
-        None => println!("bestmove {}", result.best_move),
+        Some(p) => crate::out_line!("bestmove {} ponder {}", result.best_move, p),
+        None => crate::out_line!("bestmove {}", result.best_move),
     }
 }
 
@@ -165,7 +168,7 @@ impl UciEngine {
                     eprintln!(
                         "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
                     );
-                    println!(
+                    crate::out_line!(
                         "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
                     );
                     let _ = std::io::stdout().flush();
@@ -194,16 +197,16 @@ impl UciEngine {
         };
         match cmd {
             "uci" => {
-                println!("id name {ENGINE_NAME}");
-                println!("id author coderunknow (Apache-2.0)");
-                println!("option name Hash type spin default 64 min 1 max 1024");
-                println!("option name Threads type spin default 1 min 1 max 1");
-                println!("option name MultiPV type spin default 1 min 1 max 256");
-                println!("uciok");
+                crate::out_line!("id name {ENGINE_NAME}");
+                crate::out_line!("id author coderunknow (Apache-2.0)");
+                crate::out_line!("option name Hash type spin default 64 min 1 max 1024");
+                crate::out_line!("option name Threads type spin default 1 min 1 max 1");
+                crate::out_line!("option name MultiPV type spin default 1 min 1 max 256");
+                crate::out_line!("uciok");
                 let _ = std::io::stdout().flush();
             }
             "isready" => {
-                println!("readyok");
+                crate::out_line!("readyok");
                 let _ = std::io::stdout().flush();
             }
             "ucinewgame" => {
@@ -218,7 +221,7 @@ impl UciEngine {
             "stop" => self.stop_and_join(),
             "ponderhit" => self.cmd_ponderhit(),
             "setoption" => self.cmd_setoption(&tokens[1..]),
-            "register" => println!("registration ok"),
+            "register" => crate::out_line!("registration ok"),
             "debug" => {
                 self.stderr_log = tokens.get(1).map(|&s| s == "on").unwrap_or(false);
             }
@@ -250,7 +253,7 @@ impl UciEngine {
         // is visible instead of silently searching a different position.
         let rejected = |why: String, flag: &mut bool| {
             eprintln!("info string position error: {why}");
-            println!("info string position error: {why}");
+            crate::out_line!("info string position error: {why}");
             *flag = true;
         };
         let base = if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
@@ -293,7 +296,7 @@ impl UciEngine {
     fn cmd_go(&mut self, args: &[&str]) {
         self.stop_and_join();
         if self.position_invalid {
-            println!("bestmove 0000");
+            crate::out_line!("bestmove 0000");
             return;
         }
         let mut movetime: Option<u64> = None;
@@ -436,7 +439,7 @@ impl UciEngine {
             let mut probe = self.pos.clone();
             let legal = generate_legal(&mut probe);
             if legal.len > 0 && !legal.iter().any(|m| named.contains(m)) {
-                println!("info string searchmoves names no legal move in this position; searching all legal moves");
+                crate::out_line!("info string searchmoves names no legal move in this position; searching all legal moves");
             }
         }
         let stop_for_search = stop.clone();
@@ -458,7 +461,7 @@ impl UciEngine {
                 searcher.search_root(&mut pos, search_moves, multi_pv, &mut |progress: &SearchProgress| {
                     let elapsed = start_instant.elapsed().as_millis() as u64;
                     let nps = progress.nodes.saturating_mul(1000).checked_div(elapsed).unwrap_or(progress.nodes);
-                    println!(
+                    crate::out_line!(
                         "info depth {} seldepth {} multipv {} score {} nodes {} nps {} time {} pv {}",
                         progress.depth,
                         progress.seldepth,
@@ -493,15 +496,15 @@ impl UciEngine {
                 Err(_) => {
                     // Search thread panicked; unblock the GUI with a legal fallback.
                     // The marker goes to stdout so GUIs and the match runner can see it.
-                    println!("info string search thread panicked; emitting fallback bestmove");
+                    crate::out_line!("info string search thread panicked; emitting fallback bestmove");
                     eprintln!("info string search thread panicked; emitting fallback bestmove");
                     let _g = flush_for_thread.lock().unwrap();
                     if !hold_for_thread.load(Ordering::Acquire)
                         && !printed_for_thread.swap(true, Ordering::AcqRel)
                     {
                         match fallback_move {
-                            Some(m) => println!("bestmove {m}"),
-                            None => println!("bestmove 0000"),
+                            Some(m) => crate::out_line!("bestmove {m}"),
+                            None => crate::out_line!("bestmove 0000"),
                         }
                         let _ = std::io::stdout().flush();
                     }
@@ -576,8 +579,8 @@ impl UciEngine {
                     worker.consumed.store(true, Ordering::Relaxed);
                     if !worker.printed.swap(true, Ordering::AcqRel) {
                         match worker.fallback {
-                            Some(m) => println!("bestmove {m}"),
-                            None => println!("bestmove 0000"),
+                            Some(m) => crate::out_line!("bestmove {m}"),
+                            None => crate::out_line!("bestmove 0000"),
                         }
                         let _ = std::io::stdout().flush();
                     }
@@ -609,12 +612,14 @@ impl UciEngine {
                     self.tt = Some(TranspositionTable::new(mb));
                 }
                 None => {
-                    println!("info string option Hash expects 1..{MAX_HASH_MB} MiB, got {value:?}")
+                    crate::out_line!(
+                        "info string option Hash expects 1..{MAX_HASH_MB} MiB, got {value:?}"
+                    )
                 }
             },
             "threads" => {
                 if value != "1" {
-                    println!("info string option Threads: this build is single-threaded; value {value:?} ignored (1 thread used)");
+                    crate::out_line!("info string option Threads: this build is single-threaded; value {value:?} ignored (1 thread used)");
                 }
             }
             "multipv" => match value
@@ -623,7 +628,9 @@ impl UciEngine {
                 .filter(|&v| (1..=256).contains(&v))
             {
                 Some(n) => self.multi_pv = n,
-                None => println!("info string option MultiPV expects 1..256, got {value:?}"),
+                None => {
+                    crate::out_line!("info string option MultiPV expects 1..256, got {value:?}")
+                }
             },
             other => {
                 if self.stderr_log {
@@ -660,8 +667,8 @@ impl UciEngine {
                 }
                 if !worker.printed.swap(true, Ordering::AcqRel) {
                     match worker.fallback {
-                        Some(m) => println!("bestmove {m}"),
-                        None => println!("bestmove 0000"),
+                        Some(m) => crate::out_line!("bestmove {m}"),
+                        None => crate::out_line!("bestmove 0000"),
                     }
                 }
             }

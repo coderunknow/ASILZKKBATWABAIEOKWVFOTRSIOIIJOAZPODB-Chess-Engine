@@ -95,7 +95,8 @@ Iterative deepening driver from the root, with:
 - Mate score handling with ply offset; TB-free.
 - Time management: soft/hard limits from `wtime/btime/winc/binc/movestogo`, plus `movetime`, `depth`,
   `nodes`, `infinite`; `stop` and ponder handling with a shared atomic stop flag; node counter checked
-  every 1024 nodes. Stop must be responsive (<50 ms).
+  every 1024 nodes for time and stop; the `nodes` limit is checked on every node, so `go nodes N` spends exactly N
+  nodes. Stop must be responsive (<50 ms).
 - MultiPV: root-level — each iteration records scores for the top-N root moves; aspiration disabled;
   MultiPV=1 path identical to normal search.
 - **Threads**: option exposed, hard-capped at `max 1` in V1 and reported as such; search state is

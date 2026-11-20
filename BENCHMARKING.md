@@ -136,3 +136,14 @@ The initial reduced-suite bytes were rejected by the Python standard-library sel
 - Anchor verification run 44066217113 built the matching PR merge tree: bench signature 141943aa23b3fc68; binary SHA-256 168dc0ab22749f8dc7a6be5248cd7426f9f2bfd3fda8077bc6218959ad6e41d7. This is a source/binary identity, not a strength or throughput comparison.
 - Current RATING-100 power inputs belong to ENGINE-1 SHA-256 9663697da62e33229d516af3681c442e268287c59d6b97ff2cd13256b564d428. The report is now engine-pinned; the generator checks both SCREEN-2 manifests and raw data hashes, and dispatch tooling refuses any binary SHA mismatch. It cannot authorize ENGINE-2.
 - ENGINE-2-specific screening and controls are still absent. No game-count or games/hour performance result has been measured for this candidate.
+
+## 2026-11-20 — S-14 colour-relative move tie-break (current bench reference)
+
+- Change: `relative_move_key` in `src/search.rs` orders equal-score moves by a colour-relative key, so the search
+  no longer depends on the side's raw square numbering. Found by `scripts/eval_symmetry_probe.py` (see FAILURE_LEDGER S-14).
+- Current hosted reference: fixed-depth-10 bench signature `849a85bf7e8e1eba` (12 fixed positions, 2,311,407 nodes
+  in about 6.1 s on the local release build, 380k–391k nps). This replaces `141943aa23b3fc68` as the active reference.
+- Comparison on this change: disabling LMR also makes the depth-4 probe symmetric (0/120), but needs 45,805,850 nodes
+  for the same bench (about 18× more nodes, 117 s). LMR stays enabled.
+- The `141943aa23b3fc68` entry above is historical and is kept unchanged.
+

@@ -4,7 +4,7 @@ An independent, from-scratch chess engine written in Rust. **Not a Stockfish der
 
 - **Engine name (UCI):** `Flawless`
 - **License:** Apache-2.0 (see `LICENSE`)
-- **Product:** FlawLessChess · **UCI engine name:** Flawless · **Cargo package:** `flawless` · **Version:** 0.1.0 (pre-V1 release candidate, not yet tagged)
+- **Product:** FlawLessChess · **UCI engine name:** Flawless · **Cargo package:** `flawless` · **Version:** 0.1.0 (pre-V1; tag and GitHub Release pending the gates in FINAL_AUDIT_PROGRESS.md)
 - **Status:** pre-V1 (`0.x`). V1 gates NOT met — and **no calibrated absolute rating exists in
   either direction** (it has not been measured; see `STATUS.md`). In-sandbox relative probes vs pinned
   Stockfish 19 WASM (e.g. ~0.44–0.53 score vs Skill 5) are internal trend signals only, never an Elo

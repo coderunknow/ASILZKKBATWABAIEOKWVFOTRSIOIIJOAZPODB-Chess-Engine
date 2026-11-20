@@ -453,3 +453,14 @@ DRAFT ONLY — no code changes under this entry.
 - Decision: (c). A null move answers nothing in a position that has legal moves. Refusing leaves the GUI with no move. Widening keeps the engine playing, and the widening is announced on stdout with `info string searchmoves names no legal move in this position; searching all legal moves` before the search starts.
 - Known departure: the UCI text says `searchmoves` restricts the search. In this one case it does not. The departure is documented in README (Known limitations) and tested: `illegal_only_searchmoves_still_returns_a_legal_move` asserts the notice; `legal_searchmoves_are_respected_without_widening_notice` is the control.
 - Revisit if a GUI reports a problem with widening; the alternative is option (b).
+
+## 2026-11-20 — Output on a closed stdout ends quietly; search node cap is exact
+
+- Question: when the GUI or reader closes stdout, should the engine panic (Rust `println!` default) or exit?
+- Decision: exit with status 0 and no panic message. The `out_line!` macro is the only output path for protocol
+  and CLI text. A GUI that has closed the pipe no longer needs the engine, so a panic adds only a nonzero exit
+  and noise on stderr. Errors and diagnostics still go to stderr through `eprintln!`, which is unchanged.
+- Question: should `go nodes N` spend exactly N nodes, or stop at the 1024-node check cadence?
+- Decision: exactly N. The cap is checked on every node in search and quiescence, so UCI output and the bench
+  reflect the requested limit. The cost is one comparison per node, and the bench change (`849a85bf7e8e1eba`) includes it.
+- Related: S-14 colour symmetry fixed by a colour-relative move tie-break, not by disabling LMR (LMR off costs 18× the nodes).

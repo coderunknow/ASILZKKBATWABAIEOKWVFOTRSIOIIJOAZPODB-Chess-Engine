@@ -315,12 +315,13 @@ fn legal_searchmoves_are_respected_without_widening_notice() {
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
 
-/// Regression (AUDIT-SEARCH-03, prior report S-07): `go ponder nodes N` must still honour the node
-/// cap after `ponderhit`. The ponder search is unlimited until `ponderhit`, so the cap is checked
-/// only once the hit arrives; with `ponderhit` sent immediately the search must end close to N.
+/// Regression (AUDIT-SEARCH-03, prior report S-07): `go ponder nodes N` must honour the node cap
+/// after `ponderhit`, and must spend it exactly (S-08). The ponder search is unlimited until the
+/// hit, so the hit is sent only after the first `info depth` line: the node count at the hit is
+/// then far below the cap, and the search must end at exactly CAP nodes.
 #[test]
 fn ponder_node_cap_is_enforced_after_ponderhit() {
-    const CAP: u64 = 5_000;
+    const CAP: u64 = 20_000;
     let mut e = Engine::start();
     e.send("uci");
     e.read_until("uciok", Duration::from_secs(10));
@@ -328,25 +329,100 @@ fn ponder_node_cap_is_enforced_after_ponderhit() {
     e.read_until("readyok", Duration::from_secs(10));
     e.send("position startpos moves e2e4 e7e5");
     e.send(&format!("go ponder nodes {CAP}"));
+    let before_hit = e.read_until("info depth", Duration::from_secs(20));
+    let first = before_hit.last().expect("first info line");
+    let nodes_at_hit = info_nodes(first).expect("nodes on first info line");
+    assert!(
+        nodes_at_hit < CAP,
+        "precondition: hit must arrive below the cap ({nodes_at_hit} >= {CAP})"
+    );
     e.send("ponderhit");
     let lines = e.read_until("bestmove", Duration::from_secs(20));
-    let last_nodes = lines
+    let final_nodes = lines
         .iter()
-        .filter(|l| l.starts_with("info depth"))
-        .filter_map(|l| {
-            let mut it = l.split_whitespace();
-            while let Some(tok) = it.next() {
-                if tok == "nodes" {
-                    return it.next().and_then(|n| n.parse::<u64>().ok());
-                }
-            }
-            None
-        })
+        .filter_map(|l| l.strip_prefix("info nodes "))
+        .filter_map(|n| n.trim().parse::<u64>().ok())
         .next_back()
-        .expect("at least one info line with nodes");
+        .expect("final `info nodes` line before bestmove");
+    assert_eq!(
+        final_nodes, CAP,
+        "ponder search after ponderhit spent {final_nodes} nodes, cap is {CAP}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Returns the `nodes` value of an `info ... nodes N ...` line.
+fn info_nodes(line: &str) -> Option<u64> {
+    let mut it = line.split_whitespace();
+    while let Some(tok) = it.next() {
+        if tok == "nodes" {
+            return it.next().and_then(|n| n.parse().ok());
+        }
+    }
+    None
+}
+
+/// Regression (S-08): `go nodes N` spends exactly N nodes, reported on the final `info nodes` line
+/// before `bestmove`. N = 1 is below the cost of depth 1: no iteration completes, so the bestmove
+/// is the first legal move (unsearched), and the count is still exact.
+#[test]
+fn go_nodes_limit_is_spent_exactly_and_reported() {
+    const START_LEGAL: [&str; 20] = [
+        "a2a3", "a2a4", "b2b3", "b2b4", "c2c3", "c2c4", "d2d3", "d2d4", "e2e3", "e2e4", "f2f3",
+        "f2f4", "g2g3", "g2g4", "h2h3", "h2h4", "b1a3", "b1c3", "g1f3", "g1h3",
+    ];
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    for &n in &[1u64, 1000, 5000, 20000] {
+        e.send("ucinewgame");
+        e.send("isready");
+        e.read_until("readyok", Duration::from_secs(10));
+        e.send("position startpos");
+        e.send(&format!("go nodes {n}"));
+        let lines = e.read_until("bestmove", Duration::from_secs(30));
+        let reported = lines
+            .iter()
+            .filter_map(|l| l.strip_prefix("info nodes "))
+            .filter_map(|v| v.trim().parse::<u64>().ok())
+            .next_back()
+            .unwrap_or_else(|| panic!("no final `info nodes` for go nodes {n}: {lines:?}"));
+        assert_eq!(reported, n, "go nodes {n} reported {reported} nodes");
+        let mv = bestmove_line(&lines)
+            .trim_start_matches("bestmove ")
+            .split(' ')
+            .next()
+            .unwrap();
+        assert!(
+            START_LEGAL.contains(&mv),
+            "go nodes {n}: bestmove {mv} is not legal"
+        );
+    }
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (F-09 revalidation): with `searchmoves` naming a legal move and an illegal one, the
+/// restriction applies to the legal move only. The illegal name is ignored silently, and the
+/// result must be the named legal move.
+#[test]
+fn mixed_searchmoves_restricts_to_the_legal_named_move() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position startpos");
+    e.send("go depth 2 searchmoves e2e5 d2d4");
+    let lines = e.read_until("bestmove", Duration::from_secs(20));
     assert!(
-        last_nodes <= 10 * CAP,
-        "ponder search ran {last_nodes} nodes with a cap of {CAP}"
+        !lines
+            .iter()
+            .any(|l| l.starts_with("info string searchmoves names no legal move")),
+        "mixed searchmoves with a legal move must not widen: {lines:?}"
+    );
+    let bm = bestmove_line(&lines);
+    assert_eq!(
+        bm.split(' ').nth(1),
+        Some("d2d4"),
+        "searchmoves e2e5 d2d4 must return d2d4, got {bm}"
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
@@ -374,4 +450,56 @@ fn threads_other_than_one_is_reported_on_stdout() {
         "Threads 4 was not reported on stdout: {lines:?}"
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (F-10): when the reader closes stdout, the engine must end quietly with status 0.
+/// Before the `out_line!` macro, the next `println!` panicked on `Broken pipe` (exit 101 and a
+/// panic message on stderr).
+#[test]
+fn closed_stdout_ends_the_process_quietly() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::Stdio;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flawless"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn engine");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let mut reader = BufReader::new(child.stdout.take().expect("stdout"));
+    writeln!(stdin, "uci").expect("write uci");
+    stdin.flush().expect("flush");
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let n = reader.read_line(&mut line).expect("read");
+        assert!(n > 0, "engine ended before uciok");
+        if line.trim() == "uciok" {
+            break;
+        }
+    }
+    drop(reader); // the reader is gone: the next engine output hits a broken pipe
+    let _ = writeln!(stdin, "isready");
+    let _ = stdin.flush();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(st) = child.try_wait().expect("try_wait") {
+            break st;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "engine did not exit after stdout closed"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let mut stderr = String::new();
+    if let Some(mut e) = child.stderr.take() {
+        use std::io::Read;
+        let _ = e.read_to_string(&mut stderr);
+    }
+    assert_eq!(status.code(), Some(0), "exit status after closed stdout");
+    assert!(
+        !stderr.contains("panicked"),
+        "engine panicked on closed stdout: {stderr}"
+    );
 }
