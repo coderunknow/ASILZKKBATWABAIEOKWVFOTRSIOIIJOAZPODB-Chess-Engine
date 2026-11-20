@@ -196,6 +196,17 @@ def t_en_passant_capture():
         assert mv == want, f"expected en passant {want}, got {mv}"
         e.send("quit"); assert e.close() == 0
 
+def t_searchmoves_only_illegal_moves():
+    """`go searchmoves` naming only illegal moves must still answer with a legal move.
+    Regression: the engine used to print `bestmove 0000` here."""
+    e = Eng(); e.send("uci"); e.until(lambda l: l == "uciok", 10, "uciok")
+    e.send("position startpos"); e.send("go depth 2 searchmoves e2e5")
+    lines = e.until(lambda l: l.startswith("bestmove"), 20, "bestmove")
+    mv = bestmove_of(lines)
+    assert mv != "0000", "null bestmove although the start position has legal moves"
+    legal_check([], mv)
+    e.send("quit"); assert e.close() == 0
+
 def t_stalemate_position_no_legal_move():
     # Black to move, stalemated: engine must not invent a move; it should report bestmove 0000 or none.
     e = Eng(); e.send("uci"); e.until(lambda l: l == "uciok", 10, "uciok")
@@ -214,7 +225,8 @@ for name, fn in [("handshake", t_handshake), ("no banner", t_no_banner_on_stdout
                  ("infinite+stop", t_infinite_stop), ("quit during infinite", t_quit_during_infinite),
                  ("setoption/junk tolerant", t_setoption_and_unknown),
                  ("position fen promo", t_fen_position), ("stalemate", t_stalemate_position_no_legal_move),
-                 ("en passant capture", t_en_passant_capture)]:
+                 ("en passant capture", t_en_passant_capture),
+                 ("searchmoves illegal only", t_searchmoves_only_illegal_moves)]:
     check(name, fn)
 
 for n, s, d in results:
