@@ -213,3 +213,28 @@ NOT RELEASED. PR #4 is NOT merged. Tag `v0.1.0` and the GitHub Release "FlawLess
 All other gates pass on `7d5b489`. G5 local gates pass on `7d5b489`. G6 MSRV 1.80 passes in CI on `7d5b489`. G4 GUI is N/A.
 
 Note on SHAs: the ledger commit that records this phase changes only `FINAL_AUDIT_PROGRESS.md`. The source tree is identical to `7d5b489`; check with `git diff --stat 7d5b489 HEAD`.
+
+## Phase J — CodeRabbit findings on 7d5b489, fixes, and final-head gates on c6fc956 (release still blocked)
+
+Commits: `7d5b489` (Phase I source) → `6102643` (Phase I ledger, docs only) → `c4fb22f` (CodeRabbit fixes) → `c6fc956` (CI fix for the closed-stdout test). This phase's ledger commit changes only `FINAL_AUDIT_PROGRESS.md`, `FAILURE_LEDGER.md`, `CHANGELOG.md`, and the audit document's action items; `git diff --stat c6fc956 HEAD` shows which.
+
+**CodeRabbit review on 7d5b489 (obtained, 14:37Z, 4 actionable + 1 outside-diff comments, all checked against the code):**
+- F-11 oversized input line dropped without marking the position invalid (valid, LOW). Fixed in `src/uci.rs`: a dropped line sets `position_invalid`; a later valid `position` clears it. Test `oversized_position_line_does_not_leave_the_old_position_in_use` fails on the `7d5b489` source and passes now.
+- T-01 ponder test asserted an exact count, but the search is uncapped until `ponderhit` is processed (valid, timing-dependent). The test now asserts termination and a monotonic node count. Exact caps are asserted in the non-ponder tests.
+- T-02 closed-stdout test read the handshake without a deadline and had no kill-on-failure (valid). It now uses the bounded `Engine` harness; `Engine::drop` kills the child.
+- D-01 audit document's action items named the superseded head `c64b743` (valid, Major). Updated to refer to the final release commit; the historical gate table is unchanged.
+- The Phase H "Note on SHAs" claimed current HEAD was source-identical to `8370bed` (valid). Corrected.
+
+**CI failure on c4fb22f (CI-1):** `Tests (release)` failed on ubuntu-latest (exit 101) and windows-latest (exit 1); msrv, the Windows artifact job, and anchor-verify passed. Logs could not be downloaded (results host EOF) and a rerun was refused (HTTP 403). Cause, inferred from the code and not reproduced: the rewritten closed-stdout test sent three `isready` lines after closing the reader. One read can drain all three `readyok` lines, leaving the engine with nothing to write after the close, so it waits on stdin and never exits. Fix in `c6fc956`: keep sending `isready` until the engine exits. Evidence: 30/30 isolated runs of the test pass; 12 and 10 runs of the protocol suite pass (idle and under CPU load); the full release suite passes; CI on `c6fc956` passes. The CI-1 cause is inferred, and CI passing on `c6fc956` is the only evidence that the fix works.
+
+**Final-head local gates on `c6fc956`** (`/tmp/gates/run_final.sh`, `summary.txt` shows `commit c6fc956…` and `dirty_files 0`; every step rc=0 through DONE): fmt; clippy release and debug (0 warnings); `cargo build --release --locked`; `cargo test --release --locked` (22, 3, 39, 11, 13, 11 passed); `cargo test --locked`; the `scripts/test_*.py` suites (rating_estimator: 65 checks passed, 0 failed; the `FAIL null control` lines are its negative-control fixtures); verify_opening_subsets; power_analysis; bench `849a85bf7e8e1eba` (2,311,407 nodes); perft 3 = 8902; uci_bestmove_smoke; uci_protocol_probe; uci_malformed_probe (37/37); selfplay; fullgame_en_passant (PASS); resource_probe; fuzz_uci_grammar seeds 9 and 21 (0 failures); fuzz_legal_differential seeds 1 and 7 (RESULT PASS).
+
+**CI on `c6fc956`:** run 44757861918 (CI) success: ubuntu-latest, windows-latest, msrv (rust 1.80), windows x64 release artifact all success. Run 44757861893 (anchor-verify) success.
+
+**Windows artifact `flawless-windows-x64-c6fc956e74c28df82682c67eaa76b27a31183ca0`** (artifact 14640410894, 206,468 bytes, not expired; run 44757861918): `gh run download` failed on the first attempt and on the single allowed retry (EOF from the blob host). **G3 NOT VERIFIED** for `c6fc956`. The manifest and SHA256 were not inspected.
+
+**CodeRabbit on `c6fc956`:** review requested on PR #4 (comment at 14:57Z-ish, head stated in the comment). Result: "Review rate limited" (check run `completed neutral`, title "Review rate limited"; steps skipped). No review for `c4fb22f` or `c6fc956` exists. **G2 NOT OBTAINED** for the final head. The earlier review on `7d5b489` is real and its findings are addressed above; it is not a review of the final head.
+
+**Gate summary for the final head `c6fc956`:** G1 CI PASS. G2 CodeRabbit NOT OBTAINED (rate-limited). G3 Windows artifact NOT VERIFIED (EOF). G4 GUI N/A. G5 local gates PASS. G6 MSRV 1.80 PASS in CI.
+
+**Release decision:** NOT RELEASED. PR #4 is NOT merged. No tag `v0.1.0`, no GitHub Release. Open gates: G2 and G3. Next check: when CodeRabbit posts a review with `commit_id` `c6fc956`, triage it; if its findings change source, that is a new SHA and the full gate set and CI run again. The Windows artifact needs a network that can reach the blob host, or the user verifies it directly.
