@@ -491,3 +491,12 @@ Triage (each checked against the code):
 - En passant: `t_en_passant_capture` added to scripts/uci_protocol_probe.py. It forces the engine's root with `go searchmoves` to a single en passant capture (two positions: after 1.e4 a6 2.e5 d5, and the FEN with ep square f6). The test setup is checked with python-chess (both are legal en passant). Fake engine correctly FAILs it.
 
 Still unverified in this session: the Windows GUI test (needs a human and Windows), the Windows artifact (blob EOF on every attempt), and any run of the real engine on this head beyond CI.
+
+## 2026-11-20 — CodeRabbit review of 8db4b09 (3 actionable + 1 nitpick): triage
+
+- tests/movetime_smoke.rs bare `go ponder`: the test never sent ponderhit, so the zero-clock fallback was not covered → FIXED (ponderhit, bounded silence, stop, readyok barrier, exactly one bestmove). CI-verified only.
+- scripts/uci_protocol_probe.py close(): stdin was closed before waiting, so an engine that ignores quit but exits on EOF passed → FIXED (wait for exit first, then close stdin). Fake-engine check: an engine that ignores quit is now caught in 7 cases.
+- scripts/uci_protocol_probe.py movetime: the result was not checked for legality → FIXED (legal_check from the start position).
+- STATUS.md: the linked audit only records results through 07b68a8 → FIXED (wording marks it historical; current-head evidence points to the release-candidate report).
+
+Environment: the sandbox was reset again. /tmp venv and fake-engine harness were rebuilt. The repo working tree was intact. A stray file created by a failed command was removed.

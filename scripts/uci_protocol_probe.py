@@ -45,13 +45,16 @@ class Eng:
             seen.append(l)
             if pred(l): return seen
     def close(self):
-        """Quit-by-EOF, wait bounded, drain every stdout line, then validate all of them."""
-        try: self.p.stdin.close()
-        except OSError: pass
+        """Wait (bounded) for the engine to exit on its own after `quit`; only then close stdin.
+        Closing stdin first would let EOF end an engine that ignores `quit`, hiding the failure.
+        Then drain every stdout line and validate all of them."""
         try:
             code = self.p.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            self.p.kill(); self.p.wait(); raise AssertionError("engine did not exit after stdin EOF")
+            self.p.kill(); self.p.wait(); raise AssertionError("engine did not exit after quit")
+        finally:
+            try: self.p.stdin.close()
+            except OSError: pass
         self.reader.join(5)
         if self.reader.is_alive():
             raise AssertionError("stdout not drained after exit")
@@ -130,6 +133,7 @@ def t_movetime():
     # only the upper bound is asserted here (the tight tolerance lives in tests/movetime_smoke.rs).
     # Shared CI runners are noisy; the tight 80%-300ms tolerance lives in tests/movetime_smoke.rs.
     assert dt < 1.5, f"movetime 300ms returned after {dt:.3f}s (overrun)"
+    legal_check([], bestmove_of(lines))  # the movetime result must be legal from the start position
     e.send("quit"); assert e.close() == 0
 
 def t_infinite_stop():

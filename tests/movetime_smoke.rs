@@ -395,23 +395,38 @@ fn ponder_movetime_ponderhit_keeps_the_movetime_deadline() {
 
 #[test]
 fn bare_go_ponder_keeps_searching_until_stop() {
-    // A bare `go ponder` has no time limit: it must not answer on its own. Only `stop`
-    // (or ponderhit followed by stop) ends it.
+    // A bare `go ponder` has no time limit: it must not answer on its own, and `ponderhit`
+    // must not give it one either (no clock was sent, so the fallback must not install a
+    // zero-clock deadline). Only `stop` ends it.
     let _serial = timing_lock();
     let mut e = Engine::spawn();
     e.handshake();
     e.position(START_FEN);
     e.send("go ponder");
+    thread::sleep(Duration::from_millis(400));
+    e.drain();
+    assert!(
+        !e.seen.iter().any(|l| l.starts_with("bestmove")),
+        "bare go ponder answered before ponderhit"
+    );
+    e.send("ponderhit");
     thread::sleep(Duration::from_millis(800));
     e.drain();
     assert!(
         !e.seen.iter().any(|l| l.starts_with("bestmove")),
-        "bare go ponder answered without stop"
+        "bare go ponder answered after ponderhit without stop"
     );
     e.send("stop");
     e.until(Duration::from_secs(2), "bestmove after stop", |l| {
         l.starts_with("bestmove")
     });
+    // readyok is sent after any bestmove still owed, so counting after it detects duplicates.
+    e.send("isready");
+    e.until(Duration::from_secs(2), "readyok after stop", |l| {
+        l == "readyok"
+    });
+    let bms = e.seen.iter().filter(|l| l.starts_with("bestmove")).count();
+    assert_eq!(bms, 1, "expected exactly one bestmove");
     e.quit_and_expect_exit(Duration::from_secs(5));
 }
 
