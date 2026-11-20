@@ -466,3 +466,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Fix: `fixed_time` flag disables the prediction stop for fixed-time searches only. Clock searches unchanged.
 - Regression: `tests/movetime_smoke.rs` (restoring the old rule makes 2 tests fail: `movetime_uses_its_budget_within_tolerance` at 81 ms for 200 ms, and `repeated_movetime_searches_in_one_process`).
 - Note: an earlier measurement of this symptom used `quit` in the same input as `go`, which is an invalid method (see the entry above). The fixed numbers use interactive waits.
+
+## 2026-11-19 — FIXED: ponderhit answered at once after `go ponder movetime N`
+
+- Root cause: `cmd_go` stored `last_clocks` on every `go`, including zeros when no clock was sent; `ponderhit` then recalculated a budget of about 20 ms from those zeros. Measured 1 ms (movetime ponder) on the candidate head before the fix.
+- Severity: medium (ponder with GUIs that send `go ponder movetime`).
+- Regression: `ponder_movetime_ponderhit_keeps_the_movetime_deadline` (fails on the previous uci.rs).

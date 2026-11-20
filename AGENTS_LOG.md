@@ -454,3 +454,11 @@
 - `scripts/windows_artifact.py`: manifest now records `product`, `package_version`, `engine_version_output`; the exe must report `Flawless <Cargo version>`.
 - Gates run locally on this tree: fmt, clippy `--all-targets -D warnings`, `cargo test --release --locked` (all suites green), build, bench `141943aa23b3fc68`, perft d3 8902 / d4 197281, diftest 2321/0, 6 full games (all legal), 10/10 UCI probes, 37/37 malformed, Python harness suites (test_match 111/0, estimator 65/0, etc.).
 - Not done: merge, tag, release, asset upload; independent AI review (pending the user's decision).
+
+## 2026-11-19 — audit fixes on the release-candidate tree (uncommitted at time of writing)
+
+- src/uci.rs: `ponderhit` budget collapse after `go ponder movetime N` (regression test added; fails on the previous uci.rs).
+- scripts/uci_malformed_probe.py: `go` lines now wait for `bestmove` before `quit`; unlimited searches (unparseable limits) are ended by `stop` and labelled as such.
+- scripts/windows_artifact.py: git identity check fails closed; release profile read from Cargo.toml; version read from the [package] table only. Unit tests added (one caught a dropped hyphenated key before it shipped).
+- scripts/uci_protocol_probe.py: python-chess required; stderr drained; dead code and stale comment removed.
+- tests/movetime_smoke.rs: timing tests serialised with a static mutex.

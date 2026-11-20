@@ -145,6 +145,36 @@ class DepthEvidence(unittest.TestCase):
 
 
 
+class CargoMetadata(unittest.TestCase):
+    def test_package_version_read_from_package_table_only(self):
+        text = '[package]\nname = "x"\nversion = "9.8.7"\n\n[dependencies]\nversion = "1.0"\n'
+        orig = wa.cargo_toml_text
+        try:
+            wa.cargo_toml_text = lambda: text
+            self.assertEqual(wa.cargo_package_version(), "9.8.7")
+            wa.cargo_toml_text = lambda: '[package]\nname = "x"\n\n[dependencies]\nversion = "1.0"\n'
+            with self.assertRaises(wa.CheckError):
+                wa.cargo_package_version()
+        finally:
+            wa.cargo_toml_text = orig
+
+    def test_release_profile_is_read_not_hard_coded(self):
+        text = '[profile.release]\nlto = "fat"\ncodegen-units = 1\npanic = "unwind"  # keep unwind\n'
+        orig = wa.cargo_toml_text
+        try:
+            wa.cargo_toml_text = lambda: text
+            line = wa.release_profile_manifest_line()
+            self.assertIn("lto=fat", line)
+            self.assertIn("codegen-units=1", line)
+            self.assertIn("panic=unwind", line)
+            self.assertNotIn("debug=", line)  # absent from the table, so not claimed
+        finally:
+            wa.cargo_toml_text = orig
+
+    def test_real_repository_values(self):
+        self.assertRegex(wa.cargo_package_version(), r"^\d+\.\d+\.\d+")
+        self.assertIn("lto=fat", wa.release_profile_manifest_line())
+
 FAKE_ENGINE = r'''
 import os, sys
 mode = os.environ.get("FAKE_MODE", "")

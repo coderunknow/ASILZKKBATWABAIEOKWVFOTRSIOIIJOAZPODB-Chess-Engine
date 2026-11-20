@@ -5,7 +5,7 @@ Each case is one interactive session: send the hostile line, then `isready`, exp
 within a bounded time, then `quit` (exit 0). A panic shows up as a non-zero exit or a
 'panicked' message on stderr. Usage: python3 scripts/uci_malformed_probe.py <exe>
 """
-import subprocess, sys, time
+import queue, subprocess, sys, threading, time
 
 EXE = sys.argv[1]
 CASES = [
@@ -49,19 +49,84 @@ CASES = [
 ]
 
 def run(line):
+    """One interactive session. `go` lines are followed by a wait for `bestmove` (bounded)
+    before `quit`; sending `go` and `quit` in one burst lets quit stop the search at depth 0,
+    which would hide a missing or illegal bestmove."""
     p = subprocess.Popen([EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out_lines, err_chunks = [], []
+    threading.Thread(target=lambda: err_chunks.append(p.stderr.read()), daemon=True).start()
+    q = queue.Queue()
+    def reader():
+        for raw in iter(p.stdout.readline, b""):
+            q.put(raw.decode("utf-8", "replace").rstrip("\r\n"))
+        q.put(None)
+    threading.Thread(target=reader, daemon=True).start()
+
+    def send(s):
+        p.stdin.write((s + "\n").encode("utf-8", "replace")); p.stdin.flush()
+
+    def until(pred, timeout):
+        end = time.monotonic() + timeout
+        while True:
+            r = end - time.monotonic()
+            if r <= 0:
+                return None
+            try:
+                l = q.get(timeout=min(r, 0.2))
+            except queue.Empty:
+                continue
+            if l is None:
+                return None
+            out_lines.append(l)
+            if pred(l):
+                return l
+
+    def finish(status):
+        err = b"".join(err_chunks).decode("utf-8", "replace") if err_chunks else ""
+        return status, "\n".join(out_lines), err
+
     try:
-        out, err = p.communicate(input=(f"uci\n{line}\nisready\nquit\n").encode("utf-8", "replace"), timeout=20)
-    except subprocess.TimeoutExpired:
-        p.kill(); return "HANG", "", ""
-    out = out.decode("utf-8", "replace"); err = err.decode("utf-8", "replace")
-    if p.returncode != 0:
-        return f"EXIT {p.returncode}", out, err
-    if "panicked" in err.lower() or "panic" in err.lower():
+        send("uci")
+        if until(lambda l: l == "uciok", 10) is None:
+            p.kill(); return finish("NO_UCIOK")
+        send(line)
+        is_go = line.split()[:1] == ["go"]
+        if is_go:
+            send("isready")
+            if until(lambda l: l == "readyok", 10) is None:
+                p.kill(); return finish("EOF_BEFORE_READYOK")
+            # A search with no effective limit (an unparseable depth/movetime/searchmoves is
+            # treated as absent) runs until `stop`. Give limited searches 2 s to answer on their
+            # own; otherwise send `stop` and require the bestmove afterwards.
+            got = until(lambda l: l.startswith("bestmove"), 2)
+            stopped = False
+            if got is None:
+                send("stop")
+                stopped = True
+                got = until(lambda l: l.startswith("bestmove"), 15)
+            if got is None:
+                p.kill(); return finish("NO_BESTMOVE")
+            if stopped:
+                out_lines.append("# probe-note: unlimited search ended by stop")
+            if got.split()[1:2] == []:
+                p.kill(); return finish("EMPTY_BESTMOVE")
+        send("isready")
+        if until(lambda l: l == "readyok", 10) is None:
+            p.kill(); return finish("NO_READYOK")
+        send("quit")
+        try:
+            code = p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            p.kill(); return finish("HANG")
+    finally:
+        if p.poll() is None:
+            p.kill()
+    status, out, err = finish("OK")
+    if code != 0:
+        return f"EXIT {code}", out, err
+    if "panic" in err.lower():
         return "PANIC", out, err
-    if "readyok" not in out:
-        return "NO_READYOK", out, err
-    bad = [l for l in out.splitlines() if l and not l.startswith(("id ", "option ", "uciok", "readyok", "info ", "bestmove "))]
+    bad = [l for l in out.splitlines() if l and not l.startswith(("id ", "option ", "uciok", "readyok", "info ", "bestmove ", "# probe-note"))]
     if bad:
         return f"NON_UCI_STDOUT {bad[:2]}", out, err
     return "OK", out, err

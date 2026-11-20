@@ -7,10 +7,14 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
 **Pre-V1. Not v1.0.0. The V1 rating gate is not met and no absolute rating is claimed.**
 Product name: FlawLessChess. UCI engine name: Flawless. Cargo package: `flawless`.
 
-- **Fixed: `go movetime N` returned after only 39–100% of N.** Iterative deepening stopped on a
+- **Fixed: `go movetime N` returned after only 39–100% of N (measured on this branch's pre-fix search code).** Iterative deepening stopped on a
   growth prediction that was meant only for clock budgets. A fixed-time search now runs until the
   requested time (measured 100–101% of N at 300, 1000 and 3000 ms). Clock-based searches are unchanged.
   Regression tests: `tests/movetime_smoke.rs` (real process, interactive waits; fails on the old rule).
+- **Fixed: `ponderhit` answered immediately after `go ponder movetime N` or a clock-free `go ponder`.**
+  `last_clocks` was recorded on every `go` (zeros when no clock was sent), so `ponderhit` recalculated
+  a ~20 ms budget. A movetime ponder now keeps its deadline; a bare `go ponder` waits for `stop`.
+  Regression tests: `ponder_movetime_ponderhit_keeps_the_movetime_deadline`, `bare_go_ponder_keeps_searching_until_stop`.
 - **Fixed: no-argument launch starts UCI mode** (see the next section).
 - **Added:** `tests/movetime_smoke.rs` (8 real-process timing and lifecycle tests); CI steps for
   `scripts/uci_protocol_probe.py`, `scripts/uci_malformed_probe.py` and `scripts/selfplay_games.py`

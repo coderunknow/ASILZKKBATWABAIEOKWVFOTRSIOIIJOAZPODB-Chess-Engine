@@ -11,8 +11,17 @@
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// Timing tests run one at a time: cargo runs test functions in parallel, and several engines
+/// competing for a 2-vCPU runner would skew the measured search times.
+static TIMING: Mutex<()> = Mutex::new(());
+
+fn timing_lock() -> MutexGuard<'static, ()> {
+    TIMING.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -186,6 +195,7 @@ fn assert_legal_startpos(mv: &str) {
 
 #[test]
 fn movetime_uses_its_budget_within_tolerance() {
+    let _serial = timing_lock();
     // Before the fix, a 1000 ms movetime often returned after 400-600 ms. Require the search to
     // run for at least 80% of the budget and to finish within 300 ms of it.
     for mt in [200u64, 500, 1000] {
@@ -209,6 +219,7 @@ fn movetime_uses_its_budget_within_tolerance() {
 
 #[test]
 fn movetime_bestmove_reports_a_completed_iteration() {
+    let _serial = timing_lock();
     let mut e = Engine::spawn();
     e.handshake();
     e.position(START_FEN);
@@ -226,6 +237,7 @@ fn movetime_bestmove_reports_a_completed_iteration() {
 
 #[test]
 fn very_short_movetime_still_returns_a_legal_move() {
+    let _serial = timing_lock();
     for mt in [1u64, 10] {
         let mut e = Engine::spawn();
         e.handshake();
@@ -239,6 +251,7 @@ fn very_short_movetime_still_returns_a_legal_move() {
 
 #[test]
 fn explicit_stop_ends_a_long_movetime_promptly() {
+    let _serial = timing_lock();
     let mut e = Engine::spawn();
     e.handshake();
     e.position(START_FEN);
@@ -259,6 +272,7 @@ fn explicit_stop_ends_a_long_movetime_promptly() {
 
 #[test]
 fn quit_during_movetime_exits_cleanly_and_promptly() {
+    let _serial = timing_lock();
     let mut e = Engine::spawn();
     e.handshake();
     e.position(START_FEN);
@@ -271,6 +285,7 @@ fn quit_during_movetime_exits_cleanly_and_promptly() {
 
 #[test]
 fn infinite_then_stop_returns_one_legal_bestmove() {
+    let _serial = timing_lock();
     let mut e = Engine::spawn();
     e.handshake();
     e.position(START_FEN);
@@ -293,6 +308,7 @@ fn infinite_then_stop_returns_one_legal_bestmove() {
 
 #[test]
 fn repeated_movetime_searches_in_one_process() {
+    let _serial = timing_lock();
     let mut e = Engine::spawn();
     e.handshake();
     let mut moves = vec![];
@@ -312,6 +328,7 @@ fn repeated_movetime_searches_in_one_process() {
 
 #[test]
 fn terminal_positions_return_null_move_promptly() {
+    let _serial = timing_lock();
     // Checkmated and stalemated sides have no legal move: UCI answers `bestmove 0000`.
     for fen in [
         "R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1",
@@ -325,4 +342,57 @@ fn terminal_positions_return_null_move_promptly() {
         assert!(dt < Duration::from_secs(1), "terminal position took {dt:?}");
         e.quit_and_expect_exit(Duration::from_secs(5));
     }
+}
+
+#[test]
+fn ponder_movetime_ponderhit_keeps_the_movetime_deadline() {
+    // Regression: `ponderhit` used to recalculate the budget from zero clocks (~20 ms), so the
+    // search stopped at once. The movetime deadline counts from the start of the search, so a
+    // `ponderhit` at ~300 ms of a 1000 ms movetime must answer about 700 ms later.
+    let _serial = timing_lock();
+    let mut e = Engine::spawn();
+    e.handshake();
+    e.position(START_FEN);
+    e.send("go ponder movetime 1000");
+    thread::sleep(Duration::from_millis(300));
+    assert!(
+        !e.seen.iter().any(|l| l.starts_with("bestmove")),
+        "bestmove before ponderhit"
+    );
+    let start = Instant::now();
+    e.send("ponderhit");
+    e.until(Duration::from_secs(5), "bestmove after ponderhit", |l| {
+        l.starts_with("bestmove")
+    });
+    let ms = start.elapsed().as_millis() as u64;
+    assert!(
+        ms >= 300,
+        "ponderhit answered after only {ms} ms (budget collapsed)"
+    );
+    assert!(
+        ms <= 1100,
+        "ponderhit answered after {ms} ms (deadline overrun)"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(5));
+}
+
+#[test]
+fn bare_go_ponder_keeps_searching_until_stop() {
+    // A bare `go ponder` has no time limit: it must not answer on its own. Only `stop`
+    // (or ponderhit followed by stop) ends it.
+    let _serial = timing_lock();
+    let mut e = Engine::spawn();
+    e.handshake();
+    e.position(START_FEN);
+    e.send("go ponder");
+    thread::sleep(Duration::from_millis(800));
+    assert!(
+        !e.seen.iter().any(|l| l.starts_with("bestmove")),
+        "bare go ponder answered without stop"
+    );
+    e.send("stop");
+    e.until(Duration::from_secs(2), "bestmove after stop", |l| {
+        l.starts_with("bestmove")
+    });
+    e.quit_and_expect_exit(Duration::from_secs(5));
 }

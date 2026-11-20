@@ -285,13 +285,20 @@ impl UciEngine {
             }
         }
 
-        self.last_clocks = Some((
-            wtime.unwrap_or(0),
-            btime.unwrap_or(0),
-            winc,
-            binc,
-            movestogo,
-        ));
+        // Remember clock fields only when the GUI sent a clock. `ponderhit` recalculates the
+        // budget from these; a movetime-only or bare `go ponder` must not recalculate from zeros
+        // (that gave a ~20 ms budget and an immediate bestmove).
+        self.last_clocks = if wtime.is_some() || btime.is_some() {
+            Some((
+                wtime.unwrap_or(0),
+                btime.unwrap_or(0),
+                winc,
+                binc,
+                movestogo,
+            ))
+        } else {
+            None
+        };
 
         let (soft_ms, hard_ms) = if let Some(mt) = movetime {
             (mt, mt)
@@ -428,14 +435,23 @@ impl UciEngine {
         if let Some(worker) = self.worker.as_ref() {
             if let Ok(mut lim) = worker.limits.lock() {
                 if lim.ponder {
-                    if let Some((wt, bt, winc, binc, movestogo)) = self.last_clocks {
-                        let (soft, hard) =
-                            clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
-                        lim.soft_ms = soft;
-                        lim.hard_ms = hard;
-                        // The budget is now a clock slice, so the growth-prediction stop applies again.
-                        lim.fixed_time = false;
-                        lim.infinite = false;
+                    match self.last_clocks {
+                        // Clock-based ponder: the budget becomes a clock slice now, so the
+                        // growth-prediction stop applies again.
+                        Some((wt, bt, winc, binc, movestogo)) if !lim.fixed_time => {
+                            let (soft, hard) =
+                                clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
+                            lim.soft_ms = soft;
+                            lim.hard_ms = hard;
+                            lim.infinite = false;
+                        }
+                        // Fixed movetime ponder: keep the movetime deadline (counted from the
+                        // start of the search) and stop there.
+                        _ if lim.fixed_time => {
+                            lim.infinite = false;
+                        }
+                        // Bare `go ponder`: keep searching until an explicit `stop`.
+                        _ => {}
                     }
                     lim.ponder = false;
                 }

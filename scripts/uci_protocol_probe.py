@@ -9,7 +9,7 @@ import queue, subprocess, sys, threading, time
 try:
     import chess
 except ImportError:
-    chess = None
+    sys.exit("uci_protocol_probe.py requires python-chess (pip install chess==1.11.2)")
 
 EXE = sys.argv[1]
 results = []
@@ -17,8 +17,10 @@ results = []
 class Eng:
     def __init__(self):
         self.p = subprocess.Popen([EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.q = queue.Queue(); self.all = []
+        self.q = queue.Queue(); self.all = []; self.err = []
         threading.Thread(target=self._r, daemon=True).start()
+        # Drain stderr so a chatty engine can never block on a full pipe.
+        threading.Thread(target=lambda: self.err.append(self.p.stderr.read()), daemon=True).start()
     def _r(self):
         for raw in iter(self.p.stdout.readline, b""):
             l = raw.decode("utf-8", "replace").rstrip("\r\n"); self.q.put(l); self.all.append(l)
@@ -55,7 +57,6 @@ def bestmove_of(lines):
     return bm[0].split()[1]
 
 def legal_check(fen_moves, mv):
-    if chess is None: return
     b = chess.Board()
     for m in fen_moves: b.push_uci(m)
     assert chess.Move.from_uci(mv) in b.legal_moves, f"illegal bestmove {mv}"
@@ -79,7 +80,7 @@ def t_depth_bestmove_after_moves():
     e.send("go depth 4")
     lines = e.until(lambda l: l.startswith("bestmove"), 60, "bestmove")
     assert any(l.startswith("info depth 4") for l in lines), "no completed depth-4 info"
-    legal_check(["e2e4", "e7e5", "g1f3"], bestmove_of(lines).split()[0] if False else lines[-1].split()[1])
+    legal_check(["e2e4", "e7e5", "g1f3"], bestmove_of(lines))
     e.send("quit"); assert e.close() == 0
 
 def t_tiny_clock_no_hang():
@@ -98,8 +99,8 @@ def t_movetime():
     e.send("position startpos"); t = time.monotonic(); e.send("go movetime 300")
     lines = e.until(lambda l: l.startswith("bestmove"), 15, "bestmove")
     dt = time.monotonic() - t
-    # UCI requires no overrun. The engine's soft budget may stop early (observed 38-100%
-    # of movetime; see docs/audit), so only the upper bound is asserted here.
+    # UCI requires no overrun. Since the fixed-time fix the engine uses ~100% of movetime, so
+    # only the upper bound is asserted here (the tight tolerance lives in tests/movetime_smoke.rs).
     # Shared CI runners are noisy; the tight 80%-300ms tolerance lives in tests/movetime_smoke.rs.
     assert dt < 1.5, f"movetime 300ms returned after {dt:.3f}s (overrun)"
     e.send("quit"); assert e.close() == 0
@@ -134,8 +135,7 @@ def t_fen_position():
     e.send(f"position fen {fen}"); e.send("go depth 3")
     lines = e.until(lambda l: l.startswith("bestmove"), 30, "bestmove")
     mv = lines[-1].split()[1]
-    if chess is not None:
-        assert chess.Move.from_uci(mv) in chess.Board(fen).legal_moves, f"illegal {mv}"
+    assert chess.Move.from_uci(mv) in chess.Board(fen).legal_moves, f"illegal {mv}"
     e.send("quit"); assert e.close() == 0
 
 def t_stalemate_position_no_legal_move():

@@ -326,15 +326,45 @@ def bench_signature(exe):
     return m.group(1) if m else "unavailable (signature not printed)"
 
 
-def cargo_package_version():
-    """Version of the [package] table in Cargo.toml (the release version)."""
+def cargo_toml_text():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(root, "Cargo.toml"), encoding="utf-8") as f:
-        text = f.read()
-    m = re.search(r'^\[package\].*?^version = "([^"]+)"', text, re.M | re.S)
-    if not m:
-        fail("cannot read [package] version from Cargo.toml")
-    return m.group(1)
+        return f.read()
+
+
+def toml_table(text, name):
+    """Lines of one TOML table, from its header up to the next table header."""
+    lines = text.splitlines()
+    out, inside = [], False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and not stripped.startswith("[["):
+            inside = stripped == f"[{name}]"
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+def cargo_package_version():
+    """Version from the [package] table of Cargo.toml (the release version)."""
+    for line in toml_table(cargo_toml_text(), "package"):
+        m = re.match(r'^version\s*=\s*"([^"]+)"\s*$', line.strip())
+        if m:
+            return m.group(1)
+    fail("cannot read [package] version from Cargo.toml")
+
+
+def release_profile_manifest_line():
+    """The [profile.release] settings as recorded, read from Cargo.toml (never hard-coded)."""
+    settings = []
+    for line in toml_table(cargo_toml_text(), "profile.release"):
+        m = re.match(r'^\s*([A-Za-z_-]+)\s*=\s*(\S+?)\s*(#.*)?$', line)
+        if m:
+            settings.append(f"{m.group(1)}={m.group(2).strip(chr(34))}")
+    if not settings:
+        fail("[profile.release] missing from Cargo.toml")
+    return "release_profile=[profile.release] " + " ".join(settings)
 
 
 def main(argv=None):
@@ -353,10 +383,12 @@ def main(argv=None):
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        if head.returncode == 0:
-            head_sha = head.stdout.decode().strip()
-            if head_sha != args.commit:
-                fail(f"checkout HEAD {head_sha} != --commit {args.commit}")
+        # Fail closed: a git error must not skip the source-identity check.
+        if head.returncode != 0:
+            fail(f"git rev-parse HEAD failed (exit {head.returncode}): {head.stderr.decode(errors='replace').strip()}")
+        head_sha = head.stdout.decode().strip()
+        if head_sha != args.commit:
+            fail(f"checkout HEAD {head_sha} != --commit {args.commit}")
 
         try:
             with open(args.rustc_version_file, encoding="utf-8") as f:
@@ -413,14 +445,14 @@ def main(argv=None):
         lines = [
             "Flawless Windows x64 release build manifest",
             "product=FlawLessChess",
-            f"engine_name=Flawless",
+            "engine_name=Flawless",
             f"package_version={pkg_version}",
             f"engine_version_output={engine_version}",
             f"git_commit={args.commit}",
             f"target_triple={EXPECTED_TARGET}",
             f"rustc={rustc_line}",
             "cargo_build_command=cargo build --release --locked",
-            "release_profile=[profile.release] lto=fat codegen-units=1 debug=false panic=unwind",
+            release_profile_manifest_line(),
             f"executable={EXE_NAME}",
             f"executable_sha256={digest}",
             f"executable_bytes={size}",
