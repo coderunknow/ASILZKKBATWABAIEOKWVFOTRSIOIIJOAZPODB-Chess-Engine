@@ -16,6 +16,11 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
 - **Fixed (LOW, S-08): `go nodes N` spent up to 1,023 extra nodes.** The cap is now checked on every node in
   search and quiescence, so the search spends exactly N nodes. Tests: `correctness::node_cap_is_spent_exactly`,
   `protocol_regressions::go_nodes_limit_is_spent_exactly_and_reported`.
+- **Fixed (LOW, CodeRabbit on 7d5b489): an oversized input line could leave a stale position in use.** A dropped line may be a
+  `position` command, so the position is now marked invalid: `go` answers `bestmove 0000` until a valid `position` arrives.
+  Test: `protocol_regressions::oversized_position_line_does_not_leave_the_old_position_in_use`.
+- **Test hardening (CodeRabbit on 7d5b489):** the closed-stdout test waits with bounded reads and kills the child on failure; the ponder
+  test no longer asserts an exact count (the search is uncapped until `ponderhit`; the exact cap is tested elsewhere).
 - **Tests:** `protocol_regressions::ponder_node_cap_is_enforced_after_ponderhit` now asserts the exact cap (20,000)
   after the first `info depth`. `protocol_regressions::mixed_searchmoves_restricts_to_the_legal_named_move` covers
   mixed legal and illegal `searchmoves`.

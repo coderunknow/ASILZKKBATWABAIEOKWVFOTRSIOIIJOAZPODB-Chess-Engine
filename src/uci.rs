@@ -165,6 +165,11 @@ impl UciEngine {
                 Ok(LineRead::Eof) | Err(_) => break,
                 Ok(LineRead::TooLong) => {
                     // Oversized input is dropped as a whole line; the session stays in sync.
+                    // The reader cannot tell which command it was, so a dropped `position`
+                    // would leave the old position in place. Mark the position invalid, as a
+                    // rejected `position` does: `go` then answers `bestmove 0000` until a valid
+                    // `position` command arrives (the next valid one clears the flag).
+                    self.position_invalid = true;
                     eprintln!(
                         "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
                     );

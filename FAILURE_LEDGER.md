@@ -524,3 +524,10 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - Verification of this entry: fmt, clippy, and `cargo test --release --locked` pass on the working tree (see
   FINAL_AUDIT_PROGRESS.md for the SHA and the exact commands). The Windows artifact and CodeRabbit status are
   unchanged by this entry (NOT VERIFIED and NOT OBTAINED).
+
+## 2026-11-20 — CodeRabbit review of 7d5b489 (five findings, all checked against code)
+
+- F-11 (LOW, valid, fixed): an oversized input line was dropped without marking the position invalid. A dropped `position` left the old position in place, so a later `go` searched the wrong position and printed a bestmove. Fix: the TooLong branch sets `position_invalid`; a later valid `position` clears it. Test: `protocol_regressions::oversized_position_line_does_not_leave_the_old_position_in_use`.
+- T-01 (test, valid, fixed): `ponder_node_cap_is_enforced_after_ponderhit` asserted an exact count, but the ponder search is uncapped until `ponderhit` is processed, so the count could pass the cap first (timing-dependent). The test now asserts termination and monotonic node count; exact caps are asserted in the non-ponder tests.
+- T-02 (test, valid, fixed): `closed_stdout_ends_the_process_quietly` read the handshake without a deadline and had no kill-on-failure. It now uses the bounded harness; `Engine` kills the child on drop.
+- D-01 (docs, valid, fixed): the audit document's blocker list still named the superseded head `c64b743`; the Phase H "Note on SHAs" claimed current HEAD was source-identical to `8370bed`. Both corrected; the historical gate table is unchanged.

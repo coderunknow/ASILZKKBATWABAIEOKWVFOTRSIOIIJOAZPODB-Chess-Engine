@@ -157,7 +157,7 @@ NOT RELEASED. PR #4 is NOT merged. Tag `v0.1.0` and the GitHub Release "FlawLess
 
 All other gates pass on `8370bed`. Release becomes possible once both are closed. Either close them and re-run CI on the final SHA, or the user verifies the artifact from a network that can reach the blob host and accepts the CodeRabbit state.
 
-Note on SHAs: the ledger commit that records this phase changes only `FINAL_AUDIT_PROGRESS.md`. The source tree is identical to `8370bed`; this is checkable with `git diff --stat 8370bed HEAD`.
+Note on SHAs (historical, as of this phase): the ledger commit `8557a5d` that recorded this phase changed only `FINAL_AUDIT_PROGRESS.md` on top of `8370bed`; check with `git diff --stat 8370bed 8557a5d`. The gates above validate `8370bed` only. Later source changes are NOT covered by them; each later phase records its own gates on its own SHA.
 
 
 ## Phase I — final gates on source commit 7d5b489 (release decision, supersedes Phase H)
