@@ -17,6 +17,8 @@ Product name: FlawLessChess. UCI engine name: Flawless. Cargo package: `flawless
   Regression tests: `ponder_movetime_ponderhit_keeps_the_movetime_deadline`, `bare_go_ponder_keeps_searching_until_stop`.
 - **Fixed: `go ponder nodes N` ignored its node cap after `ponderhit`.** The ponderhit fallback left
   `infinite` set, so the cap was never checked. Regression test: `ponder_node_cap_is_enforced_after_ponderhit`.
+- **Fixed: `go searchmoves` naming only illegal moves returned `bestmove 0000`** in a position with legal moves.
+  The search now keeps all legal root moves in that case. Regression test: `searchmoves_with_no_legal_move_still_searches_the_position`.
 - **Added: en passant forced-root test** (`t_en_passant_capture` in `scripts/uci_protocol_probe.py`) and a Linux resource
   probe step in CI. Full-game en passant is still NOT VERIFIED (no played game in the set contains one).
 - **Fixed: no-argument launch starts UCI mode** (see the next section).

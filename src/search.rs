@@ -243,7 +243,12 @@ impl<'a> Searcher<'a> {
         let legal = generate_legal(pos);
         let mut roots: Vec<Move> = legal.iter().copied().collect();
         if let Some(ref only) = root_moves {
-            roots.retain(|m| only.contains(m));
+            // `searchmoves` restricts the search. If none of the named moves is legal, keep all
+            // legal moves: answering a null move in a position with legal moves is never useful.
+            let filtered: Vec<Move> = roots.iter().copied().filter(|m| only.contains(m)).collect();
+            if !filtered.is_empty() {
+                roots = filtered;
+            }
         }
         self.root_moves = if root_moves.is_some() {
             Some(roots.clone())
@@ -1018,6 +1023,33 @@ mod draw_rule_tests {
         }));
         let mut s = Searcher::new(&mut tt, &stop, limits);
         s.search_root(pos, None, 1, &mut |_| {})
+    }
+
+    /// Regression: `go searchmoves` naming only illegal moves used to leave no root moves and
+    /// answer `bestmove 0000` in a position with legal moves. It must search the legal moves.
+    #[test]
+    fn searchmoves_with_no_legal_move_still_searches_the_position() {
+        let mut pos = Position::startpos();
+        let mut tt = TranspositionTable::new(4);
+        let stop = AtomicBool::new(false);
+        let limits = Arc::new(Mutex::new(SearchLimits {
+            max_depth: 2,
+            ..SearchLimits::default()
+        }));
+        let mut s = Searcher::new(&mut tt, &stop, limits);
+        let illegal = Move::from_uci("e2e5").expect("parse");
+        let r = s.search_root(&mut pos, Some(vec![illegal]), 1, &mut |_| {});
+        assert_ne!(
+            r.best_move,
+            Move::NULL,
+            "null bestmove in a position with legal moves"
+        );
+        let legal = generate_legal(&mut pos);
+        assert!(
+            legal.iter().any(|m| *m == r.best_move),
+            "bestmove {:?} is not legal",
+            r.best_move
+        );
     }
 
     /// R-02a: a repeated ROOT must still be searched (not scored as an instant draw).

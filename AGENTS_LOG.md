@@ -500,3 +500,15 @@ Still unverified in this session: the Windows GUI test (needs a human and Window
 - STATUS.md: the linked audit only records results through 07b68a8 → FIXED (wording marks it historical; current-head evidence points to the release-candidate report).
 
 Environment: the sandbox was reset again. /tmp venv and fake-engine harness were rebuilt. The repo working tree was intact. A stray file created by a failed command was removed.
+
+## 2026-11-20 — comprehensive source audit (second pass, head b5fb4f9)
+
+Scope: panic sites in src/, input parsing (go/setoption/position), search root handling, clock formula, option bounds.
+
+- src/search.rs `search_root`: `go searchmoves` naming only illegal moves left `roots` empty and returned `Move::NULL` (`bestmove 0000`) in a position with legal moves → FIXED (keep all legal roots when no named move is legal). Regression test added; CI-verified only (no Rust toolchain).
+- src/uci.rs `searchmoves` unwrap (`Move::from_uci(args[i]).unwrap()`): guarded by `is_some()` in the same loop → safe, left unchanged.
+- src/main.rs `bench_eval` unwrap on a constant FEN, and position.rs `expect`s on constant FENs/test FENs → safe.
+- src/position.rs `char::from_digit(empty, 10).unwrap()` with empty in 1..=8 → safe.
+- `clock_limits`: soft/hard clamped to remaining time; zero and tiny clocks handled by the existing unit test.
+- `setoption`: Hash 1..=4096 MiB, MultiPV 1..=256, Threads ignored (single-threaded build). Hash 4096 MiB can exceed memory on small machines; the advertised maximum is kept, and this is recorded as a limitation, not a bug.
+- Not changed: stderr diagnostics for setoption (`info string` goes to stderr; the UCI protocol does not forbid it).
