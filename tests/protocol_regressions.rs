@@ -911,3 +911,31 @@ fn unsupported_go_mate_is_reported_on_stdout() {
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
+
+/// Regression (audit 2026-11-21, "one node" report): a fixed-depth search from a mate-in-one
+/// position must run (more than one node, depth lines up to the requested depth), report the mate,
+/// and answer with the mating move. The earlier report came from a harness that sent `quit` right
+/// after `go`; this test waits for `bestmove` as a GUI does.
+#[test]
+fn fixed_depth_search_finds_mate_in_one_and_reports_depth_lines() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position fen 6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1");
+    e.send("go depth 4");
+    let lines = e.read_until("bestmove", Duration::from_secs(30));
+    assert_eq!(bestmove_line(&lines), "bestmove a1a8", "{lines:?}");
+    let depth4 = lines
+        .iter()
+        .find(|l| l.starts_with("info depth 4 "))
+        .unwrap_or_else(|| panic!("no depth-4 line: {lines:?}"));
+    assert!(
+        depth4.contains("score mate 1"),
+        "depth 4 did not report the mate: {depth4}"
+    );
+    assert!(
+        info_nodes(depth4).is_some_and(|n| n > 1),
+        "depth 4 searched one node: {depth4}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}

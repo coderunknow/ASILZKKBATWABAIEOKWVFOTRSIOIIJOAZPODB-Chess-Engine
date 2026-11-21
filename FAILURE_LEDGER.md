@@ -824,3 +824,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   F-26 mutation (same session): restoring `60731d8`'s `src/uci.rs` fails 4 tests (`startpos_with_tokens_before_moves_is_refused_visibly`,
   `unknown_option_is_reported_on_stdout`, `go_bad_value_is_reported_and_the_next_keyword_survives`, and
   `unsupported_go_mate_is_reported_on_stdout`, which `330ebfa` added); restored byte-for-byte. `protocol_regressions` 23/0 on the fix.
+- "ONE NODE" REPORT CLOSED AS A HARNESS ARTIFACT (2026-11-21; no engine change). Earlier probes sent `quit` right after
+  `go`, so the search never started. On a clean release build of the current head, `/tmp/audit/wait_probe.py` (waits for
+  `bestmove`): `6k1/5ppp/8/8/8/8/8/R5K1 w` `go depth 4` → 4 depth lines, `score mate 1`, `bestmove a1a8`; `go movetime 200` →
+  17 depth lines, mate 1, `bestmove a1a8`; `4k3/8/8/8/8/8/8/R3K3 w` `go depth 3` → `bestmove a1a7`; startpos `go depth 4` →
+  `cp 12`, 1,311 nodes, `bestmove b1c3`. Permanent regression added: `fixed_depth_search_finds_mate_in_one_and_reports_depth_lines`
+  (waits for `bestmove`; asserts `bestmove a1a8`, a depth-4 line with `score mate 1`, and more than one node). It passes.
