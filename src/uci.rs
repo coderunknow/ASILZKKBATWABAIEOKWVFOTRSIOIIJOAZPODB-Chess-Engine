@@ -473,9 +473,9 @@ impl UciEngine {
                     i += used;
                 }
                 other => {
-                    if self.stderr_log {
-                        crate::err_line!("info string skipping unknown go token: {other}");
-                    }
+                    // F-26: visible on stdout. `go mate N` is a standard UCI option this engine does
+                    // not implement (the search runs until `stop`, as a bare `go`); the notice says so.
+                    crate::out_line!("info string go token ignored: {other}");
                     i += 1;
                 }
             }

@@ -878,3 +878,23 @@ fn go_bad_value_is_reported_and_the_next_keyword_survives() {
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
+
+/// Regression (F-26): `go mate N` is a standard UCI option this engine does not implement. It was
+/// skipped on stderr only, so the GUI saw an unexplained unbounded search. The ignored token is now
+/// reported on stdout, and the rest of the command (here `movetime`) still applies.
+#[test]
+fn unsupported_go_mate_is_reported_on_stdout() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position startpos");
+    e.send("go mate 3 movetime 100");
+    let lines = e.read_until("bestmove", Duration::from_secs(10));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string go token ignored: mate")),
+        "`go mate` was not reported: {lines:?}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}

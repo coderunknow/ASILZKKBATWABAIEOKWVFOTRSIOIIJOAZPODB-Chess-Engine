@@ -802,3 +802,7 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   ×200 (seed 99), on the fixed build: RSS 4 MiB idle, 247 MiB after 5 searches, 845 MiB after 60, 1029 MiB from search ~65
   and flat at 1029 MiB through search 200 (about 1024 MiB table plus baseline). No growth after the table is fully touched.
   Claim limited to this run (Linux sandbox); no leak was observed.
+- F-26 addendum: a `go` token the engine does not act on is now reported on stdout (`info string go token ignored: …`), not
+  only on stderr. `go mate N` is a standard UCI option that is NOT IMPLEMENTED: the search runs until `stop` as for a bare
+  `go`, and the notice says so. Regression `unsupported_go_mate_is_reported_on_stdout` (fails on the pre-fix tree, passes on
+  the fix). Implementing `go mate` is an open feature decision, not a defect fix; recorded in DESIGN_LOG stretch 8.
