@@ -525,3 +525,16 @@ DRAFT ONLY — no code changes under this entry.
   schedules (for example 40 moves in 15 minutes) are unchanged; the existing expected values still pass.
 - Evidence: unit regression `clock_limits_never_plan_past_the_usable_clock_with_large_increment`; process timing in
   FAILURE_LEDGER F-23.
+
+## 2026-11-21 (stretch 6) — F-24: a clock slice granted at ponderhit counts from the hit
+
+- Question: when the GUI sends `ponderhit`, does our clock slice start at `go` or at the hit?
+- Decision: at the hit. Our clock runs only during our own turn, so the time spent pondering is the opponent's time. The
+  slice (`clock_limits`) is counted from `ponderhit` through `SearchLimits.clock_origin`. The code already said so
+  ("the budget becomes a clock slice now"); the elapsed time was measured from `go`, so the slice was used up at once.
+- Not changed: `go ponder movetime N` still counts from `go` (the open conformance question recorded before; the test
+  `ponder_movetime_ponderhit_keeps_the_movetime_deadline` pins it). A fixed movetime is not our clock.
+- Known behaviour: an iteration already running at the hit is not cut at soft; it ends at its own completion or at the
+  hard limit (completed iterations are always kept). For a 20 s clock the answer after the hit took about 1.9 s (hard),
+  not 0.47 s (soft). Within our clock and the designed hard limit. The owner may want the soft limit applied to that
+  iteration; that would change search completion, so it is recorded here, not changed.

@@ -170,6 +170,7 @@ fn cmd_bench() {
             infinite: false,
             ponder: false,
             fixed_time: false,
+            clock_origin: None,
         }));
         let mut tt = TranspositionTable::new(16);
         let result =

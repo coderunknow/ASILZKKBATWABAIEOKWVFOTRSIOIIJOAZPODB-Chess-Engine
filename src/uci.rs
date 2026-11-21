@@ -476,6 +476,7 @@ impl UciEngine {
                     && depth.is_none()
                     && nodes.is_none()),
             ponder,
+            clock_origin: None,
         };
         let shared_limits = Arc::new(Mutex::new(SearchLimits {
             max_depth: limits.max_depth,
@@ -485,6 +486,7 @@ impl UciEngine {
             infinite: limits.infinite,
             ponder: limits.ponder,
             fixed_time: limits.fixed_time,
+            clock_origin: None,
         }));
 
         // Fallback legal move in case the search thread dies unexpectedly —
@@ -648,6 +650,9 @@ impl UciEngine {
                                 clock_limits(self.pos.side, wt, bt, winc, binc, movestogo);
                             lim.soft_ms = soft;
                             lim.hard_ms = hard;
+                            // The slice counts from the hit (F-24): time spent pondering on the
+                            // opponent's clock is not ours to spend.
+                            lim.clock_origin = Some(std::time::Instant::now());
                             lim.infinite = false;
                         }
                         // Fixed movetime ponder: keep the movetime deadline (counted from the

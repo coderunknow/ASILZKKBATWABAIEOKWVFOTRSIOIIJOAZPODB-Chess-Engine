@@ -764,3 +764,12 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   function's comment (planned spend <= t - reserve). Fix: `.min(usable)` before the floor and the clock clamp.
   Regression: `uci::tests::clock_limits_never_plan_past_the_usable_clock_with_large_increment` (failed before the fix,
   passes after; existing expected values unchanged). Process check (`wtime 1000 winc 2000`): bestmove after 0.36–0.40 s.
+- F-24 FIXED (MEDIUM, time management; found by the 2026-11-21 audit by reading `cmd_ponderhit`; reproduced at process
+  level): with a clock, `ponderhit` replaced the budget with a clock slice, but the search measured its elapsed time
+  from `go`. Our clock runs only during our turn, so the time spent pondering on the opponent's move used up the slice:
+  `go ponder wtime 20000 btime 20000`, 3 s of ponder, then `ponderhit` gave `bestmove` 2–5 ms later (the slice was about
+  470 ms). Fix: `SearchLimits.clock_origin` (None = search start; `ponderhit` sets it to the hit); all budget checks and
+  the iteration timing use `Searcher::budget_ms`; `info time` and nps still use the search start. Regression:
+  `movetime_smoke::ponderhit_starts_the_clock_slice_at_the_hit` (fails on the old logic with "answered after only 2 ms",
+  passes with the fix: about 1.87 s, the hard limit, because the iteration already running at the hit is cut only at the
+  hard limit; see DESIGN_LOG stretch 6).

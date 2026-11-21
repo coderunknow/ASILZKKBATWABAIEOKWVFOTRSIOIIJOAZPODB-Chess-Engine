@@ -361,6 +361,40 @@ fn terminal_positions_return_null_move_promptly() {
 }
 
 #[test]
+fn ponderhit_starts_the_clock_slice_at_the_hit() {
+    // Regression (F-24): the clock slice granted at `ponderhit` was measured from `go`, so the
+    // time spent pondering on the opponent's clock used it up, and the answer came in a few ms.
+    // Our clock only runs during our turn, so with 20 s on the clock (soft budget about 470 ms)
+    // the answer after a 3 s ponder must still take a real search after the hit.
+    let _serial = timing_lock();
+    let mut e = Engine::spawn();
+    e.handshake();
+    e.position(START_FEN);
+    e.send("go ponder wtime 20000 btime 20000 winc 0 binc 0");
+    thread::sleep(Duration::from_millis(3000));
+    e.drain();
+    assert!(
+        !e.seen.iter().any(|l| l.starts_with("bestmove")),
+        "bestmove before ponderhit"
+    );
+    let start = Instant::now();
+    e.send("ponderhit");
+    e.until(Duration::from_secs(10), "bestmove after ponderhit", |l| {
+        l.starts_with("bestmove")
+    });
+    let ms = start.elapsed().as_millis() as u64;
+    assert!(
+        ms >= 150,
+        "ponderhit answered after only {ms} ms: the slice was spent while pondering (F-24)"
+    );
+    assert!(
+        ms <= 2500,
+        "ponderhit answered after {ms} ms: the 20 s clock slice was overrun"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(5));
+}
+
+#[test]
 fn ponder_movetime_ponderhit_keeps_the_movetime_deadline() {
     // Regression: `ponderhit` used to recalculate the budget from zero clocks (~20 ms), so the
     // search stopped at once. The movetime deadline counts from the start of the search, so a

@@ -40,6 +40,10 @@ pub struct SearchLimits {
     /// Such a search runs iterative deepening until the hard deadline instead of stopping
     /// early on the growth prediction (which is meant only to protect clock budgets).
     pub fixed_time: bool,
+    /// Start of the clock budget. `None` means the start of the search. `ponderhit` sets it to
+    /// the time of the hit: the clock slice then counts from the hit, not from `go` (F-24).
+    /// Only the budgets (`soft_ms`/`hard_ms`) use it; `info time` keeps the search start.
+    pub clock_origin: Option<Instant>,
 }
 
 impl Default for SearchLimits {
@@ -52,6 +56,7 @@ impl Default for SearchLimits {
             infinite: false,
             ponder: false,
             fixed_time: false,
+            clock_origin: None,
         }
     }
 }
@@ -154,7 +159,14 @@ impl<'a> Searcher<'a> {
         if l.infinite {
             return false;
         }
-        self.start.elapsed().as_millis() as u64 >= l.hard_ms
+        self.budget_ms(&l) >= l.hard_ms
+    }
+
+    /// Milliseconds spent against the clock budget: since `clock_origin` if set (ponderhit),
+    /// otherwise since the search started.
+    #[inline]
+    fn budget_ms(&self, l: &SearchLimits) -> u64 {
+        l.clock_origin.unwrap_or(self.start).elapsed().as_millis() as u64
     }
 
     /// Exact node cap, checked at every node before the node is counted, so a search never
@@ -176,7 +188,7 @@ impl<'a> Searcher<'a> {
     #[inline]
     fn soft_ms_reached(&self) -> bool {
         let l = self.lim();
-        self.start.elapsed().as_millis() as u64 >= l.soft_ms
+        self.budget_ms(&l) >= l.soft_ms
     }
 
     #[inline]
@@ -322,7 +334,7 @@ impl<'a> Searcher<'a> {
             if depth > max_depth {
                 break;
             }
-            let iter_begin = self.start.elapsed().as_millis() as u64;
+            let iter_begin = self.budget_ms(&self.lim());
             // aspiration window after depth 5
             let (mut alpha, mut beta) = if depth >= 6 {
                 (prev_score - 25, prev_score + 25)
@@ -394,7 +406,7 @@ impl<'a> Searcher<'a> {
             // Soft budget (R-08): stop before an iteration that is predicted to overrun it.
             // Completed iterations are always kept; the hard limit still applies inside the tree.
             let l = self.lim();
-            let now = self.start.elapsed().as_millis() as u64;
+            let now = self.budget_ms(&l);
             let iter_ms = now.saturating_sub(iter_begin);
             // For a fixed movetime the soft budget equals the time to spend, so only the
             // deadline itself ends the search; the growth prediction would stop it early.
