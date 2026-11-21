@@ -842,3 +842,12 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   Regressions: `malformed_setoption_is_reported_on_stdout`, `bare_searchmoves_is_announced_and_searches_all_moves`,
   `position_without_startpos_or_fen_is_refused_visibly`, `ucinewgame_clears_a_rejected_position`. Mutation check: restoring
   `f86f17f`'s `src/uci.rs` fails all four (24 pass, 4 fail); restored byte-for-byte. Protocol regressions 28/0 after the fix.
+- GATE on f4b2a9e (2026-11-21, after F-28): 34/34 rc=0, dirty 0 (`/tmp/gates/final-f4b2a9e/`).
+- TT STRESS (2026-11-21, new `scripts/tt_bestmove_probe.py`; one engine process, so the table is shared across searches;
+  every bestmove legal per python-chess and equal to the first move of the deepest PV): 300 positions, depth 6, Hash 1, seed 1:
+  0 failures. 1,000 positions, depth 7, Hash 1, seed 2: 0 failures. 1,000 positions, depth 6, Hash 64, seed 3: 0 failures.
+- SCORE SIGN (2026-11-21): colour-flipped mate-in-one, `r5k1/8/8/8/8/8/5PPP/6K1 b`: `score mate 1`, `bestmove a8a1`, correct.
+  A flipped FEN with the side to move attacking the king is refused with a notice (correct). A random search for a
+  side-to-move-mated-in-one position found none (not a defect; no negative-mate check was run).
+- NOT A DEFECT (2026-11-21): `position fen 8/P6k/8/8/8/8/8/K7 w` `go depth 2` returned `info nodes 1` / `bestmove a1b1` only when
+  `quit` was sent right after `go`. Waiting for `bestmove` gives `bestmove a7a8q` (depth 2 +886, depth 6 stable). Harness artifact again.
