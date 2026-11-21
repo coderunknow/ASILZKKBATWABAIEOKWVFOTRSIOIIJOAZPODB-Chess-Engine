@@ -969,3 +969,8 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   answer for the superseded infinite search. UCI leaves this undefined and GUIs send `stop` first. Non-defect. Note: an earlier capture
   in this session printed two identical bestmove lines; that was a harness double-count (the reader loop re-read the same line), and
   the clean capture shows one.
+- REPETITION (2026-11-21, release): (a) `ucinewgame` after warm searches: 3 positions, answers identical to a fresh engine (0 differ).
+  (b) Same startpos reached by an 8-ply threefold shuffle vs from FEN: both cp 12, `b1c3`. Expected: the design scores in-tree
+  repetition only at `ply > 0` (src/search.rs ~L535, ~L785), and the root is always searched (test `root_repetition_is_searched`,
+  search.rs ~L1120). Non-defect. (c) After Nf3 Nf6 Ng1 (black to move, a repetition available inside the tree), the engine plays
+  `b8c6` at cp 65 rather than taking the drawing line, consistent with draw scores compared against the alternative. Non-defect.
