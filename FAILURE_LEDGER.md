@@ -643,3 +643,11 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   (50 MB case, which halves the table and then cannot spawn the thread).
 - Checked after the fix: 400 MB limit + Hash 1024: readyok, exit 0, legal bestmove; 50 MB and 30 MB limits: exit 0,
   legal bestmove. No limit: bestmove unchanged (`b1a3` at depth 4 from startpos, identical before and after).
+- F-18 FIXED (LOW, CI portability): CI `windows-latest` failed at `Clippy (deny warnings)` on `2b10cd2` (run 44775302570,
+  job 136423393755; Ubuntu, MSRV and the Windows artifact job passed). Cause: the F-13 regression test
+  `stderr_write_failure_does_not_stop_the_session_on_an_oversized_line` used `std::os::unix::io` and a raw `pipe` binding
+  without a `cfg(unix)` gate, so the Windows build failed to compile. The `Read` import, used only by that test, would
+  also have been an unused import under `-D warnings`. Fix (`tests/protocol_regressions.rs`): the test and its
+  `extern "C"` block are `#[cfg(unix)]`; `Read` moved into the test body. The test still runs on Linux (17/17 pass).
+  Not verifiable locally: no Windows target is installed, so the fix is confirmed by the CI run on the new head.
+  Log for CI job 136423393755 downloads failed with EOF; the step result and annotation were used instead.

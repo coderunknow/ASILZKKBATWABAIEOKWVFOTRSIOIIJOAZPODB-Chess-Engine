@@ -4,7 +4,7 @@
 //! asserts on protocol output. Every child is bounded by a timeout and is killed on failure so a
 //! hung engine fails the test instead of hanging the suite.
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread;
@@ -520,8 +520,10 @@ fn oversized_position_line_does_not_leave_the_old_position_in_use() {
 /// `readyok`. Here stderr is a pipe whose read end is already closed, so every write fails with
 /// EPIPE. Status messages now go through a write that ignores errors, so the session keeps
 /// answering. (A closed fd 2 cannot be produced on every platform: some runtimes reopen fds 0-2.)
+#[cfg(unix)]
 #[test]
 fn stderr_write_failure_does_not_stop_the_session_on_an_oversized_line() {
+    use std::io::Read;
     use std::os::unix::io::{FromRawFd, OwnedFd};
     let (reader, writer): (OwnedFd, OwnedFd) = {
         let mut fds = [0i32; 2];
@@ -566,6 +568,7 @@ fn stderr_write_failure_does_not_stop_the_session_on_an_oversized_line() {
     assert_eq!(status.code(), Some(0), "exit status with stderr unwritable");
 }
 
+#[cfg(unix)]
 extern "C" {
     #[link_name = "pipe"]
     fn libc_pipe(fds: *mut i32) -> i32;
