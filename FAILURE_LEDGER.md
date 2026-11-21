@@ -938,3 +938,12 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   and flat after. A single step to the table size as its pages are touched; not a per-search leak (matches the earlier flat 1029 MiB
   at Hash 1024).
 - NON-DEFECT (218-legal-move root, MultiPV 256): 218 `info ... multipv` lines, 218 distinct, `bestmove c1b3`, rc 0, 0.17 s.
+- F-32 RISK MEASURED (2026-11-21, current binary 6b449c0; `scripts/selfplay_clock_probe.py`, 3 games each, 200-ply cap):
+  zero increment, no movestogo (sudden death): base 300 ms: 3/3 games flagged (plies 32, 33, 34). Base 1000 ms: 2/3 flagged
+  (plies 101, 114). Base 2000 ms: 1/3 flagged (ply 187; this game ended with 236 ms left for white). Base 5000 ms: 0/3.
+  Other forms, no flag: 40000 ms with movestogo 40 (200 plies, 8.3 s left); 15000 ms + 150 ms inc with movestogo 40 (167 plies);
+  60000 ms + 1000 ms inc (149 plies). So the defect is confined to sudden-death clocks under about 5 s with little or no increment.
+  The registered 40/15 match is unaffected by this measurement. Earlier one-game results ("2000 ms survives") were too few to show
+  the flag at 2 s; the 3-game figures above replace them.
+- PONDER CHECK (non-defect): `go ponder wtime W` followed by `ponderhit` after a delay gives bestmove within the clock slice
+  measured from the hit: W 300 → 14 ms; W 1000 (delay 200) → 82 ms; W 3000 (delay 500) → 269 ms (hard limit 268 ms); W 60000 → 1518 ms.
