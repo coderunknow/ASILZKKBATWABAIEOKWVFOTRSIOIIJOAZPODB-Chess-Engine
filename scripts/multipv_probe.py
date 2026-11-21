@@ -1,0 +1,55 @@
+"""MultiPV probe: with MultiPV k, the engine prints min(k, legal) lines numbered 1..n, scores
+non-increasing, distinct first moves, legal PVs, and `multipv 1` first move equal to `bestmove`.
+
+Usage: multipv_probe.py <engine> <positions> <seed> <k>
+"""
+import subprocess, sys, random, chess, re
+exe = sys.argv[1]; n = int(sys.argv[2]); seed = int(sys.argv[3]); k = int(sys.argv[4])
+random.seed(seed)
+fails = 0; total = 0
+for t in range(n):
+    b = chess.Board()
+    for _ in range(random.randint(0, 80)):
+        mv = list(b.legal_moves)
+        if not mv or b.is_game_over(claim_draw=False): break
+        b.push(random.choice(mv))
+    if b.is_game_over(claim_draw=False): continue
+    p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+    p.stdin.write("uci\nisready\nsetoption name MultiPV value %d\nposition fen %s\ngo depth 4\n" % (k, b.fen())); p.stdin.flush()
+    lines = []
+    for line in p.stdout:
+        lines.append(line.rstrip())
+        if line.startswith("bestmove"): break
+    p.stdin.write("quit\n"); p.stdin.flush(); p.wait(timeout=30)
+    total += 1
+    bm = lines[-1].split()[1]
+    last_depth = max(int(l.split()[2]) for l in lines if l.startswith("info depth"))
+    final = {}
+    for l in lines:
+        if l.startswith("info depth %d " % last_depth) and " multipv " in l:
+            mpv = int(l.split(" multipv ")[1].split()[0])
+            sc = re.search(r" score (cp|mate) (-?\d+)", l)
+            pv = l.split(" pv ")[1].split()
+            final[mpv] = (int(sc.group(2)) if sc.group(1) == "cp" else 100000 - abs(int(sc.group(2))) * (1 if int(sc.group(2)) > 0 else -1), pv)
+    legal_moves = set(m.uci() for m in b.legal_moves)
+    problems = []
+    expected = min(k, len(legal_moves))
+    if len(final) != expected: problems.append("lines %d != %d" % (len(final), expected))
+    if sorted(final) != list(range(1, len(final) + 1)): problems.append("multipv numbering %s" % sorted(final))
+    if final:
+        scores = [final[i][0] for i in sorted(final)]
+        if any(scores[i] < scores[i+1] for i in range(len(scores)-1)): problems.append("scores not descending %s" % scores)
+        firsts = [final[i][1][0] for i in sorted(final)]
+        if len(set(firsts)) != len(firsts): problems.append("duplicate PV first moves")
+        if final[1][1][0] != bm: problems.append("multipv 1 first %s != bestmove %s" % (final[1][1][0], bm))
+        for i, (sc, pv) in final.items():
+            c = b.copy()
+            for u in pv:
+                m = chess.Move.from_uci(u)
+                if m not in c.legal_moves: problems.append("illegal pv %s line %d" % (u, i)); break
+                c.push(m)
+    if problems:
+        fails += 1
+        if fails <= 5: print("FAIL", b.fen(), problems[:2], flush=True)
+print("positions", total, "multipv", k, "failures", fails)
+sys.exit(1 if fails else 0)

@@ -1039,4 +1039,36 @@ mod ep_legality_tests {
         assert!(Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1").is_ok());
         assert!(Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1 extra").is_err());
     }
+
+    #[test]
+    fn insufficient_material_matches_the_fide_dead_positions() {
+        // FIDE dead positions: no pawns, rooks or queens, and either one minor piece at most, or
+        // only bishops that all stand on one colour. Square colour = (file + rank) % 2 with a1 = 0:
+        // c1 = 0, d1 = 1, b8 = 0, c8 = 1, e3 = 0.
+        let dead = [
+            "4k3/8/8/8/8/8/8/4K3 w - - 0 1",     // K v K
+            "4k3/8/8/8/8/8/8/3NK3 w - - 0 1",    // K+N v K
+            "4k3/8/8/8/8/8/8/3BK3 w - - 0 1",    // K+B v K
+            "4kb2/8/8/8/8/8/8/4K3 w - - 0 1",    // K v K+B
+            "1b2k3/8/8/8/8/8/8/2B1K3 w - - 0 1", // K+B v K+B, both bishops on colour 0
+            "4k3/8/8/8/8/4B3/8/2B1K3 w - - 0 1", // K+2B v K, both bishops on colour 0
+        ];
+        let live = [
+            "2b1k3/8/8/8/8/8/8/2B1K3 w - - 0 1", // K+B v K+B, opposite colours (c1 = 0, c8 = 1)
+            "4k3/8/8/8/8/8/8/2BBK3 w - - 0 1",   // K+2B v K, opposite colours (c1 = 0, d1 = 1)
+            "1n2k3/8/8/8/8/8/8/3NK3 w - - 0 1",  // K+N v K+N
+            "4k3/8/8/8/8/8/8/2NBK3 w - - 0 1",   // K+N+B v K
+            "4k3/8/8/8/8/8/8/3QK3 w - - 0 1",    // K+Q v K
+            "4k3/8/8/8/8/8/P7/4K3 w - - 0 1",    // K+P v K
+            "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",    // K+R v K
+        ];
+        for fen in dead {
+            let p = Position::from_fen(fen).expect("fen");
+            assert!(p.insufficient_material(), "should be dead: {fen}");
+        }
+        for fen in live {
+            let p = Position::from_fen(fen).expect("fen");
+            assert!(!p.insufficient_material(), "should not be dead: {fen}");
+        }
+    }
 }
