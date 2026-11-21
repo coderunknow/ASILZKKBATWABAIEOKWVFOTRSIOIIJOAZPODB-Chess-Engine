@@ -89,8 +89,15 @@ step selfplay_40_15 "$PY" scripts/selfplay_clock_probe.py "$E_REL" 15000 150 200
 step fullgame_mt20 "$PY" scripts/fullgame_en_passant_probe.py "$E_REL" --max-plies 400 --movetime-ms 20
 step fullgame_mt60 "$PY" scripts/fullgame_en_passant_probe.py "$E_REL" --max-plies 400 --movetime-ms 60
 
-# Tree must still match the commit we gated
-step dirty_at_end bash -c 'test -z "$(git status --porcelain)"'
+# The checkout must still be the commit and tree we gated, with no local changes (F-37 / review on
+# 2fe1118: a clean status alone passes when another commit was checked out during the run).
+head_unchanged_at_end() {
+    [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "HEAD moved: $(git rev-parse HEAD) != $SHA"; return 1; }
+    [ "$(git rev-parse 'HEAD^{tree}')" = "$TREE" ] || { echo "tree changed"; return 1; }
+    [ -z "$(git status --porcelain)" ] || { echo "dirty tree"; git status --porcelain | head -n 5; return 1; }
+    echo "head $SHA tree $TREE clean"
+}
+step head_unchanged_at_end head_unchanged_at_end
 
 echo "FAILS=$FAILS" | tee -a "$SUMMARY"
 [ "$FAILS" -eq 0 ]
