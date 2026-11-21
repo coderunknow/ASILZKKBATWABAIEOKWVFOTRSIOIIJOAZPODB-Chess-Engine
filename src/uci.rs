@@ -605,7 +605,7 @@ impl UciEngine {
                     Searcher::new(&mut tt, &stop_for_search, limits_for_thread.clone());
                 searcher.search_root(&mut pos, search_moves, multi_pv, &mut |progress: &SearchProgress| {
                     let elapsed = start_instant.elapsed().as_millis() as u64;
-                    let nps = progress.nodes.saturating_mul(1000).checked_div(elapsed).unwrap_or(progress.nodes);
+                    let nps = nps_of(progress.nodes, elapsed);
                     crate::out_line!(
                         "info depth {} seldepth {} multipv {} score {} nodes {} nps {} time {} pv {}",
                         progress.depth,
@@ -933,6 +933,12 @@ pub fn clock_limits(
     (soft, hard)
 }
 
+/// Nodes per second for an `info nps` value. A search that has taken 0 ms is reported as if it took
+/// 1 ms, so the value is always a rate. The old fallback printed the bare node count (F-35).
+fn nps_of(nodes: u64, elapsed_ms: u64) -> u64 {
+    nodes.saturating_mul(1000) / elapsed_ms.max(1)
+}
+
 fn format_score(score: i32) -> String {
     // Scores at/above MATE_SCORE are forced-mate scores; anything beyond MATE_SCORE
     // (or far below) is clamped — it cannot represent a real position evaluation.
@@ -1133,6 +1139,15 @@ mod tests {
             h <= 45_000u64.saturating_sub(300),
             "hard {h} unsafe at 45 s/40"
         );
+    }
+
+    #[test]
+    fn info_nps_is_a_rate_when_no_time_has_passed() {
+        // F-35: `info ... nodes 43 nps 43 time 0` printed the node count as the rate.
+        assert_eq!(nps_of(43, 0), 43_000);
+        assert_eq!(nps_of(146, 1), 146_000);
+        assert_eq!(nps_of(146, 2), 73_000);
+        assert_eq!(nps_of(u64::MAX, 0), u64::MAX);
     }
 
     #[test]
