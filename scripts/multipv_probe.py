@@ -30,7 +30,12 @@ for t in range(n):
             mpv = int(l.split(" multipv ")[1].split()[0])
             sc = re.search(r" score (cp|mate) (-?\d+)", l)
             pv = l.split(" pv ")[1].split()
-            final[mpv] = (int(sc.group(2)) if sc.group(1) == "cp" else 100000 - abs(int(sc.group(2))) * (1 if int(sc.group(2)) > 0 else -1), pv)
+            if sc.group(1) == "cp":
+                value = int(sc.group(2))
+            else:
+                n = int(sc.group(2))  # mate N: N>0 mates in N, N<0 is mated in |N|
+                value = (100000 - n) if n > 0 else -(100000 + n)
+            final[mpv] = (value, pv)
     legal_moves = set(m.uci() for m in b.legal_moves)
     problems = []
     expected = min(k, len(legal_moves))

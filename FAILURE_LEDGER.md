@@ -918,3 +918,23 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   release: 0 failures. Seed 7 (20×300) on the debug build: 0 failures.
   `scripts/searchmoves_probe.py` (bestmove and every multipv-1 PV root inside the searchmoves set): 297 positions MultiPV 3 seed 1:
   0 failures; 300 positions MultiPV 1 seed 2: 0 failures; 197 positions MultiPV 8 seed 3: 0 failures.
+- CAMPAIGN 1 (2026-11-21, `/tmp/campaign/run.sh`, release binary of 07dce9a plus debug copy; log `/tmp/campaign/out/summary.txt`):
+  fen_extremes seeds 101–106 (400 each) 0 failures; fen_dbg seed 9 (debug, 150) 0 failures; interleave seeds 11–13 (25×300) 0;
+  UCI grammar seeds 201–202 (100 sessions) 0; legal differential seeds 31–32 PASS; TT bestmove seeds 41–43 (400 each, depth 6) 0;
+  searchmoves seeds 51–52 (299/298 positions) 0; perft random seeds 61–62 PASS; clock sweep seed 71 (60/60) 0; PV legality seed 81
+  (120 positions, 600 PV lines) 0; mate-in-one seed 91 (120) 0; MultiPV seed 92 (k=4): 1 failure in 30 positions. See next entry.
+- F-34 (PROBE BUG, not an engine defect; found by CAMPAIGN 1): `scripts/multipv_probe.py` mapped `score mate N` to
+  `100000 - abs(N)·sign(N)`. For a mated line (`mate -2`) that gave +100002, which sorts above real cp scores, so the probe reported
+  "scores not descending [-683, -901, 100002, 100002]" on FEN 1n1k2n1/r2p3r/1p1P1q2/1PpKN2P/4P3/2P4P/5P1R/BR6 w - - 1 37. Raw engine
+  output for that position is correctly ordered (cp -683, cp -901, mate -2, mate -2; `bestmove e5c6`). Fix: mate N>0 → 100000−N,
+  mate N<0 → −(100000+N). Verified by the mapping check (mate −2 → −99998, mate 2 → 99998). The assertion is unchanged. Re-run:
+  seed 92 (k=4) 30/30 0 failures; seed 21 (k=3) 20/20 0 failures.
+- NON-DEFECT (FEN clock fields, checked against python-chess 1.11.2): halfmove −1, fullmove −5, non-numeric, 2^64 and 2^32 values,
+  and a seventh field are all refused with a specific `info string position error` (bad halfmove clock / bad fullmove number /
+  expected at most 6 fields). Fullmove `0` and `+5 +1` are accepted, as python-chess accepts them (python-chess reads `0` as 1).
+  Engine keeps the value 0; no effect on search or legality. Recorded, no code change.
+- NON-DEFECT (movetime overrun): `go movetime N` finishes 1–7 ms over N for N in {0,1,5,20,50,100,300,1000}, 5 reps each, median ≤ 5.3 ms.
+- NON-DEFECT (RSS at max settings, Hash 1024 + MultiPV 256): RSS 208 → 401 MiB over 25 searches, 414 MiB after 60, then 1029 MiB at round 69
+  and flat after. A single step to the table size as its pages are touched; not a per-search leak (matches the earlier flat 1029 MiB
+  at Hash 1024).
+- NON-DEFECT (218-legal-move root, MultiPV 256): 218 `info ... multipv` lines, 218 distinct, `bestmove c1b3`, rc 0, 0.17 s.
