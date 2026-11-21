@@ -994,3 +994,5 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   Cost recorded: total thinking time per game falls on short clocks (300 ms: ~0.2 s; 1 s: ~1.1–1.4 s). Not measured in Elo.
   Naming: the amendment is CLOCK-1. "ENGINE-2" is already the SEE candidate in PREREGISTRATION.md and is not reused.
   Gate and CI for this change: recorded in the next entry, on the final head.
+- CORRECTION to the F-32 RESOLVED entry (2026-11-21): that entry says an overflow was "found" while reviewing the change. That was wrong. No overflow was reproduced. `movestogo` was multiplied with `saturating_mul` as a precaution, because the new floor multiplies `movestogo` by 4. The regression `clock_floor_f32_huge_movestogo_does_not_overflow` covers that path.
+- GATE RUNNER (2026-11-21): `scripts/final_gate.sh <out_dir>` runs the full local gate on the current HEAD and records the commit, the tree, the release binary SHA-256, each step's return code, and a dirty-tree check. Added so that the gate is versioned with the code. The earlier gate scripts in /tmp were lost in a workspace reset on 2026-11-21 and are not used.
