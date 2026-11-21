@@ -74,19 +74,27 @@ class Engine:
         finally:
             if self.p.poll() is None:
                 self.p.kill()
-                self.p.wait()
+                try:
+                    self.p.wait(timeout=10)  # bounded reap (F-43)
+                except subprocess.TimeoutExpired:
+                    pass
             self._errthread.join(timeout=5)  # stderr is complete once the process has exited
         return self.p.returncode
 
 
 def search_lines(exe, commands, prefix="bestmove", timeout=60.0):
     """One fresh engine: send `commands` in order, return the lines up to the first line starting
-    with `prefix`. The engine is always closed. A missing reply raises TimeoutError (the probe run
-    fails loudly instead of hanging)."""
+    with `prefix`. A missing reply raises TimeoutError, and a nonzero exit status after the reply
+    raises RuntimeError (F-43). The engine is always closed."""
     eng = Engine(exe)
     try:
         for c in commands:
             eng.send(c)
-        return eng.read_until(prefix, timeout)
-    finally:
+        lines = eng.read_until(prefix, timeout)
+    except BaseException:
         eng.close()
+        raise
+    rc = eng.close()
+    if rc != 0:
+        raise RuntimeError(f"engine exited with status {rc} after '{prefix}'; stderr: {eng.stderr_text()[:200]}")
+    return lines

@@ -107,6 +107,8 @@ def main(argv):
         failures.append(("engine stalled", str(e)[:120], None))
     finally:
         rc = eng.close()
+    if sum(checked.values()) < wanted:
+        failures.append(("incomplete sample", sum(checked.values()), wanted))
     print(f"seed={seed} depth={depth} mate1={checked[1]} mate2={checked[2]} tries={tries} failures={len(failures)} exit={rc}")
     for f in failures[:10]:
         print("FAIL", f)

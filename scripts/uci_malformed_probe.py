@@ -140,7 +140,11 @@ def run(line):
             return finish("HANG")
     finally:
         if p.poll() is None:
-            p.kill(); p.wait()
+            p.kill()
+            try:
+                p.wait(timeout=10)  # bounded (F-43)
+            except subprocess.TimeoutExpired:
+                pass
     # Quit path: drain stdout through EOF (bounded) so output after the final readyok is validated.
     end = time.monotonic() + 5
     while time.monotonic() < end:

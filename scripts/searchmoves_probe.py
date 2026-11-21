@@ -33,31 +33,33 @@ def random_board():
 
 
 eng = Engine(exe)
-eng.send("uci"); eng.send(f"setoption name MultiPV value {mpv}"); eng.send("isready")
-eng.read_until("readyok", 10)
-fails = []
-checked = 0
-for i in range(n):
-    b = random_board()
-    legal = list(b.legal_moves)
-    if not legal or b.is_game_over():
-        continue
-    k = random.randint(1, min(4, len(legal)))
-    subset = random.sample(legal, k)
-    names = " ".join(m.uci() for m in subset)
-    eng.send(f"position fen {b.fen()}"); eng.send(f"go depth 3 searchmoves {names}")
-    lines = eng.read_until("bestmove", 60)  # raises on a stalled engine (F-37)
-    checked += 1
-    best = lines[-1].split()[1]
-    allowed = {m.uci() for m in subset}
-    if best not in allowed:
-        fails.append(f"bestmove {best} outside searchmoves {names} in {b.fen()}")
-    for l in lines:
-        if l.startswith("info depth") and " multipv " in l and " pv " in l:
-            first = l.split(" pv ", 1)[1].split()[0]
-            if first not in allowed and l.split(" multipv ")[1].split()[0] == "1":
-                fails.append(f"PV root {first} outside searchmoves {names}: {l[:80]}")
-rc = eng.close()
+try:
+    eng.send("uci"); eng.send(f"setoption name MultiPV value {mpv}"); eng.send("isready")
+    eng.read_until("readyok", 10)
+    fails = []
+    checked = 0
+    for i in range(n):
+        b = random_board()
+        legal = list(b.legal_moves)
+        if not legal or b.is_game_over():
+            continue
+        k = random.randint(1, min(4, len(legal)))
+        subset = random.sample(legal, k)
+        names = " ".join(m.uci() for m in subset)
+        eng.send(f"position fen {b.fen()}"); eng.send(f"go depth 3 searchmoves {names}")
+        lines = eng.read_until("bestmove", 60)  # raises on a stalled engine (F-37)
+        checked += 1
+        best = lines[-1].split()[1]
+        allowed = {m.uci() for m in subset}
+        if best not in allowed:
+            fails.append(f"bestmove {best} outside searchmoves {names} in {b.fen()}")
+        for l in lines:
+            if l.startswith("info depth") and " multipv " in l and " pv " in l:
+                first = l.split(" pv ", 1)[1].split()[0]
+                if first not in allowed and l.split(" multipv ")[1].split()[0] == "1":
+                    fails.append(f"PV root {first} outside searchmoves {names}: {l[:80]}")
+finally:
+    rc = eng.close()
 print(f"positions {checked} multipv {mpv} failures {len(fails)}")
 for f in fails[:10]:
     print("FAIL", f)

@@ -64,26 +64,28 @@ if not positions:
     print("no positions constructed; this probe has no result")
     sys.exit(2)
 eng = Engine(exe)
-eng.send("uci"); eng.send("isready"); eng.read_until("readyok", 10)
-fails = 0
-for fen in positions:
-    b = chess.Board(fen)
-    eng.send(f"position fen {fen}"); eng.send("go depth 6")
-    lines = [l.rstrip() for l in eng.read_until("bestmove", 60)]  # raises on a stalled engine (F-37)
-    bm = lines[-1].split()[1]
-    scores = [l for l in lines if l.startswith("info depth") and " score " in l]
-    last = scores[-1] if scores else ""
-    problems = []
-    if " score mate -1" not in last:
-        problems.append("expected 'score mate -1', got: " + (last.split(" score ")[1][:20] if last else "none"))
-    try:
-        mv = chess.Move.from_uci(bm)
-        if mv not in b.legal_moves: problems.append(f"illegal bestmove {bm}")
-    except ValueError:
-        problems.append(f"bad bestmove {bm}")
-    if problems:
-        fails += 1
-        print("FAIL", fen, problems)
-rc = eng.close()
+try:
+    eng.send("uci"); eng.send("isready"); eng.read_until("readyok", 10)
+    fails = 0
+    for fen in positions:
+        b = chess.Board(fen)
+        eng.send(f"position fen {fen}"); eng.send("go depth 6")
+        lines = [l.rstrip() for l in eng.read_until("bestmove", 60)]  # raises on a stalled engine (F-37)
+        bm = lines[-1].split()[1]
+        scores = [l for l in lines if l.startswith("info depth") and " score " in l]
+        last = scores[-1] if scores else ""
+        problems = []
+        if " score mate -1" not in last:
+            problems.append("expected 'score mate -1', got: " + (last.split(" score ")[1][:20] if last else "none"))
+        try:
+            mv = chess.Move.from_uci(bm)
+            if mv not in b.legal_moves: problems.append(f"illegal bestmove {bm}")
+        except ValueError:
+            problems.append(f"bad bestmove {bm}")
+        if problems:
+            fails += 1
+            print("FAIL", fen, problems)
+finally:
+    rc = eng.close()
 print(f"positions {len(positions)} failures {fails}")
 sys.exit(1 if fails or rc != 0 else 0)

@@ -118,8 +118,12 @@ def reachable_material(b):
 
 def start():
     eng = Engine(EXE)
-    eng.send("uci")
-    eng.read_until("uciok", 10)
+    try:
+        eng.send("uci")
+        eng.read_until("uciok", 10)
+    except BaseException:
+        eng.close()
+        raise
     return eng
 
 
