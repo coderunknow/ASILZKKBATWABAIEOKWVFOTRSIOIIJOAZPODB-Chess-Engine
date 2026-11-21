@@ -826,7 +826,9 @@ impl<'a> Searcher<'a> {
                 } else {
                     0
                 };
-                if sp + capture_gain + promo_gain + 200 < alpha {
+                // Not while alpha is a mate score (F-42): a capture that mates is worth MATE, and
+                // the margin test would prune it against a mate-in-N alpha.
+                if alpha.abs() < MATE_BOUND && sp + capture_gain + promo_gain + 200 < alpha {
                     continue;
                 }
             }
