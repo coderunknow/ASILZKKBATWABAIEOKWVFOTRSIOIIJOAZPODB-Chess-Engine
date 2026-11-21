@@ -12,7 +12,8 @@ OUT="${1:?usage: final_gate.sh <out_dir>}"
 mkdir -p "$OUT" || exit 2
 SUMMARY="$OUT/summary.txt"
 : > "$SUMMARY"
-PY="${PY:-python3}"
+# Interpreter with python-chess (the test oracle). Default: the venv if present, else python3.
+PY="${PY:-$( [ -x "$HOME/.venv/bin/python3" ] && echo "$HOME/.venv/bin/python3" || echo python3 )}"
 # shellcheck disable=SC1090
 source "${TOOLCHAIN_ENV:-$HOME/.toolchain/env}" || { echo "no toolchain env" | tee -a "$SUMMARY"; exit 2; }
 
