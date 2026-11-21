@@ -902,3 +902,13 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   floor binds with usable/mtg < 20 ms, that is t < ~1.1 s. Validation: see the entry below when run.
   Decision requested from the owner: (a) amend ENGINE-1 with a new preregistration and refreeze the hash; or (b) keep the formula
   and document that sudden-death clocks under ~1.1 s are unsupported.
+- F-32 PROTOTYPE EVIDENCE (scratch copy only, not on the branch; 2026-11-21): candidate floor `max(min(20, t/(4·mtg)), 1)` instead of
+  `max(20)`. Self-play (`selfplay_clock_probe.py`): 1000/0 → 165 plies, 387 ms left, no flag (old: flag at ply 110); 300/0 → 60 plies,
+  no flag (old: flag at ply 34); 2000/0 → 157 plies, 608 left. Exact formula check: a Python mirror of `clock_limits` matches the
+  Rust output on 4,515 (t, inc, movestogo) cases with 0 mismatches; the candidate changes 519 of them, all with t in 10..1090 ms.
+  Existing unit test `uci::tests::clock_limits_respect_remaining_time` pins (20, 20) at t = 250 ms with the comment "20 ms floor
+  moves", so the current floor is a pinned design choice, not an accident. That test fails under the candidate, as expected for a
+  formula change, which is why the change is for the owner. Not committed.
+- F-33 FIXED (LOW, documentation in tests; found while checking F-32): three comments in `tests/clock_smoke.rs` gave clock values
+  from before ENGINE-1 (3000/40: "75 ms, hard 450"; 250/40: "hard 120"; 2000/10+50: "250 ms, hard 1500"). The assertions only check
+  responsiveness and never used those numbers. Comments now give the values the code produces: 67/268, 20/20, 220/850.
