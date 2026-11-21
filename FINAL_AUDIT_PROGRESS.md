@@ -304,3 +304,15 @@ blocking reads (valid, fixed; targeted runs pass). Source findings, verified in 
 change and a full gate, which did not fit before 10:00): F-20 `src/tt.rs:143` (MAJOR: a refused second allocation can still
 abort), F-21 `src/uci.rs:596` (searchmoves ignored in the spawn-failure fallback), F-22 `src/uci.rs:599` (spawn-failure
 fallback bypasses the output hold for `go infinite`/`go ponder`). None of these is claimed fixed.
+
+**Final source commit of this stretch: `7fe7e87`** (F-21 fix + regression test; the only source change after `ffd6b04`).
+- Local gate `/tmp/gates/final-final/summary.txt` (`commit 7fe7e87…`, `dirty_files 0`): 34 of 34 rows rc=0. Release tests 108 passed / 0 failed (107 + the new `spawn_fallback_respects_searchmoves`); debug tests 102 / 0; clippy release and debug `-D warnings` clean; fmt clean; bench `849a85bf7e8e1eba`; time_budget 8/8; uci_extreme_args 0 failures; perft random seeds 2 and 8: 0 mismatches; search sweep seeds 2 and 3: PASS; legal differential seeds 1 and 7; UCI grammar seeds 9 and 21; full-game en passant PASS.
+- CI on `7fe7e87` (run 44856049743): success for `ubuntu-latest`, `windows-latest`, `msrv (rust 1.80)`, and `windows x64 release artifact`. anchor-verify 44856049740: success.
+- Windows artifact `flawless-windows-x64-7fe7e87231740482a2260cf6f3e2227b269c6e63` (artifact 14687572163, 211,673 bytes): produced by CI; NOT downloaded or verified (earlier downloads from this host returned EOF; not retried in a loop).
+- F-21 reproduced before the fix (`bestmove a2a3` with `searchmoves d2d4` under `ulimit -v 50000`) and fixed (`bestmove d2d4`).
+
+**Still OPEN after this stretch:** F-20 (`src/tt.rs:143`, MAJOR: a refused second allocation can still abort; fix needs a decision about lazy zeroing vs. resident memory at Hash 1024), F-22 (`src/uci.rs:599`: spawn-failure fallback bypasses the output hold for `go infinite`/`go ponder`). Both verified in the code, neither reproduced at run time, neither fixed.
+
+**Gate summary (final source `7fe7e87`):** G1 CI PASS. G2 CodeRabbit: a review was posted on `ce9f8d4` (10 actionable comments; triaged in FAILURE_LEDGER.md); no review yet on `7fe7e87`. G3 Windows artifact NOT VERIFIED. G4 GUI N/A. G5 local gates PASS on `7fe7e87`. G6 MSRV PASS in CI.
+
+**Release decision: NOT RELEASED.** PR #4 not merged. No tag, no GitHub Release. Open: G2 on the final head, G3, F-20, F-22, and the F-09 `searchmoves` design point raised again by Codex.
