@@ -316,3 +316,25 @@ fallback bypasses the output hold for `go infinite`/`go ponder`). None of these 
 **Gate summary (final source `7fe7e87`):** G1 CI PASS. G2 CodeRabbit: a review was posted on `ce9f8d4` (10 actionable comments; triaged in FAILURE_LEDGER.md); no review yet on `7fe7e87`. G3 Windows artifact NOT VERIFIED. G4 GUI N/A. G5 local gates PASS on `7fe7e87`. G6 MSRV PASS in CI.
 
 **Release decision: NOT RELEASED.** PR #4 not merged. No tag, no GitHub Release. Open: G2 on the final head, G3, F-20, F-22, and the F-09 `searchmoves` design point raised again by Codex.
+
+## Phase L — audit stretch to 17:00 UTC (2026-11-21, deadline 00:00 UTC+7 on 2026-11-22): F-36, final-head gates on 000266e
+
+Scope of this phase: continue the audit after the CLOCK-1 gate, look for bugs by probing the real binary (not by re-running green suites), fix what is a defect, and gate the final head. The clock time at the start of the phase was about 08:45 UTC.
+
+**Findings this phase**
+- F-36 (LOW, CLI, FIXED in `ad000f1`): `flawless divide 0` printed one count-1 line per root move and `total = 20`, while `perft 0` is 1. Cause: `perft_divide` gives each root move `perft(depth−1)` with `saturating_sub`, so depth 0 counted root moves. Fix: depth must be ≥ 1 (usage, exit 2). Regression `tests/cli_divide.rs` (3 tests); mutation check failed as intended. Engine perft and movegen were not changed.
+- OPEN, NOT CHANGED (owner decision, DESIGN_LOG 2026-11-21 audit entry): `go ponder movetime N` counts the movetime from `go`. After 4 s of pondering, `ponderhit` gives a bestmove at once. The UCI spec does not say when a movetime starts, and the rule is pinned by `ponder_movetime_ponderhit_keeps_the_movetime_deadline`.
+- Not defects (checked and recorded in FAILURE_LEDGER.md): `moves` exits 0 on a bad FEN line (F-12 batch contract; DECISION); `movetime` / `movestogo` / `wtime` at 2^63−1, 2^64−1, and 2^64 (saturating by design); `go depth` clamped to 64 (by design); EOF during a search stops it (as Stockfish); `position` with an illegal move gives `bestmove 0000` (F-11 design); insufficient-material scores 0; `bench` deterministic; `divide` matches python-chess on 10 cases; `hash` transposition and en passant behaviour; stop latency 7.5–7.7 ms at depth 100+; panic sites in non-test code.
+
+**Evidence this phase (commands and results in FAILURE_LEDGER.md)**
+- Gate `scripts/final_gate.sh` on `000266e`: 45 steps, FAILS=0, dirty 0, release SHA-256 0d9c508d31e15170921641eedd59735a0a14c15f8ad17472c084848dc9663a6d.
+- CI on `000266e` (run 44886526755) and anchor-verify (44886526780): success.
+- Fresh-seed campaign (18 steps, seeds 12, 13, 32, 33, 6, 202, 12, 102, 44, 52, 82, 92, 93, 78, 72, and malformed/extreme-args): 18 of 18 rc 0.
+- Self-play clock series (six configurations, 60–150 plies each): 0 flags, 0 illegal moves.
+
+**CodeRabbit (G2):** requested on `72dcf78` (comment 7060056225, 08:38 UTC). CodeRabbit replied (comment 7060057149): "Head commit changed", the command was not run, and the reply says automatic reviews are not re-run for already-reviewed commits. No review result exists for any head after `c83046b`. The request must be repeated on the final head. Not claimed.
+**Codex:** usage limit reached on each trigger (comments 7060086428 to 7060154913). Not bypassed. Not claimed.
+
+**Still not done:** G3 (Windows artifact, not verified: blob-storage download errors); CodeRabbit on the final head; the owner decision on `go ponder movetime`; a new CLOCK-1 hash freeze (ENGINE-1 and SEE-candidate hashes still describe the pre-CLOCK-1 binary).
+
+**Release decision: NOT RELEASED.** No merge, no tag, no GitHub Release in this phase.
