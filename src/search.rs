@@ -614,8 +614,10 @@ impl<'a> Searcher<'a> {
             }
         }
 
-        // Futility pruning at low depths
-        if depth <= 2 && !in_chk && !is_pv && !fifty_claim {
+        // Futility pruning at low depths. Not while alpha is a mate score (F-41): with alpha at a
+        // mate-in-N value every ordinary line looks futile, and the quiet mating move that would
+        // beat it was pruned before it was searched (mate-in-2 reported as mate-in-3).
+        if depth <= 2 && !in_chk && !is_pv && !fifty_claim && alpha.abs() < MATE_BOUND {
             let s = self.static_eval(pos);
             if s + 150 * depth <= alpha {
                 return self.quiesce(pos, alpha, beta, ply);

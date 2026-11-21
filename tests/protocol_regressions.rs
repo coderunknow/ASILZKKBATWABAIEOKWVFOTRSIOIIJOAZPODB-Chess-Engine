@@ -1153,3 +1153,31 @@ fn negative_go_depth_and_nodes_answer_at_once() {
         e.quit_and_expect_exit(Duration::from_secs(10));
     }
 }
+
+/// Regression (F-41): futility pruning at depth <= 2 ignored a mate-score alpha. With alpha at a
+/// mate-in-3 value, every quiet line looked futile, so the quiet mate in two `c5g5` (1. Rg5 Kh3
+/// 2. Rh1#) was pruned and the engine reported `mate 3` through `c5c3`. Now the search reports
+/// the shorter mate: `score mate 2` and `bestmove c5g5` at depth 6.
+#[test]
+fn quiet_mate_in_two_is_not_pruned_by_a_mate_alpha() {
+    let mut e = Engine::start();
+    e.send("isready");
+    e.read_until("readyok", Duration::from_secs(10));
+    e.send("position fen 8/3K4/8/2R5/8/8/7k/1R6 w - - 0 1");
+    e.send("go depth 6");
+    let lines = e.read_until("bestmove", Duration::from_secs(60));
+    let last = lines
+        .iter()
+        .rev()
+        .find(|l| l.starts_with("info depth 6 "))
+        .unwrap_or_else(|| panic!("no depth-6 line: {lines:?}"));
+    assert!(
+        last.contains("score mate 2"),
+        "the shortest mate is mate in 2 (1. Rg5 Kh3 2. Rh1#): {last}"
+    );
+    assert!(
+        bestmove_line(&lines).starts_with("bestmove c5g5"),
+        "the mate in two is c5g5: {lines:?}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
