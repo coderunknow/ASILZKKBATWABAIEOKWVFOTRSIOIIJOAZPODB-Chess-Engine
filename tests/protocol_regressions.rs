@@ -1098,3 +1098,58 @@ fn refused_positions_do_not_block_when_stderr_is_not_drained() {
     let status = child.wait().expect("wait");
     assert_eq!(status.code(), Some(0), "exit status after 1500 refusals");
 }
+
+/// Regression (F-39): an out-of-range `go depth` or `go nodes` value was ignored with a notice,
+/// which left the search unlimited (`go` alone), so `go depth 4294967296` ran until `stop`.
+/// Digit-only overflow now saturates like the time values do: depth to 64, nodes to `u64::MAX`.
+/// The search is not stopped here: a depth- or node-limited search must end by itself. K v K
+/// from `k7/8/8/8/8/8/8/K7 w` ends at depth 64 in well under a second.
+#[test]
+fn out_of_range_go_depth_and_nodes_saturate_instead_of_being_ignored() {
+    for cmd in [
+        "go depth 4294967296",
+        "go depth 99999999999999999999",
+        "go nodes 18446744073709551616",
+    ] {
+        let mut e = Engine::start();
+        e.send("isready");
+        e.read_until("readyok", Duration::from_secs(10));
+        e.send("position fen k7/8/8/8/8/8/8/K7 w - - 0 1");
+        e.send(cmd);
+        // No `stop` is sent: a limited search answers by itself, an unlimited one would time out.
+        let lines = e.read_until("bestmove", Duration::from_secs(20));
+        assert!(
+            !lines.iter().any(|l| l.starts_with("info string go")),
+            "{cmd}: the value must be accepted, not reported as ignored: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.starts_with("info depth 64 ")),
+            "{cmd}: the search must reach depth 64 (the clamp): {lines:?}"
+        );
+        e.quit_and_expect_exit(Duration::from_secs(10));
+    }
+}
+
+/// Regression (F-39): a negative `go depth` or `go nodes` value used to be ignored and left the
+/// search unlimited. It now means the smallest limit: depth clamps to 1, nodes saturate to 0 (the
+/// same rule as a negative time), so the search answers at once without a `stop`.
+#[test]
+fn negative_go_depth_and_nodes_answer_at_once() {
+    for cmd in ["go depth -4294967296", "go depth -1", "go nodes -1"] {
+        let mut e = Engine::start();
+        e.send("isready");
+        e.read_until("readyok", Duration::from_secs(10));
+        e.send("position startpos");
+        e.send(cmd);
+        let lines = e.read_until("bestmove", Duration::from_secs(20));
+        assert!(
+            !lines.iter().any(|l| l.starts_with("info string go")),
+            "{cmd}: the value must be accepted, not reported as ignored: {lines:?}"
+        );
+        assert!(
+            !bestmove_line(&lines).starts_with("bestmove 0000"),
+            "{cmd}: the start position has legal moves: {lines:?}"
+        );
+        e.quit_and_expect_exit(Duration::from_secs(10));
+    }
+}

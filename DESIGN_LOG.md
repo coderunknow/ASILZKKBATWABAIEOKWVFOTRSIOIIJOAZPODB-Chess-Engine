@@ -589,3 +589,9 @@ DRAFT ONLY — no code changes under this entry.
 - The UCI spec (wbec-ridderkerk.nl UCIProtocol, `ponder`) requires no exit in ponder mode. It does not say when a `movetime` budget starts. So this is not clearly a violation.
 - Decision: unchanged. The existing decision (2026-11-21 F-24 entry) and the test `ponder_movetime_ponderhit_keeps_the_movetime_deadline` pin the current rule. Changing it would change a pinned expectation, so it is escalated to the owner in the final report instead.
 - Effect on play: a GUI that ponders with `movetime` gets no extra thinking after `ponderhit`. Clock-based ponder (`wtime`/`btime`) is unaffected (F-24).
+
+## 2026-11-21 — F-39: out-of-range `go depth` / `go nodes` values saturate (were ignored → unlimited)
+- Found by audit (`go depth 4294967296` on the release binary printed `info string go depth: ... ignored` and then searched until `stop`, while `go depth 100` stops at 64). Cause: `depth` parsed as `i32` and `nodes` as a plain `u64` parse, so a digit-only overflow or a negative value failed and was dropped. With no depth, no nodes and no clock, `cmd_go` sets `infinite`.
+- Decision: the rule already used for time values applies to these two as well. A digit-only value beyond the type saturates (depth to `i32::MAX`, then clamped to 64; nodes to `u64::MAX`). A negative depth saturates to `i32::MIN` (clamped to 1, as `-1` already was). A negative node count is 0, as a negative time is 0 (answers at once).
+- Not changed: `go movestogo` (parsed as `u64`, overflow already saturates through the parser; it is not `Option<u32>`), `setoption` values, and the `go ponder movetime` decision above.
+- Tests: `out_of_range_go_depth_and_nodes_saturate_instead_of_being_ignored`, `negative_go_depth_and_nodes_answer_at_once` (tests/protocol_regressions.rs). Both time out (20 s) on the pre-fix source and pass on the fix.

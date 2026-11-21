@@ -153,12 +153,6 @@ fn allocate_tt(mb: usize) -> (TranspositionTable, usize) {
     }
 }
 
-/// Parses a `go` time value in milliseconds (`wtime`, `btime`, `winc`, `binc`, `movetime`).
-///
-/// A negative value means the time is already gone (a GUI reports a flagged clock this way), so
-/// it is 0: the search answers at once. Before this, `-1000` failed to parse and the token was
-/// dropped, so the search had no time limit at all and never answered. A value above `u64::MAX`
-/// saturates. Anything else that is not a number is `None`, as before.
 /// Reads the value after a `go` keyword at `args[i]` (F-26). The value is consumed only if it
 /// parses; a missing or bad value (or another keyword, as in `go depth wtime 1000`) is reported on
 /// stdout and only the keyword is skipped, so the next keyword is not lost. Returns the value and
@@ -181,6 +175,32 @@ fn take_go_value<T>(
     }
 }
 
+/// Parses a `go depth` value (F-39). A digit-only value beyond the `i32` range saturates like the
+/// time and node values do (a positive one to `i32::MAX`, clamped to 64 by the caller); a negative one
+/// saturates to `i32::MIN` (clamped to 1). Before this, `go depth 4294967296` and `go depth
+/// -4294967296` were ignored, which made the search unlimited, while `go depth 100` stopped at 64.
+fn parse_depth(text: &str) -> Option<i32> {
+    if let Ok(v) = text.parse::<i32>() {
+        return Some(v);
+    }
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(d) => (true, d),
+        None => (false, text),
+    };
+    if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        Some(if negative { i32::MIN } else { i32::MAX })
+    } else {
+        None
+    }
+}
+
+/// Parses a `go` time value in milliseconds (`wtime`, `btime`, `winc`, `binc`, `movetime`) and,
+/// since F-39, a `go nodes` count.
+///
+/// A negative value means the time is already gone (a GUI reports a flagged clock this way), so
+/// it is 0: the search answers at once. Before this, `-1000` failed to parse and the token was
+/// dropped, so the search had no time limit at all and never answered. A value above `u64::MAX`
+/// saturates. Anything else that is not a number is `None`, as before.
 fn parse_time_ms(text: &str) -> Option<u64> {
     let digits = text.strip_prefix('-');
     match digits {
@@ -477,12 +497,12 @@ impl UciEngine {
                     i += used;
                 }
                 "depth" => {
-                    let (v, used) = take_go_value(args, i, "depth", |s| s.parse::<i32>().ok());
+                    let (v, used) = take_go_value(args, i, "depth", parse_depth);
                     depth = v;
                     i += used;
                 }
                 "nodes" => {
-                    let (v, used) = take_go_value(args, i, "nodes", |s| s.parse::<u64>().ok());
+                    let (v, used) = take_go_value(args, i, "nodes", parse_time_ms);
                     nodes = v;
                     i += used;
                 }
