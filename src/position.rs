@@ -639,7 +639,8 @@ impl Position {
             self.halfmove = self.halfmove.saturating_add(1);
         }
         if us == BLACK {
-            self.fullmove += 1;
+            // Saturating (F-29): a FEN may give any u32; a debug build panicked here at u32::MAX.
+            self.fullmove = self.fullmove.saturating_add(1);
         }
 
         // Side to move.
@@ -1070,5 +1071,18 @@ mod ep_legality_tests {
             let p = Position::from_fen(fen).expect("fen");
             assert!(!p.insufficient_material(), "should not be dead: {fen}");
         }
+    }
+
+    #[test]
+    fn fullmove_counter_saturates_instead_of_overflowing() {
+        // F-29: `fullmove += 1` panicked in a debug build when a FEN had the largest u32 and a
+        // black move followed. The counter now saturates, as the halfmove clock does.
+        let mut p = Position::from_fen("8/8/8/8/8/8/7k/K7 b - - 0 4294967295").expect("fen");
+        let legal = crate::movegen::generate_legal(&mut p);
+        let m = legal.iter().copied().next().expect("a legal black move");
+        let undo = p.make_move(m);
+        assert_eq!(p.fullmove, u32::MAX);
+        p.unmake_move(m, &undo);
+        assert_eq!(p.fullmove, u32::MAX);
     }
 }

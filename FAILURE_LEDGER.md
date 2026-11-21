@@ -851,3 +851,15 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   side-to-move-mated-in-one position found none (not a defect; no negative-mate check was run).
 - NOT A DEFECT (2026-11-21): `position fen 8/P6k/8/8/8/8/8/K7 w` `go depth 2` returned `info nodes 1` / `bestmove a1b1` only when
   `quit` was sent right after `go`. Waiting for `bestmove` gives `bestmove a7a8q` (depth 2 +886, depth 6 stable). Harness artifact again.
+- F-29 FIXED (LOW, debug builds only; found by the 2026-11-21 audit's unchecked-arithmetic scan): `Position::make_move` did
+  `fullmove += 1` after a black move. A FEN with fullmove 4294967295 (accepted; the field is u32) and any black move panicked
+  in a debug build ("attempt to add with overflow", position.rs:642), killing the engine on the main thread. A release build
+  wrapped to 0 with no visible effect. Fix: `saturating_add`, as the halfmove clock already does. Regression:
+  `position::ep_legality_tests::fullmove_counter_saturates_instead_of_overflowing` (debug). Mutation check: restoring `+= 1`
+  fails the test with the overflow panic; restored. Debug suite after the fix: all pass (6 ignored are the release-only perft gates,
+  run by `cargo test --release`).
+- FRESH-SEED BATCH (2026-11-21, `/tmp/audit/k/fz2/summary.txt`, on f4b2a9e/F-28 build): `fuzz_uci_grammar` 33 (100 sessions) and 47
+  (100): failures 0. `fuzz_legal_differential` 13 and 19: PASS. `perft_random_differential` 5 and 6 (30 games, depth 3): PASS.
+  `search_sweep` 6 (50 positions, depth 4): PASS. `clock_sweep_probe` seed 9: 40/40 within the usable clock.
+  `pv_legality_probe` 80 positions, depth 4, seed 31: 320 PV lines, 0 failures. `mate1_probe` 80 positions, seed 31: 0 failures.
+  `multipv_probe` 20 positions, MultiPV 8, seed 31: 0 failures. `tt_bestmove_probe` 500 positions, Hash 1, depth 6, seed 4: 0 failures.
