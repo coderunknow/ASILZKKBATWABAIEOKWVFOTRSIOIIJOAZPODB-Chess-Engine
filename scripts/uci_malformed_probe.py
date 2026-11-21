@@ -91,7 +91,10 @@ def run(line):
         """Kill if still running, join the readers (bounded), and return the full transcript."""
         if p.poll() is None:
             p.kill()
-        p.wait()
+        try:
+            p.wait(timeout=10)  # bounded reap after SIGKILL (F-43)
+        except subprocess.TimeoutExpired:
+            pass
         out_reader.join(5); err_reader.join(5)
         err = b"".join(err_chunks).decode("utf-8", "replace")
         return status, "\n".join(out_lines), err

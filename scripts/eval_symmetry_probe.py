@@ -94,7 +94,10 @@ class Searcher:
     def kill(self):
         if self.p.poll() is None:
             self.p.kill()
-        self.p.wait()
+        try:
+            self.p.wait(timeout=10)  # SIGKILL cannot be ignored; bounded anyway (F-43)
+        except subprocess.TimeoutExpired:
+            print("warning: engine did not reap within 10 s after kill", file=sys.stderr)
         for f in (self.p.stdin, self.p.stdout):
             try:
                 f.close()

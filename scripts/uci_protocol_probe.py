@@ -80,7 +80,10 @@ def check(name, fn):
         for e in ENGINES:
             if e.p.poll() is None:
                 e.p.kill()
-            e.p.wait()
+            try:
+                e.p.wait(timeout=10)  # bounded reap after SIGKILL (F-43)
+            except subprocess.TimeoutExpired:
+                pass
             for f in (e.p.stdin, e.p.stdout, e.p.stderr):
                 try: f.close()
                 except Exception: pass

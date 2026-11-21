@@ -204,7 +204,10 @@ class Session:
     def kill(self):
         if self.proc.poll() is None:
             self.proc.kill()
-        self.proc.wait()
+        try:
+            self.proc.wait(timeout=10)  # bounded reap after SIGKILL (F-43)
+        except subprocess.TimeoutExpired:
+            print("warning: engine did not reap within 10 s after kill", file=sys.stderr)
 
     def stderr_text(self):
         return b"".join(self.stderr_chunks).decode("utf-8", "replace").replace("\r\n", "\n")

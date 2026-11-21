@@ -67,7 +67,10 @@ class Engine:
                     self.p.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     self.p.kill()
-                    self.p.wait()
+                    try:
+                        self.p.wait(timeout=10)  # bounded reap after SIGKILL (F-43)
+                    except subprocess.TimeoutExpired:
+                        pass
         finally:
             if self.p.poll() is None:
                 self.p.kill()
