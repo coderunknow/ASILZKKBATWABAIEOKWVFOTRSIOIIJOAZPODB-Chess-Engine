@@ -94,6 +94,20 @@ fn prev_power_of_two(n: usize) -> usize {
     1usize << (usize::BITS - 1 - n.leading_zeros())
 }
 
+/// Entry count for a requested size in MiB. The count is a power of two (the index is masked),
+/// rounded DOWN so the table never holds more than the request (F-40: rounding up made `Hash 65`
+/// allocate 128 MiB and `Hash 513` allocate 1 GiB), and clamped to 2^27 entries (1 GiB).
+fn table_entries(size_mb: usize) -> usize {
+    let want_entries = size_mb.max(1) * 1024 * 1024 / 8;
+    prev_power_of_two(want_entries.clamp(1024, 1 << 27))
+}
+
+/// The table size, in MiB, that a requested `Hash` value really allocates. `Hash 100` allocates
+/// 64 MiB (F-45): the engine reports this on stdout, so the GUI user sees what was allocated.
+pub fn effective_table_mib(size_mb: usize) -> usize {
+    table_entries(size_mb) * 8 / (1024 * 1024)
+}
+
 /// Allocates `n` zeroed table entries, or reports a refused allocation.
 ///
 /// This is the only `unsafe` in `src/` (test code has one FFI block, see F-18). Its purpose:
@@ -172,17 +186,12 @@ impl TranspositionTable {
 
     /// Resizes the table to `size_mb` MiB. On a refused allocation the table is left unchanged.
     ///
-    /// The new table is one fallible zeroed allocation (see [`zeroed_entries`]). Rust aborts the
+    /// The new table is one fallible zeroed allocation (see `zeroed_entries`). Rust aborts the
     /// process when an allocation fails, so a probe-then-allocate pair would leave a window in
     /// which the second allocation can still abort (F-20). The zeroed allocation keeps the table
     /// lazily zeroed: pages are committed when first written, not at resize.
     pub fn try_resize(&mut self, size_mb: usize) -> Result<(), TableAllocError> {
-        let bytes = size_mb.max(1) * 1024 * 1024;
-        let want_entries = bytes / 8;
-        // Keep a reasonable bound: at least 1024 entries, at most 2^27 entries (1 GiB). The count is
-        // rounded DOWN to a power of two, so the table never holds more than the requested MiB (F-40:
-        // rounding up made `Hash 65` allocate 128 MiB and `Hash 513` allocate 1 GiB).
-        let entries = prev_power_of_two(want_entries.clamp(1024, 1 << 27));
+        let entries = table_entries(size_mb);
         self.entries = zeroed_entries(entries)?;
         self.len_mask = entries - 1;
         // The entries are already zero; only the counters and the generation need resetting.
@@ -572,6 +581,36 @@ mod size_tests_f40 {
             let mut tt = TranspositionTable::try_new(1).expect("1 MiB table");
             tt.try_resize(mb).expect("resize");
             assert_eq!(tt.entries.len() * 8, mb * 1024 * 1024, "{mb} MiB");
+        }
+    }
+
+    /// F-45: the size the engine reports is the size it allocates. `Hash 100` is 64 MiB, and the
+    /// reported value must agree with the real entry count for every requested size.
+    #[test]
+    fn effective_table_mib_matches_the_allocation() {
+        for (requested, effective) in [
+            (1usize, 1usize),
+            (2, 2),
+            (64, 64),
+            (65, 64),
+            (100, 64),
+            (513, 512),
+            (1024, 1024),
+        ] {
+            assert_eq!(
+                effective_table_mib(requested),
+                effective,
+                "reported size for {requested} MiB"
+            );
+            if effective <= 128 {
+                let mut tt = TranspositionTable::try_new(1).expect("1 MiB table");
+                tt.try_resize(requested).expect("resize");
+                assert_eq!(
+                    tt.entries.len() * 8,
+                    effective * 1024 * 1024,
+                    "allocation for {requested} MiB"
+                );
+            }
         }
     }
 }

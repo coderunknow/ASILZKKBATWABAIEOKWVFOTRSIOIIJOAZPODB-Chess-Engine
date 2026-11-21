@@ -35,7 +35,10 @@ Commands (CLI): `perft <depth> [fen]` · `divide <depth> [fen]` · `bench` · `b
 3. Time controls and `go movetime` are supported. `go movetime N` searches for about N ms.
 4. Windows GUI test instructions and a checklist: `docs/WINDOWS_GUI_TEST.md`.
 
-GUI playability has not yet been verified by the project; see the release-candidate report.
+Engine-level playability is checked with a standard UCI client (python-chess): full games play to a legal
+end with a real clock, and option handling and protocol replies are tested (`scripts/selfplay_games.py`,
+`scripts/uci_protocol_probe.py`). Playing in a graphical GUI has not been verified by the project; see the
+release-candidate report.
 
 ## What works (V1 scope)
 
@@ -60,7 +63,8 @@ opponents; do not present them as official ratings).
 ## Known limitations (pre-V1)
 
 - Single-threaded search (`Threads` is fixed at 1).
-- `Hash` accepts 1–1024 MiB. The transposition table is capped at 1 GiB (2^27 entries), so larger values are rejected with an `info string` on stdout.
+- `Hash` accepts 1–1024 MiB. The transposition table is capped at 1 GiB (2^27 entries), so larger values are rejected with an `info string` on stdout. The table size is a power of two, so a request is rounded down (`Hash 100` allocates 64 MiB); the engine prints an `info string` that states the size it allocated.
+- A `setoption` sent while a search is running ends that search (its `bestmove` is printed) before the option is applied. UCI expects GUIs to send options only when idle.
 - `go searchmoves` that names only illegal moves does not return `bestmove 0000`. The search considers all legal moves and prints an `info string` saying so. This departs from the UCI wording ("restrict the search"); see DESIGN_LOG 2026-11-20.
 - Classical evaluation only; no opening book; no tablebases.
 - Search strength is not calibrated; no official rating exists.

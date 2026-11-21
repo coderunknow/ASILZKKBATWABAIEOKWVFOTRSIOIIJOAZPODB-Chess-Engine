@@ -4,6 +4,10 @@ All notable changes are documented here. SemVer 2.0.0. Versions before the V1 re
 
 ## [Unreleased] — independent audit remediation (2026-11-20)
 
+- **Fixed (LOW, F-45): `setoption name Hash` rounded the size down without saying so.** `Hash 100` allocated 64 MiB
+  silently. The engine now stores and reports the size it allocates (`info string option Hash 100 MiB allocates 64 MiB …`).
+  The size rule has one definition (`tt::effective_table_mib`). Tests: `tt::size_tests_f40::effective_table_mib_matches_the_allocation`,
+  `protocol_regressions::hash_rounding_is_reported_on_stdout`.
 - **Fixed (MEDIUM, F-12): `flawless moves` and `flawless hash` stopped at the first non-UTF-8 stdin line.** Later
   FENs got no reply. Each bad or overlong line now gets one `error` reply and the batch continues. Tests:
   `tests/cli_batch.rs` (3 tests).

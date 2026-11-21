@@ -228,6 +228,32 @@ fn hash_limit_is_advertised_and_enforced() {
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
 
+/// Regression (F-45): a Hash value that is not a power of two is rounded down, and the engine
+/// must say what it allocated. Before the fix `Hash 100` silently allocated 64 MiB.
+#[test]
+fn hash_rounding_is_reported_on_stdout() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("setoption name Hash value 100");
+    e.send("isready");
+    let lines = e.read_until("readyok", Duration::from_secs(10));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Hash 100 MiB allocates 64 MiB")),
+        "Hash 100 was not reported as 64 MiB: {lines:?}"
+    );
+    e.send("setoption name Hash value 64");
+    e.send("isready");
+    let lines = e.read_until("readyok", Duration::from_secs(10));
+    assert!(
+        !lines.iter().any(|l| l.contains("allocates")),
+        "exact power of two reported as rounded: {lines:?}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
 /// Regression (AUDIT-FEN-01): a FEN with more pieces than any real game can reach generated more
 /// moves than the fixed move list held, and `go` then crashed the engine (exit 101). The FEN must
 /// be rejected, after which the engine answers the next `go` with `bestmove 0000` and stays alive.

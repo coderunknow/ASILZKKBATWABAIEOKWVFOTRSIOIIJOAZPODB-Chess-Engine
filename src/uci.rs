@@ -6,7 +6,7 @@
 //!
 //! Search runs on a worker thread; `go` returns immediately. `bestmove` is printed exactly
 //! once per `go`. `stop` / `ponderhit` act on the running search through shared, cheap
-//! primitives (AtomicBool + Arc<Mutex<SearchLimits>>).
+//! primitives (`AtomicBool` + `Arc<Mutex<SearchLimits>>`).
 
 use crate::eval::MATE_SCORE;
 use crate::movegen::generate_legal;
@@ -805,20 +805,36 @@ impl UciEngine {
             {
                 Some(mb) => {
                     self.stop_and_join();
-                    match self.tt.as_mut().map(|tt| tt.try_resize(mb)) {
-                        Some(Ok(())) => self.hash_mb = mb,
-                        _ => {
-                            // Keep the previous table: the engine must stay usable.
-                            let (tt, kept) = match self.tt.take() {
-                                Some(tt) => (tt, self.hash_mb),
-                                None => allocate_tt(self.hash_mb),
-                            };
-                            self.tt = Some(tt);
-                            self.hash_mb = kept;
+                    let effective = crate::tt::effective_table_mib(mb);
+                    let resized = match self.tt.as_mut() {
+                        Some(tt) => tt.try_resize(mb).is_ok(),
+                        None => match TranspositionTable::try_new(mb) {
+                            Ok(tt) => {
+                                self.tt = Some(tt);
+                                true
+                            }
+                            Err(_) => false,
+                        },
+                    };
+                    if resized {
+                        // Store the size that was really allocated, not the request (F-45).
+                        self.hash_mb = effective;
+                        if effective != mb {
                             crate::out_line!(
-                                "info string option Hash {mb} MiB could not be allocated; keeping {kept} MiB"
+                                "info string option Hash {mb} MiB allocates {effective} MiB (table sizes are powers of two, rounded down)"
                             );
                         }
+                    } else {
+                        // Keep the previous table: the engine must stay usable.
+                        let (tt, kept) = match self.tt.take() {
+                            Some(tt) => (tt, self.hash_mb),
+                            None => allocate_tt(self.hash_mb),
+                        };
+                        self.tt = Some(tt);
+                        self.hash_mb = kept;
+                        crate::out_line!(
+                            "info string option Hash {mb} MiB could not be allocated; keeping {kept} MiB"
+                        );
                     }
                 }
                 None => {
