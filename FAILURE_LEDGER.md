@@ -978,3 +978,8 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   edge values including 2^32, 2^64, 2^64+1, i64 limits, `+7`, empty, `0x10`, `1e9`, `1_000`, plus 400 random multi-key lines). Each
   `go` was followed at once by `stop`, so the test covers parsing and immediate-stop arithmetic, not long searches. Result: 0 missing
   bestmove, 0 panics, stderr 0 bytes, `isready` answered, rc 0. Non-defect.
+- FULL GAMES (2026-11-21, release, `fullgame_en_passant_probe.py --max-plies 400`): default movetime 20 ms: 110 plies, en_passant 1,
+  castles 2, promotions 1, CHECKMATE 0-1. Movetime sweep (5, 10, 30, 60, 120 ms): 133 plies CHECKMATE 1-0 (ep 1, castles 2, promo 1);
+  271 plies CHECKMATE 1-0 (ep 1, castles 2, promo 1); 72 plies CHECKMATE 0-1 (ep 1, castles 2, promo 0); 96 plies THREEFOLD_REPETITION
+  1/2-1/2 (ep 1, castles 2, promo 0); 175 plies CHECKMATE 1-0 (ep 1, castles 2, promo 1). All PASS: every engine move legal under
+  python-chess. The probe varies only the time budget from a fixed opening, so variety is narrower than random play.
