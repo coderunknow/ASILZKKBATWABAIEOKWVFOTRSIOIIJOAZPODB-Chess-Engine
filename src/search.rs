@@ -617,7 +617,11 @@ impl<'a> Searcher<'a> {
         // Futility pruning at low depths. Not while alpha is a mate score (F-41): with alpha at a
         // mate-in-N value every ordinary line looks futile, and the quiet mating move that would
         // beat it was pruned before it was searched (mate-in-2 reported as mate-in-3).
-        if depth <= 2 && !in_chk && !is_pv && !fifty_claim && alpha.abs() < MATE_BOUND {
+        // Sparse positions (kings plus at most four other pieces): no static prunes and no LMR.
+        // With these on, the depth-6 search missed quiet mates in three (F-44); the node cost is
+        // small here, and the rule is off in ordinary middlegames, so the bench signature is kept.
+        let sparse = pos.occ_all.count_ones() <= 6;
+        if depth <= 2 && !in_chk && !is_pv && !fifty_claim && alpha.abs() < MATE_BOUND && !sparse {
             let s = self.static_eval(pos);
             if s + 150 * depth <= alpha {
                 return self.quiesce(pos, alpha, beta, ply);
@@ -626,7 +630,7 @@ impl<'a> Searcher<'a> {
 
         // Reverse futility pruning (static null-move): far-above-beta quiet
         // positions fail high without searching. Non-PV, not in check, mate-bound safe.
-        if depth <= 3 && !in_chk && !is_pv && !fifty_claim && beta.abs() < MATE_BOUND {
+        if depth <= 3 && !in_chk && !is_pv && !fifty_claim && beta.abs() < MATE_BOUND && !sparse {
             let s = self.static_eval(pos);
             if s - 150 * depth >= beta {
                 return beta;
@@ -650,7 +654,13 @@ impl<'a> Searcher<'a> {
             // Late move reductions (quiet moves, not in check, late in the list)
             let searched_count = searched_count_usize as i32;
             let mut reduction = 0i32;
-            if depth >= 3 && searched_count >= 3 && !capture && m.promo == PROMO_NONE && !in_chk {
+            if depth >= 3
+                && searched_count >= 3
+                && !capture
+                && m.promo == PROMO_NONE
+                && !in_chk
+                && !sparse
+            {
                 reduction = self.lmr[(depth as usize).min(MAX_PLY as usize)]
                     [(searched_count as usize).min(255)];
             }

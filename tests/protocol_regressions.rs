@@ -1181,3 +1181,33 @@ fn quiet_mate_in_two_is_not_pruned_by_a_mate_alpha() {
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
+
+/// F-44: in sparse positions the depth-6 search missed quiet mates in three. Every position below
+/// has a forced mate in three (checked by an independent proof verifier with python-chess); before
+/// the fix the engine reported `cp ~1300` or `mate 4`. The first one is 1. Kd6 Kxa7 2. Kc7 Ka8
+/// 3. Ra1#. Both must report `score mate 3` (the exact distance) at depth 6.
+#[test]
+fn sparse_quiet_mate_in_three_is_found_at_depth_six() {
+    let cases = [
+        "k1B5/B7/8/2K5/8/8/8/2R5 w - - 0 1",
+        "8/7k/8/r7/6K1/q7/8/8 b - - 0 1",
+    ];
+    for fen in cases {
+        let mut e = Engine::start();
+        e.send("isready");
+        e.read_until("readyok", Duration::from_secs(10));
+        e.send(&format!("position fen {fen}"));
+        e.send("go depth 6");
+        let lines = e.read_until("bestmove", Duration::from_secs(60));
+        let last = lines
+            .iter()
+            .rev()
+            .find(|l| l.starts_with("info depth 6 "))
+            .unwrap_or_else(|| panic!("no depth-6 line for {fen}: {lines:?}"));
+        assert!(
+            last.contains("score mate 3"),
+            "{fen}: a forced mate in three exists, the engine must report `score mate 3`: {last}"
+        );
+        e.quit_and_expect_exit(Duration::from_secs(10));
+    }
+}
