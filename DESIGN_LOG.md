@@ -583,3 +583,9 @@ DRAFT ONLY — no code changes under this entry.
 - Accepted cost: shorter thinking time on clocks of 300 ms to about 1 s (about 1 ms to 17 ms per move). Strength at those clocks is expected to fall. Not measured in Elo.
 - Frozen-evidence rule: the engine binary changes, so ENGINE-1 (`9663697d…`) and SEE-candidate (`168dc0ab…`) hashes no longer describe the head. No rating or screening is authorized by this entry. A new hash must be frozen and re-screened before rating use.
 - Pinned test value `clock_limits_respect_remaining_time` changed from `(20, 20)` to `(1, 1)` at 250 ms. This is the owner-approved expectation change, recorded here and in the test comment. The test was not weakened.
+
+## 2026-11-21 — audit: `go ponder movetime N` measured again (decision still open; not changed)
+- Measured on release (`ad000f1`-era, reader-thread harness): `go ponder movetime 1000` with no `ponderhit` for 4 s: no bestmove (the engine does not exit in ponder mode, as the UCI spec requires). After `ponderhit`: bestmove after 0.0 s (`b1c3 ponder b8c6`), because the 1000 ms budget was spent while pondering.
+- The UCI spec (wbec-ridderkerk.nl UCIProtocol, `ponder`) requires no exit in ponder mode. It does not say when a `movetime` budget starts. So this is not clearly a violation.
+- Decision: unchanged. The existing decision (2026-11-21 F-24 entry) and the test `ponder_movetime_ponderhit_keeps_the_movetime_deadline` pin the current rule. Changing it would change a pinned expectation, so it is escalated to the owner in the final report instead.
+- Effect on play: a GUI that ponders with `movetime` gets no extra thinking after `ponderhit`. Clock-based ponder (`wtime`/`btime`) is unaffected (F-24).
