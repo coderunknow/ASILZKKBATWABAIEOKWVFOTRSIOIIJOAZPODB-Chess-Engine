@@ -958,3 +958,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   was removed in 17aedba; the file now has no `extern "C"`. The earlier note of this reply not being posted is closed.
 - CI (2026-11-21): all completed jobs on ea942ac, a78572d, 0d14a08, f86f17f, f4b2a9e, 7287a2e, 199c92b are success; CodeRabbit check
   "skipped" on each (bot status on push, not a failure). c83046b: queued at time of check.
+- RESOURCE / INPUT SIZE (2026-11-21, release): 60 KB setoption name → notice, answered at 0.00 s; 3000 repeated `e2e4` moves → first
+  illegal move refused, answered at 0.00 s; 500 unknown setoptions → 500 notices; 200 KB token line → "input line exceeds 65536 bytes;
+  ignored", engine still answers. No defect.
+- RARE UCI PATHS (2026-11-21): `d`, unknown words, blank and whitespace lines are ignored without output; `register later` and
+  `register name x code y` answer `registration ok`, which ARCHITECTURE.md (line 144) records as a deliberate choice; `go perft 2` is
+  not a UCI command: the engine notes `go token ignored: perft` and `go token ignored: 2`, then searches. Not a defect; recorded
+  because a GUI sending `go perft` gets a search, not a perft count.
+- SECOND `go` WITHOUT `stop` (2026-11-21): `go infinite` then `go depth 3`: exactly one `bestmove` (after 10 info lines), no spurious
+  answer for the superseded infinite search. UCI leaves this undefined and GUIs send `stop` first. Non-defect. Note: an earlier capture
+  in this session printed two identical bestmove lines; that was a harness double-count (the reader loop re-read the same line), and
+  the clean capture shows one.
