@@ -939,3 +939,98 @@ fn fixed_depth_search_finds_mate_in_one_and_reports_depth_lines() {
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
 }
+
+/// Regression (audit 2026-11-21, F-26 class): a malformed `setoption` (no `name`, or no option
+/// name) was dropped without a word. It now gets a UCI-visible notice on stdout.
+#[test]
+fn malformed_setoption_is_reported_on_stdout() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("setoption");
+    e.send("setoption value 1");
+    e.send("setoption name");
+    e.send("isready");
+    let lines = e.read_until("readyok", Duration::from_secs(10));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string setoption expects")),
+        "no notice for a setoption without `name`: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string setoption names no option")),
+        "no notice for a setoption with an empty name: {lines:?}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (audit 2026-11-21, F-26 class): `go searchmoves` with no move after it was silently a
+/// full-width search. The search still runs (all legal moves), and the choice is announced.
+#[test]
+fn bare_searchmoves_is_announced_and_searches_all_moves() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position startpos");
+    e.send("go searchmoves depth 2");
+    let lines = e.read_until("bestmove", Duration::from_secs(20));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string searchmoves names no move")),
+        "bare searchmoves was not announced: {lines:?}"
+    );
+    let best = bestmove_line(&lines);
+    assert!(
+        best.len() >= 13 && best != "bestmove 0000",
+        "bare searchmoves should search all legal moves: {best}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (audit 2026-11-21, F-26 class): a bare `position`, or `position moves ...` with no
+/// `startpos` or `fen`, was silent (the bare form kept the old position; the other searched the start
+/// position). Both are now refused with a visible notice, and `go` answers `bestmove 0000`.
+#[test]
+fn position_without_startpos_or_fen_is_refused_visibly() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position");
+    e.send("position moves e2e4");
+    e.send("go depth 1");
+    let lines = e.read_until("bestmove", Duration::from_secs(10));
+    let notices = lines
+        .iter()
+        .filter(|l| l.starts_with("info string position error"))
+        .count();
+    assert_eq!(
+        notices, 2,
+        "expected a notice for each refused position: {lines:?}"
+    );
+    assert_eq!(bestmove_line(&lines), "bestmove 0000", "{lines:?}");
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (audit 2026-11-21): `ucinewgame` replaces the board with the valid start position but
+/// kept the stale "position invalid" flag, so the next `go` answered `bestmove 0000` with a valid
+/// board. The new game must clear the flag.
+#[test]
+fn ucinewgame_clears_a_rejected_position() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position fen not/a/fen");
+    e.send("ucinewgame");
+    e.send("go depth 1");
+    let lines = e.read_until("bestmove", Duration::from_secs(20));
+    let best = bestmove_line(&lines);
+    assert!(
+        best != "bestmove 0000" && best.len() >= 13,
+        "ucinewgame kept the rejected-position flag: {best}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}

@@ -306,6 +306,7 @@ impl UciEngine {
                     tt.clear();
                 }
                 self.pos = Position::startpos();
+                self.position_invalid = false;
             }
             "position" => self.cmd_position(&tokens[1..]),
             "go" => self.cmd_go(&tokens[1..]),
@@ -331,9 +332,6 @@ impl UciEngine {
 
     fn cmd_position(&mut self, args: &[&str]) {
         self.stop_and_join();
-        if args.is_empty() {
-            return;
-        }
         let moves_idx = args.iter().position(|&t| t == "moves");
         let (fen_tokens, move_tokens): (&[&str], &[&str]) = match moves_idx {
             Some(i) => (&args[..i], &args[i + 1..]),
@@ -350,13 +348,23 @@ impl UciEngine {
         // `startpos` may be followed only by `moves`: `position startpos e2e4` is a missing `moves`,
         // which used to search the start position and drop e2e4 without a notice (F-26).
         let startpos_extra = fen_tokens.first() == Some(&"startpos") && fen_tokens.len() > 1;
-        let base = if startpos_extra {
+        let base = if fen_tokens.is_empty() {
+            // `position` alone, or `position moves ...`: no startpos or fen to start from. The old
+            // code searched the start position silently (F-26 class).
+            let why = if args.is_empty() {
+                "position needs `startpos` or `fen`"
+            } else {
+                "moves given without `startpos` or `fen`"
+            };
+            rejected(why.to_string(), &mut self.position_invalid);
+            None
+        } else if startpos_extra {
             rejected(
                 "startpos takes no tokens before `moves`".to_string(),
                 &mut self.position_invalid,
             );
             None
-        } else if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
+        } else if fen_tokens[0] == "startpos" {
             Some(Position::startpos())
         } else {
             let fen = if fen_tokens[0] == "fen" {
@@ -420,6 +428,11 @@ impl UciEngine {
                     while i < args.len() && Move::from_uci(args[i]).is_some() {
                         list.push(Move::from_uci(args[i]).unwrap());
                         i += 1;
+                    }
+                    if list.is_empty() {
+                        crate::out_line!(
+                            "info string searchmoves names no move; searching all legal moves"
+                        );
                     }
                     search_moves = if list.is_empty() { None } else { Some(list) };
                     continue;
@@ -743,7 +756,9 @@ impl UciEngine {
     }
 
     fn cmd_setoption(&mut self, args: &[&str]) {
+        // A malformed `setoption` used to be dropped without a word (F-26 class): say so on stdout.
         if args.is_empty() || args[0] != "name" {
+            crate::out_line!("info string setoption expects `name <option> [value <x>]`; ignored");
             return;
         }
         let value_idx = args.iter().position(|&t| t == "value");
@@ -751,6 +766,10 @@ impl UciEngine {
             Some(i) => (&args[1..i], &args[i + 1..]),
             None => (&args[1..], &[]),
         };
+        if name_tokens.is_empty() {
+            crate::out_line!("info string setoption names no option; ignored");
+            return;
+        }
         let name = name_tokens.join(" ").to_ascii_lowercase();
         let value = value_tokens.join(" ");
         match name.as_str() {

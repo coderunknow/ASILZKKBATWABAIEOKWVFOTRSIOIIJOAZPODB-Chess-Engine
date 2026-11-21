@@ -830,3 +830,15 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   17 depth lines, mate 1, `bestmove a1a8`; `4k3/8/8/8/8/8/8/R3K3 w` `go depth 3` → `bestmove a1a7`; startpos `go depth 4` →
   `cp 12`, 1,311 nodes, `bestmove b1c3`. Permanent regression added: `fixed_depth_search_finds_mate_in_one_and_reports_depth_lines`
   (waits for `bestmove`; asserts `bestmove a1a8`, a depth-4 line with `score mate 1`, and more than one node). It passes.
+- GATE on f86f17f (2026-11-21, before F-28): 34/34 rc=0, dirty 0; release 122/0, debug 116/0 (`/tmp/gates/final-f86f17f/`).
+- F-28 FIXED (LOW, UCI input silence; same class as F-26; found by the 2026-11-21 source audit of `cmd_setoption`,
+  `cmd_go`, `cmd_position`, `ucinewgame`). Four cases: (a) a `setoption` with no `name`, or with an empty option name, was dropped
+  without a word; now `info string setoption expects ...` / `names no option` on stdout. (b) `go searchmoves` with no move after it
+  silently searched all moves; now announced (`searchmoves names no move; searching all legal moves`), and the search still runs.
+  (c) a bare `position`, or `position moves ...` with no `startpos` or `fen`, was silent (the bare form kept the old position;
+  the second searched the start position); now refused with `info string position error` and `go` answers `bestmove 0000`,
+  matching other rejected positions. (d) `ucinewgame` replaced the board with the valid start position but kept the stale
+  invalid flag, so the next `go` answered `bestmove 0000`; the flag is now cleared.
+  Regressions: `malformed_setoption_is_reported_on_stdout`, `bare_searchmoves_is_announced_and_searches_all_moves`,
+  `position_without_startpos_or_fen_is_refused_visibly`, `ucinewgame_clears_a_rejected_position`. Mutation check: restoring
+  `f86f17f`'s `src/uci.rs` fails all four (24 pass, 4 fail); restored byte-for-byte. Protocol regressions 28/0 after the fix.
