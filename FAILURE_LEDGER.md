@@ -886,3 +886,6 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   failures 0. `fuzz_legal_differential` 23 (20 games): PASS. `tt_bestmove_probe` 200 positions, Hash 1, depth 4: 0 failures.
   `pv_legality_probe` 40 positions: 120 lines, 0 failures. `uci_malformed_probe` 37/37. `uci_extreme_args_probe`: 0 failures.
   `uci_protocol_probe` 12/12. `fullgame_en_passant_probe`: PASS (checkmate, every move legal). No panic in any run after F-29.
+- GATE on a938e45 (2026-11-21, after F-30): 41/41 rc=0, dirty 0; release 128/0, debug 122/0. The gate adds `fuzz_fen_extremes`
+  (seeds 9 and 3), `tt_bestmove_probe`, `clock_sweep_probe`, `pv_legality_probe`, `mate1_probe`, `multipv_probe` (`/tmp/gates/final-a938e45/`).
+  CI on a938e45: CI 44873372449 success; anchor-verify 44873372453 success.
