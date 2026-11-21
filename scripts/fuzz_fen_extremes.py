@@ -11,6 +11,10 @@ Usage: FLAWLESS_ENGINE=./target/debug/flawless fuzz_fen_extremes.py <seed> <case
 Exit status 0 when there are no failures.
 """
 import os
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from probe_io import Engine  # noqa: E402
 import random
 import subprocess
 import sys
@@ -112,19 +116,11 @@ def reachable_material(b):
     return True
 
 
-def send(p, line):
-    p.stdin.write(line + "\n")
-    p.stdin.flush()
-
-
 def start():
-    p = subprocess.Popen([EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, bufsize=1)
-    send(p, "uci")
-    for line in p.stdout:
-        if line.startswith("uciok"):
-            break
-    return p
+    eng = Engine(EXE)
+    eng.send("uci")
+    eng.read_until("uciok", 10)
+    return eng
 
 
 fails = []
@@ -135,18 +131,18 @@ for i, fen in enumerate(fens):
     if trace:
         with open(trace, "w") as tf:
             tf.write(f"{i} {fen}\n")
-    send(p, f"position fen {fen}")
-    send(p, "go depth 1")
-    lines = []
-    got = False
-    for line in p.stdout:
-        lines.append(line.rstrip("\n"))
-        if line.startswith("bestmove"):
-            got = True
-            break
-    if not got:
-        fails.append(("no bestmove (process ended?)", fen, p.poll()))
-        p.kill()
+    p.send(f"position fen {fen}")
+    p.send("go depth 1")
+    try:
+        lines = p.read_until("bestmove", 60)  # a stalled engine is a failure, not a hang (F-37)
+    except TimeoutError as e:
+        # A stalled engine ends the run as a failure (restarting it would wait 60 s per position).
+        fails.append(("no bestmove: " + str(e)[:120], fen, None))
+        break
+    except RuntimeError as e:
+        # The process ended (crash or closed stdout): record it and continue with a fresh engine.
+        fails.append(("no bestmove (" + str(e)[:80] + ")", fen, p.p.poll()))
+        p.close()
         p = start()
         continue
     best = lines[-1].split()[1]
@@ -166,14 +162,11 @@ for i, fen in enumerate(fens):
     if valid:
         if chess.Move.from_uci(best) not in chess.Board(fen).legal_moves:
             fails.append(("illegal bestmove", fen, best))
-# stderr panic check on the still-running process, then quit
-send(p, "quit")
-try:
-    p.wait(timeout=30)
-except subprocess.TimeoutExpired:
-    p.kill()
-    fails.append(("engine did not exit after quit", "-", None))
-err = p.stderr.read()
+# stderr panic check after quit (close() waits for the process and its stderr to finish)
+rc = p.close()
+if rc != 0:
+    fails.append(("engine exit status after quit", "-", rc))
+err = p.stderr_text()
 if "panicked" in err:
     fails.append(("panic on stderr", "-", err[:300]))
 for f in fails[:20]:

@@ -6,6 +6,10 @@ UCI mate count is in full moves of the side to move, so a forced mate after the 
 `mate -1`. Usage: negative_mate_probe.py <engine> <positions> <seed>. Exit 0 when there are no failures.
 """
 import random
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from probe_io import Engine  # noqa: E402
 import subprocess
 import sys
 
@@ -59,18 +63,13 @@ print(f"constructed {len(positions)} positions, side to move mated in one move (
 if not positions:
     print("no positions constructed; this probe has no result")
     sys.exit(2)
-p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
-p.stdin.write("uci\nisready\n"); p.stdin.flush()
-for l in p.stdout:
-    if l.startswith("readyok"): break
+eng = Engine(exe)
+eng.send("uci"); eng.send("isready"); eng.read_until("readyok", 10)
 fails = 0
 for fen in positions:
     b = chess.Board(fen)
-    p.stdin.write(f"position fen {fen}\ngo depth 6\n"); p.stdin.flush()
-    lines = []
-    for l in p.stdout:
-        lines.append(l.rstrip())
-        if l.startswith("bestmove"): break
+    eng.send(f"position fen {fen}"); eng.send("go depth 6")
+    lines = [l.rstrip() for l in eng.read_until("bestmove", 60)]  # raises on a stalled engine (F-37)
     bm = lines[-1].split()[1]
     scores = [l for l in lines if l.startswith("info depth") and " score " in l]
     last = scores[-1] if scores else ""
@@ -85,6 +84,6 @@ for fen in positions:
     if problems:
         fails += 1
         print("FAIL", fen, problems)
-p.stdin.write("quit\n"); p.stdin.flush(); p.wait(timeout=30)
+rc = eng.close()
 print(f"positions {len(positions)} failures {fails}")
-sys.exit(1 if fails or p.returncode != 0 else 0)
+sys.exit(1 if fails or rc != 0 else 0)

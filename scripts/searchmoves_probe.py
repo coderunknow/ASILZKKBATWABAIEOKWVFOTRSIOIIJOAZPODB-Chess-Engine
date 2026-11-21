@@ -6,6 +6,10 @@ Usage: searchmoves_probe.py <engine> <positions> <seed> [multipv]
 Exit status 0 when there are no failures.
 """
 import random
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from probe_io import Engine  # noqa: E402
 import subprocess
 import sys
 
@@ -28,12 +32,9 @@ def random_board():
     return b
 
 
-p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
-p.stdin.write(f"uci\nsetoption name MultiPV value {mpv}\nisready\n")
-p.stdin.flush()
-for line in p.stdout:
-    if line.startswith("readyok"):
-        break
+eng = Engine(exe)
+eng.send("uci"); eng.send(f"setoption name MultiPV value {mpv}"); eng.send("isready")
+eng.read_until("readyok", 10)
 fails = []
 checked = 0
 for i in range(n):
@@ -44,13 +45,8 @@ for i in range(n):
     k = random.randint(1, min(4, len(legal)))
     subset = random.sample(legal, k)
     names = " ".join(m.uci() for m in subset)
-    p.stdin.write(f"position fen {b.fen()}\ngo depth 3 searchmoves {names}\n")
-    p.stdin.flush()
-    lines = []
-    for line in p.stdout:
-        lines.append(line.rstrip("\n"))
-        if line.startswith("bestmove"):
-            break
+    eng.send(f"position fen {b.fen()}"); eng.send(f"go depth 3 searchmoves {names}")
+    lines = eng.read_until("bestmove", 60)  # raises on a stalled engine (F-37)
     checked += 1
     best = lines[-1].split()[1]
     allowed = {m.uci() for m in subset}
@@ -61,10 +57,8 @@ for i in range(n):
             first = l.split(" pv ", 1)[1].split()[0]
             if first not in allowed and l.split(" multipv ")[1].split()[0] == "1":
                 fails.append(f"PV root {first} outside searchmoves {names}: {l[:80]}")
-p.stdin.write("quit\n")
-p.stdin.flush()
-p.wait(timeout=30)
+rc = eng.close()
 print(f"positions {checked} multipv {mpv} failures {len(fails)}")
 for f in fails[:10]:
     print("FAIL", f)
-sys.exit(1 if fails or p.returncode != 0 else 0)
+sys.exit(1 if fails or rc != 0 else 0)

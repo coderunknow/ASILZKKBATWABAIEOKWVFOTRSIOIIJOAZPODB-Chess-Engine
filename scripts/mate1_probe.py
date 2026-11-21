@@ -4,6 +4,10 @@ play a mating move and report `score mate 1` when one exists, and must not repor
 Usage: mate1_probe.py <engine> <positions> <seed>
 """
 import subprocess, sys, random, chess
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from probe_io import search_lines  # noqa: E402
 exe = sys.argv[1]; want = int(sys.argv[2]); seed = int(sys.argv[3])
 random.seed(seed)
 def rand_position():
@@ -44,13 +48,7 @@ for fen in found:
         b.push(m); 
         if b.is_checkmate(): mates.add(m.uci())
         b.pop()
-    p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
-    p.stdin.write("uci\nisready\nposition fen %s\ngo depth 3\n" % fen); p.stdin.flush()
-    lines = []
-    for line in p.stdout:
-        lines.append(line.rstrip())
-        if line.startswith("bestmove"): break
-    p.stdin.write("quit\n"); p.stdin.flush(); p.wait(timeout=30)
+    lines = [l.rstrip() for l in search_lines(exe, ["uci", "isready", "position fen %s" % fen, "go depth 3"])]
     bm = lines[-1].split()[1]
     last = [l for l in lines if l.startswith("info depth")][-1]
     is_mate_score = " score mate " in last

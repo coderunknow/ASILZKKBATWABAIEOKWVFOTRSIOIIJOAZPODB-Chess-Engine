@@ -6,6 +6,10 @@ Usage: pv_legality_probe.py <engine> <positions> <depth> <seed>
 Exit status 0 when there are no failures.
 """
 import subprocess, sys, random, chess
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from probe_io import search_lines  # noqa: E402
 exe = sys.argv[1]; n = int(sys.argv[2]); depth = int(sys.argv[3]); seed = int(sys.argv[4])
 random.seed(seed)
 def positions():
@@ -21,13 +25,8 @@ gen = positions()
 bad = 0; checked = 0; pvs = 0
 for i in range(n):
     b = next(gen)
-    p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
-    p.stdin.write("uci\nisready\nposition fen %s\ngo depth %d\n" % (b.fen(), depth)); p.stdin.flush()
-    lines = []
-    for line in p.stdout:
-        lines.append(line.rstrip())
-        if line.startswith("bestmove"): break
-    p.stdin.write("quit\n"); p.stdin.flush(); p.wait(timeout=30)
+    lines = [l.rstrip() for l in search_lines(exe, ["uci", "isready", "position fen %s" % b.fen(),
+                                                     "go depth %d" % depth])]
     best = lines[-1].split()[1]
     problems = []
     if best == "0000":

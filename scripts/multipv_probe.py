@@ -4,6 +4,10 @@ non-increasing, distinct first moves, legal PVs, and `multipv 1` first move equa
 Usage: multipv_probe.py <engine> <positions> <seed> <k>
 """
 import subprocess, sys, random, chess, re
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from probe_io import search_lines  # noqa: E402
 exe = sys.argv[1]; n = int(sys.argv[2]); seed = int(sys.argv[3]); k = int(sys.argv[4])
 random.seed(seed)
 fails = 0; total = 0
@@ -14,13 +18,8 @@ for t in range(n):
         if not mv or b.is_game_over(claim_draw=False): break
         b.push(random.choice(mv))
     if b.is_game_over(claim_draw=False): continue
-    p = subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
-    p.stdin.write("uci\nisready\nsetoption name MultiPV value %d\nposition fen %s\ngo depth 4\n" % (k, b.fen())); p.stdin.flush()
-    lines = []
-    for line in p.stdout:
-        lines.append(line.rstrip())
-        if line.startswith("bestmove"): break
-    p.stdin.write("quit\n"); p.stdin.flush(); p.wait(timeout=30)
+    lines = [l.rstrip() for l in search_lines(exe, ["uci", "isready", "setoption name MultiPV value %d" % k,
+                                                     "position fen %s" % b.fen(), "go depth 4"])]
     total += 1
     bm = lines[-1].split()[1]
     last_depth = max(int(l.split()[2]) for l in lines if l.startswith("info depth"))

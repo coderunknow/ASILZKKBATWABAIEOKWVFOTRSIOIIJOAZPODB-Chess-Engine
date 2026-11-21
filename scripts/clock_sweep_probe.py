@@ -10,10 +10,14 @@ Exit status 0 when no case exceeds its bound, 1 otherwise.
 """
 import random
 import subprocess
+import os
 import sys
 import time
 
 MARGIN_MS = 60  # process start-up and I/O; generous for a loaded CI runner
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from probe_io import Engine  # noqa: E402
 
 
 def reserve_ms(t):
@@ -29,29 +33,19 @@ def run_case(engine, t, inc, mtg, side_white):
     fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
     if side_white:
         fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1"
-    p = subprocess.Popen([engine], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
-    p.stdin.write(f"uci\nisready\nposition fen {fen}\n")
-    p.stdin.flush()
-    while True:
-        line = p.stdout.readline()
-        if not line or line.startswith("readyok"):
-            break
-    t0 = time.monotonic()
-    p.stdin.write(f"go {args}\n")
-    p.stdin.flush()
-    bm = None
-    for line in p.stdout:
-        if line.startswith("bestmove"):
-            bm = line.split()[1]
-            break
-    elapsed = (time.monotonic() - t0) * 1000.0
+    eng = Engine(engine)
     try:
-        p.stdin.write("quit\n")
-        p.stdin.flush()
-    except OSError:
-        pass
-    p.wait(timeout=30)
-    return bm, elapsed, args
+        eng.send("uci")
+        eng.send(f"position fen {fen}")
+        eng.send("isready")
+        eng.read_until("readyok", 10)
+        t0 = time.monotonic()
+        eng.send(f"go {args}")
+        lines = eng.read_until("bestmove", 60)  # raises on a stalled engine (F-37)
+        elapsed = (time.monotonic() - t0) * 1000.0
+    finally:
+        eng.close()
+    return lines[-1].split()[1], elapsed, args
 
 
 def main():

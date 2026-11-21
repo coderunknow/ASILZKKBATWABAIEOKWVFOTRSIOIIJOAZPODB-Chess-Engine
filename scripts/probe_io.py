@@ -19,7 +19,8 @@ class Engine:
         self.q = queue.Queue()
         self._err = []
         threading.Thread(target=self._pump, daemon=True).start()
-        threading.Thread(target=lambda: self._err.append(self.p.stderr.read()), daemon=True).start()
+        self._errthread = threading.Thread(target=lambda: self._err.append(self.p.stderr.read()), daemon=True)
+        self._errthread.start()
 
     def _pump(self):
         for line in self.p.stdout:
@@ -71,4 +72,18 @@ class Engine:
             if self.p.poll() is None:
                 self.p.kill()
                 self.p.wait()
+            self._errthread.join(timeout=5)  # stderr is complete once the process has exited
         return self.p.returncode
+
+
+def search_lines(exe, commands, prefix="bestmove", timeout=60.0):
+    """One fresh engine: send `commands` in order, return the lines up to the first line starting
+    with `prefix`. The engine is always closed. A missing reply raises TimeoutError (the probe run
+    fails loudly instead of hanging)."""
+    eng = Engine(exe)
+    try:
+        for c in commands:
+            eng.send(c)
+        return eng.read_until(prefix, timeout)
+    finally:
+        eng.close()
