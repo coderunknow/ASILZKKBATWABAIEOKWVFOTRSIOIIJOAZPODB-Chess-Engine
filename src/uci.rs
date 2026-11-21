@@ -159,6 +159,28 @@ fn allocate_tt(mb: usize) -> (TranspositionTable, usize) {
 /// it is 0: the search answers at once. Before this, `-1000` failed to parse and the token was
 /// dropped, so the search had no time limit at all and never answered. A value above `u64::MAX`
 /// saturates. Anything else that is not a number is `None`, as before.
+/// Reads the value after a `go` keyword at `args[i]` (F-26). The value is consumed only if it
+/// parses; a missing or bad value (or another keyword, as in `go depth wtime 1000`) is reported on
+/// stdout and only the keyword is skipped, so the next keyword is not lost. Returns the value and
+/// the number of tokens consumed (1 or 2).
+fn take_go_value<T>(
+    args: &[&str],
+    i: usize,
+    key: &str,
+    parse: impl Fn(&str) -> Option<T>,
+) -> (Option<T>, usize) {
+    match args.get(i + 1).and_then(|s| parse(s)) {
+        Some(v) => (Some(v), 2),
+        None => {
+            crate::out_line!(
+                "info string go {key}: missing or invalid value {:?}; ignored",
+                args.get(i + 1).copied().unwrap_or("")
+            );
+            (None, 1)
+        }
+    }
+}
+
 fn parse_time_ms(text: &str) -> Option<u64> {
     let digits = text.strip_prefix('-');
     match digits {
@@ -325,7 +347,16 @@ impl UciEngine {
             crate::out_line!("info string position error: {why}");
             *flag = true;
         };
-        let base = if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
+        // `startpos` may be followed only by `moves`: `position startpos e2e4` is a missing `moves`,
+        // which used to search the start position and drop e2e4 without a notice (F-26).
+        let startpos_extra = fen_tokens.first() == Some(&"startpos") && fen_tokens.len() > 1;
+        let base = if startpos_extra {
+            rejected(
+                "startpos takes no tokens before `moves`".to_string(),
+                &mut self.position_invalid,
+            );
+            None
+        } else if fen_tokens.is_empty() || fen_tokens[0] == "startpos" {
             Some(Position::startpos())
         } else {
             let fen = if fen_tokens[0] == "fen" {
@@ -402,36 +433,44 @@ impl UciEngine {
                     i += 1;
                 }
                 "wtime" => {
-                    wtime = args.get(i + 1).and_then(|s| parse_time_ms(s));
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "wtime", parse_time_ms);
+                    wtime = v;
+                    i += used;
                 }
                 "btime" => {
-                    btime = args.get(i + 1).and_then(|s| parse_time_ms(s));
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "btime", parse_time_ms);
+                    btime = v;
+                    i += used;
                 }
                 "winc" => {
-                    winc = args.get(i + 1).and_then(|s| parse_time_ms(s)).unwrap_or(0);
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "winc", parse_time_ms);
+                    winc = v.unwrap_or(0);
+                    i += used;
                 }
                 "binc" => {
-                    binc = args.get(i + 1).and_then(|s| parse_time_ms(s)).unwrap_or(0);
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "binc", parse_time_ms);
+                    binc = v.unwrap_or(0);
+                    i += used;
                 }
                 "movestogo" => {
-                    movestogo = args.get(i + 1).and_then(|s| s.parse().ok());
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "movestogo", |s| s.parse().ok());
+                    movestogo = v;
+                    i += used;
                 }
                 "depth" => {
-                    depth = args.get(i + 1).and_then(|s| s.parse().ok());
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "depth", |s| s.parse::<i32>().ok());
+                    depth = v;
+                    i += used;
                 }
                 "nodes" => {
-                    nodes = args.get(i + 1).and_then(|s| s.parse().ok());
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "nodes", |s| s.parse::<u64>().ok());
+                    nodes = v;
+                    i += used;
                 }
                 "movetime" => {
-                    movetime = args.get(i + 1).and_then(|s| parse_time_ms(s));
-                    i += 2;
+                    let (v, used) = take_go_value(args, i, "movetime", parse_time_ms);
+                    movetime = v;
+                    i += used;
                 }
                 other => {
                     if self.stderr_log {
@@ -760,9 +799,8 @@ impl UciEngine {
                 }
             },
             other => {
-                if self.stderr_log {
-                    crate::err_line!("info string unknown option: {other}");
-                }
+                // F-26: a UCI-visible notice on stdout (as for other rejected input).
+                crate::out_line!("info string unknown option: {other}");
             }
         }
     }

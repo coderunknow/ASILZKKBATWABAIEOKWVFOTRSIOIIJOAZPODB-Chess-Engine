@@ -785,3 +785,20 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   never produce a castling move. Probe evidence: our `divide 1` move sets equal python-chess's `legal_moves` for eight
   stale or boundary FENs (counts 5, 16, 5, 26, 15, 26, 5, 5). Refusing them would change that contract, so it was not
   done silently; an owner decision is recorded in DESIGN_LOG (stretch 7).
+- F-26 FIXED (LOW, UCI input; found by the 2026-11-21 audit's malformed-input probe): three silent cases.
+  (a) `position startpos e2e4` (missing `moves`) searched the start position and dropped `e2e4` without a notice. Now refused
+  with `info string position error: startpos takes no tokens before \`moves\``; `go` answers `bestmove 0000` (F-11/R-07).
+  (b) An unknown option (`setoption name Clear Hash`) was reported only on stderr, and only when stderr logging was on.
+  Now `info string unknown option: …` on stdout. (c) A `go` limit with a missing or bad value (`go depth`, `go depth abc`,
+  `go nodes x`, …) was dropped silently, and a keyword after a missing value was consumed as the value: `go depth movetime
+  100` lost `movetime`, so the search ran with no limit until `stop`. Now the bad value is reported on stdout
+  (`info string go depth: missing or invalid value …; ignored`) and only the keyword is skipped. `go depth abc` alone still
+  runs without a depth limit, as before (the value is ignored); that is the documented unbounded `go`.
+  Regressions (tests/protocol_regressions.rs): `startpos_with_tokens_before_moves_is_refused_visibly`,
+  `unknown_option_is_reported_on_stdout`, `go_bad_value_is_reported_and_the_next_keyword_survives`. Control: the same three
+  tests run against the pre-fix tree (`60731d8`, exported with git archive) FAIL: no notice; no notice; bestmove never
+  arrives (the unbounded search).
+- RSS AT HASH 1024 (open item, closed with evidence; not a defect): `go movetime 1000` ×60 (seed 7) then `go movetime 500`
+  ×200 (seed 99), on the fixed build: RSS 4 MiB idle, 247 MiB after 5 searches, 845 MiB after 60, 1029 MiB from search ~65
+  and flat at 1029 MiB through search 200 (about 1024 MiB table plus baseline). No growth after the table is fully touched.
+  Claim limited to this run (Linux sandbox); no leak was observed.

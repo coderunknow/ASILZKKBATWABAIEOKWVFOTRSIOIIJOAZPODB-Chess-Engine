@@ -814,3 +814,67 @@ fn refused_thread_holds_bestmove_for_go_infinite_until_stop() {
     stdin.write_all(b"quit\n").expect("write quit");
     stdin.flush().expect("flush");
 }
+
+/// Regression (F-26): `position startpos e2e4` (a missing `moves`) used to search the start
+/// position and drop `e2e4` without a notice. It is refused like any other bad `position`: a
+/// visible `info string position error`, and `go` answers `bestmove 0000` until a valid position.
+#[test]
+fn startpos_with_tokens_before_moves_is_refused_visibly() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position startpos e2e4");
+    e.send("go depth 1");
+    let lines = e.read_until("bestmove", Duration::from_secs(10));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string position error")),
+        "no visible notice for `position startpos e2e4`: {lines:?}"
+    );
+    assert_eq!(bestmove_line(&lines), "bestmove 0000", "{lines:?}");
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (F-26): an unknown option was reported only on stderr (and only when stderr logging
+/// was on). It now gets a UCI-visible notice on stdout, as the other rejected input does.
+#[test]
+fn unknown_option_is_reported_on_stdout() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("setoption name Clear Hash");
+    e.send("isready");
+    let lines = e.read_until("readyok", Duration::from_secs(10));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("info string unknown option")),
+        "no notice for an unknown option: {lines:?}"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (F-26): `go depth movetime 100` (a missing depth value) consumed `movetime` as the
+/// value, so `100` was then skipped and the search had no limit until `stop`; nothing was reported.
+/// Now the missing value is reported on stdout and the keyword is kept: the search ends at 100 ms.
+#[test]
+fn go_bad_value_is_reported_and_the_next_keyword_survives() {
+    let mut e = Engine::start();
+    e.send("uci");
+    e.read_until("uciok", Duration::from_secs(10));
+    e.send("position startpos");
+    let start = std::time::Instant::now();
+    e.send("go depth movetime 100");
+    let lines = e.read_until("bestmove", Duration::from_secs(10));
+    let ms = start.elapsed().as_millis() as u64;
+    assert!(
+        lines.iter().any(|l| l.starts_with("info string go depth")),
+        "missing depth value not reported: {lines:?}"
+    );
+    assert!(
+        ms < 5_000,
+        "movetime was lost: bestmove after {ms} ms (expected about 100 ms)"
+    );
+    e.quit_and_expect_exit(Duration::from_secs(10));
+}

@@ -548,3 +548,15 @@ DRAFT ONLY — no code changes under this entry.
   they are ignored for castling, and no castling move is generated. Movegen was checked against python-chess on the
   stale and boundary cases (identical move sets). The stricter rule (refuse stale rights, as python-chess does, and as
   the en-passant check does here) is a real option; it changes AUDIT-FEN-02 and needs the owner's decision.
+
+## 2026-11-21 (stretch 8) — Rejected or ignored UCI input is visible on stdout (F-26)
+
+- Question: which silent UCI input cases should become visible? Rule applied: input the engine does not act on is
+  reported on stdout as an `info string` (F-06), and the existing behaviour is otherwise kept.
+- Decisions: (a) `position startpos` followed by tokens other than `moves` is refused (all-or-nothing, R-07), because
+  the start position is not what the GUI asked for; (b) an unknown option gets an `info string`, always, on stdout;
+  (c) a `go` limit with a missing or unparseable value is reported and ignored (the search is unbounded, as before), and
+  a keyword is never consumed as a value. Unknown `go` tokens were already reported on stderr only; they are unchanged
+  (UCI says to ignore them, and GUIs send harmless extras).
+- Not changed: `go depth` with a bad value remains an unbounded search (until `stop`), not a refusal. A refusal would
+  need a new `bestmove` rule; the owner may prefer it.
