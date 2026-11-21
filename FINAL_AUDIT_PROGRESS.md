@@ -290,3 +290,10 @@ review on the final head. Both must pass before any release step.
 
 **Open items (not claimed fixed):** Codex P2 `searchmoves` design point (F-09); RSS plateau at Hash 1024 not shown; `go ponder
 movetime` clock start (DESIGN_LOG); kilo billing-blocked (not bypassed).
+
+**Addendum (same stretch, 09:12–09:20 UTC+7):** fresh seeds, all PASS with 0 failures (scratch runs of the repo scripts, logs in
+`/tmp/audit/k/`): perft random differential seeds 10 and 11 (30 games, depth 3); search sweep release seeds 4 and 5 (50 positions,
+depth 4); legal differential seed 11 (40 games); UCI grammar seed 51 (150 sessions). Probes: CRLF line endings accepted
+(`uci`, `isready`, `position`, `go depth 3` answered); promotion without a piece letter (`a7a8`) rejected with an info string,
+`a7a8q` and `a7a8N` accepted. CI on `ce9f8d4` (docs-only on `ffd6b04`): CI success, anchor-verify success. CodeRabbit review
+requested on `ce9f8d4` (comment 7055699579); the trigger was acknowledged, no review yet at this entry.
