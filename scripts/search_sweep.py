@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import os
 import random
+import queue
 import re
 import subprocess
 import sys
+import threading
+import time
 
 import chess
 
@@ -27,17 +30,41 @@ ENGINE = os.environ.get("FLAWLESS_ENGINE", "./target/release/flawless")
 SCORE = re.compile(r"score (cp|mate) (-?\d+)")
 
 
+DEADLINE_S = 120
+
+
+def _pump(stream, q: "queue.Queue[str | None]") -> None:
+    # Reader thread: every line (and EOF as None) goes to the queue, so the caller can
+    # wait with a deadline instead of blocking in readline() on a silent engine.
+    for line in stream:
+        q.put(line)
+    q.put(None)
+
+
 def search(fen: str, depth: int) -> tuple[list[str], int, str]:
     p = subprocess.Popen([ENGINE, "uci"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, text=True)
+    out_q: "queue.Queue[str | None]" = queue.Queue()
+    err_q: "queue.Queue[str | None]" = queue.Queue()
+    threading.Thread(target=_pump, args=(p.stdout, out_q), daemon=True).start()
+    threading.Thread(target=_pump, args=(p.stderr, err_q), daemon=True).start()
     script = f"uci\nisready\nposition fen {fen}\ngo depth {depth}\n"
     out_lines: list[str] = []
+    deadline = time.monotonic() + DEADLINE_S
+
+    def next_line() -> str | None:
+        try:
+            return out_q.get(timeout=max(0.1, deadline - time.monotonic()))
+        except queue.Empty:
+            p.kill()
+            raise RuntimeError(f"no bestmove within {DEADLINE_S} s on {fen!r}")
+
     try:
         p.stdin.write(script)
         p.stdin.flush()
         while True:
-            line = p.stdout.readline()
-            if line == "":
+            line = next_line()
+            if line is None:
                 break
             out_lines.append(line.rstrip("\n"))
             if line.startswith("bestmove"):
@@ -46,14 +73,27 @@ def search(fen: str, depth: int) -> tuple[list[str], int, str]:
         p.stdin.flush()
     except BrokenPipeError:
         pass
+    while True:
+        line = next_line()
+        if line is None:
+            break
+        out_lines.append(line.rstrip("\n"))
     try:
-        rest, err = p.communicate(timeout=120)
+        p.wait(timeout=max(1.0, deadline - time.monotonic()))
     except subprocess.TimeoutExpired:
         p.kill()
-        rest, err = p.communicate()
+        p.wait()
         raise RuntimeError(f"engine did not exit after quit on {fen!r}")
-    out_lines += [l for l in rest.splitlines()]
-    return out_lines, p.returncode, err
+    err_lines: list[str] = []
+    while True:
+        try:
+            line = err_q.get(timeout=5)
+        except queue.Empty:
+            break
+        if line is None:
+            break
+        err_lines.append(line)
+    return out_lines, p.returncode, "".join(err_lines)
 
 
 def main() -> int:

@@ -688,3 +688,32 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   allocated (`hash_cycle.py`: 30 resizes, exit 0).
 - G3 (Windows artifact, `ffd6b04`, artifact 14686132529, 211,374 bytes): `gh run download` and the REST artifact zip both
   failed with EOF from the blob host. NOT VERIFIED. No manifest or SHA256 was checked from the downloaded file.
+- F-20 OPEN (MAJOR, resources; found by CodeRabbit on `ce9f8d4`, `src/tt.rs:143`; verified in the code): `try_resize`
+  reserves the size in a temporary `Vec` and drops it, then allocates the real table with `vec![0u64; entries]`. If that
+  second allocation is refused, Rust aborts (allocation error path) instead of returning `TableAllocError`. So the F-16 fix
+  is incomplete in a narrow window. NOT reproduced. Fix options: (a) keep the reserved `Vec` and fill it (fallible, but
+  it touches every page, so RSS at Hash 1024 jumps to about 1 GiB at resize; this changes the idle-RSS claim and needs a
+  decision); (b) keep lazy zeroing and document the window. Needs a source change and a full gate run.
+- F-21 OPEN (MINOR, found by CodeRabbit; `src/uci.rs:596`; verified in the code): the F-17 spawn-failure fallback prints
+  the unrestricted first legal move even when `go searchmoves` restricts the search. Not reproduced at run time (needs a
+  refused spawn); code-verified. Fix: choose the fallback from the legal named moves. Needs a source change and a full gate.
+- F-22 OPEN (MINOR, found by CodeRabbit; `src/uci.rs:599`; verified in the code): on spawn failure, `go infinite` and
+  `go ponder` print `bestmove` at once and skip the output hold used for `stop`/`ponderhit`. Not reproduced at run time;
+  code-verified. Fix: hold the fallback until `stop` or `ponderhit`. Needs a source change and a full gate.
+- HARNESS FIXES (scripts only, found by CodeRabbit on `ce9f8d4`, verified): `scripts/time_budget_probe.py`: the black-only
+  case sent `wtime` as well, so it did not test a lone `btime`; now sends `btime 1500` only (8/8 pass, black case 26.9 ms).
+  `scripts/search_sweep.py` and `scripts/uci_extreme_args_probe.py`: `readline()` blocked without a deadline; both now read
+  stdout in a thread and enforce the deadline while waiting (`search_sweep` seed 2, 20 positions, PASS; extreme-args probe
+  0 failures). Targeted runs only; no full gate rerun for these harness changes.
+- PROVENANCE ADDENDUM (CodeRabbit ledger comments on `ce9f8d4`; raw logs from earlier runs were lost in the 2026-11-21
+  restore, so this says what is and is not still available):
+  - F-11: fix in `c4fb22f` (`src/uci.rs`, TooLong arm). Regression fails on the `7d5b489` source (per the earlier review
+    reply). Mutation check this stretch: a copy of HEAD (`ffd6b04`) with the `position_invalid = true` line removed gives
+    `bestmove b1c3` where `0000` is expected; the regression test FAILS there and PASSES on the fix. Output was on the
+    terminal, not saved to a file; the copy is `/tmp/mut_f11` (outside the repo).
+  - F-12: fix in `df6417d`. The failing copy was `/tmp/mut4` (HEAD before the fix); its output is not retained.
+  - F-15: fix in `2b10cd2`. The failing build was the pre-fix HEAD (`df6417d`); output not retained. Probe rerun on the
+    fixed code: `scripts/uci_extreme_args_probe.py` 0 failures on `ffd6b04` and again after the harness change.
+  - F-16/F-17: failing revision `2b10cd2` (signal exit under `ulimit -v`); fixed in `a400e80`. Resource-check outputs
+    `/tmp/audit/vlim_*`, `vfix_*`, `vf2_*` were lost in the restore. Regression test passes on `ffd6b04` (CI success).
+  - Current evidence (retained after this stretch): `/tmp/gates/final-ffd6b04/` (34 rows, rc=0) and `/tmp/audit/k/`.

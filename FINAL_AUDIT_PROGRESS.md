@@ -297,3 +297,10 @@ depth 4); legal differential seed 11 (40 games); UCI grammar seed 51 (150 sessio
 (`uci`, `isready`, `position`, `go depth 3` answered); promotion without a piece letter (`a7a8`) rejected with an info string,
 `a7a8q` and `a7a8N` accepted. CI on `ce9f8d4` (docs-only on `ffd6b04`): CI success, anchor-verify success. CodeRabbit review
 requested on `ce9f8d4` (comment 7055699579); the trigger was acknowledged, no review yet at this entry.
+
+**CodeRabbit on `ce9f8d4` (review 02:23Z, 10 actionable comments; checked one by one):** ledger provenance (4 Minor, handled in
+FAILURE_LEDGER.md addendum); `time_budget_probe` black-only case (valid, fixed); `search_sweep` and `uci_extreme_args_probe`
+blocking reads (valid, fixed; targeted runs pass). Source findings, verified in the code and left OPEN (they need a source
+change and a full gate, which did not fit before 10:00): F-20 `src/tt.rs:143` (MAJOR: a refused second allocation can still
+abort), F-21 `src/uci.rs:596` (searchmoves ignored in the spawn-failure fallback), F-22 `src/uci.rs:599` (spawn-failure
+fallback bypasses the output hold for `go infinite`/`go ponder`). None of these is claimed fixed.

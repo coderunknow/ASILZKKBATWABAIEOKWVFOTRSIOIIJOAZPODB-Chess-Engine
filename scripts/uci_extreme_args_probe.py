@@ -11,8 +11,10 @@ Each case sends one command (after a `position`), then checks:
 Usage: python3 scripts/uci_extreme_args_probe.py [engine]    (default ./target/release/flawless)
 Exit status 1 if any case fails.
 """
+import queue
 import subprocess
 import sys
+import threading
 import time
 
 E = sys.argv[1] if len(sys.argv) > 1 else "./target/release/flawless"
@@ -72,16 +74,32 @@ def run_session(lines, wait_for, timeout=60):
         p.stdin.write(s + "\n")
         p.stdin.flush()
 
+    # Reader thread: the deadline is enforced while waiting, even if the engine prints nothing
+    # (a blocking readline() would not return and the limit would never be checked).
+    q = queue.Queue()
+
+    def pump():
+        for line in p.stdout:
+            q.put(line)
+        q.put(None)
+
+    threading.Thread(target=pump, daemon=True).start()
+
     def until(prefix, limit):
         t0 = time.monotonic()
-        while time.monotonic() - t0 < limit:
-            line = p.stdout.readline()
-            if line == "":
+        while True:
+            remaining = limit - (time.monotonic() - t0)
+            if remaining <= 0:
+                return "TIMEOUT"
+            try:
+                line = q.get(timeout=remaining)
+            except queue.Empty:
+                return "TIMEOUT"
+            if line is None:
                 return None
             out.append(line.rstrip())
             if line.startswith(prefix):
                 return line.rstrip()
-        return "TIMEOUT"
 
     send("uci")
     until("uciok", 10)

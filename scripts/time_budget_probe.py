@@ -140,7 +140,7 @@ def main() -> int:
         ("wtime 60", START, "wtime 60 btime 60", clock(60, 60)),
         # Black to move with only btime: the side to move has a clock, so the search is bounded.
         ("btime 1500 black to move", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-         "btime 1500 wtime 1500", clock(1_500, 1_500)),
+         "btime 1500", clock(1_500, 1_500)),
     ]
     results = [run_case(*c) for c in cases]
     passed = sum(results)
