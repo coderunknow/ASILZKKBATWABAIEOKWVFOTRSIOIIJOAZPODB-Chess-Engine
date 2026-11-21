@@ -889,3 +889,16 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - GATE on a938e45 (2026-11-21, after F-30): 41/41 rc=0, dirty 0; release 128/0, debug 122/0. The gate adds `fuzz_fen_extremes`
   (seeds 9 and 3), `tt_bestmove_probe`, `clock_sweep_probe`, `pv_legality_probe`, `mate1_probe`, `multipv_probe` (`/tmp/gates/final-a938e45/`).
   CI on a938e45: CI 44873372449 success; anchor-verify 44873372453 success.
+- F-32 OPEN, DEFECT, OWNER DECISION NEEDED (time management; found by `scripts/selfplay_clock_probe.py`, new, committed):
+  the engine flags in sudden-death games with short clocks and no increment. Reproduced on ea942ac's binary, zero increment:
+  base 1000 ms: white flagged at ply 110 (left −1 ms); base 300 ms: white flagged at ply 34 (left −1 ms); base 2000 ms: survives
+  184 plies with 257 ms left (margin small); base 3000 ms + 50 ms inc, movestogo 40: no flag. Cause: ENGINE-1's soft limit
+  `max(20 ms, (t − reserve)/mtg)`. For t < ~1.1 s (reserve 300 ms), the 20 ms floor exceeds the per-move share of the usable
+  clock, so each move spends 20 ms until the reserve is drained, then the clock runs out.
+  Why not fixed here: the formula is preregistered and frozen (PREREGISTRATION.md ENGINE-1, `engine_sha256` freeze, SCREEN-2
+  provenance). Any change alters the engine hash and needs a new registration. `tests/clock_smoke.rs::tight_clock_returns_quickly`
+  pins soft = 20 ms at 250 ms. The rating programme uses 40/15 (15 s base), which the floor does not touch.
+  Candidate fix (prototype, not committed): floor = `min(20, t / (4·mtg))` instead of `20`. It changes soft only where the old
+  floor binds with usable/mtg < 20 ms, that is t < ~1.1 s. Validation: see the entry below when run.
+  Decision requested from the owner: (a) amend ENGINE-1 with a new preregistration and refreeze the hash; or (b) keep the formula
+  and document that sudden-death clocks under ~1.1 s are unsupported.
