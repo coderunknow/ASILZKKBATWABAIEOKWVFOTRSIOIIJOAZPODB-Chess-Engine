@@ -947,3 +947,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   the flag at 2 s; the 3-game figures above replace them.
 - PONDER CHECK (non-defect): `go ponder wtime W` followed by `ponderhit` after a delay gives bestmove within the clock slice
   measured from the hit: W 300 → 14 ms; W 1000 (delay 200) → 82 ms; W 3000 (delay 500) → 269 ms (hard limit 268 ms); W 60000 → 1518 ms.
+- NEGATIVE MATE (2026-11-21): the first `negative_mate_probe.py` draft expected `score mate -2` and failed 5/5 on positions where
+  the engine printed `mate -1`. Checked with python-chess: in each position every legal move of the side to move allows an opponent
+  mate in one, so the mate is one full move of the side to move, and UCI `score mate -1` is correct. The probe's assumption
+  (counting plies as moves) was wrong; the engine was right. Also verified the convention on a constructed position
+  (2r1qbnB/ppp1pp2/2k5/P1Pp4/3PQP1p/R1N4N/1P1B2PP/3K1BR1 b - - 0 30): engine `score mate -1`, legal bestmove. The probe was rewritten
+  to expect `mate -1` and to construct positions with python-chess (every reply allows a mate in one). Result: 3/3 0 failures
+  (seed 5). Seed 77: 12 positions constructed, 12 `mate -1` with legal bestmove, 0 failures.
+- PM REPLY (2026-11-21): posted reply 4651140261 to CodeRabbit comment 4643719593 (tests/protocol_regressions.rs:339). The raw pipe FFI
+  was removed in 17aedba; the file now has no `extern "C"`. The earlier note of this reply not being posted is closed.
+- CI (2026-11-21): all completed jobs on ea942ac, a78572d, 0d14a08, f86f17f, f4b2a9e, 7287a2e, 199c92b are success; CodeRabbit check
+  "skipped" on each (bot status on push, not a failure). c83046b: queued at time of check.
