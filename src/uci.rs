@@ -484,7 +484,19 @@ impl UciEngine {
 
         // Fallback legal move in case the search thread dies unexpectedly —
         // the GUI must always receive a bestmove.
-        let fallback_move = generate_legal(&mut self.pos).iter().next().copied();
+        // Prefer a legal move from `searchmoves` (F-21): the search is restricted to it, so the
+        // fallback must be too. If no named move is legal, the search widens to all legal moves
+        // (see below), and so does the fallback.
+        let legal_for_fallback = generate_legal(&mut self.pos);
+        let fallback_move = search_moves
+            .as_ref()
+            .and_then(|named| {
+                legal_for_fallback
+                    .iter()
+                    .copied()
+                    .find(|m| named.contains(m))
+            })
+            .or_else(|| legal_for_fallback.iter().next().copied());
         // go infinite / go ponder / bare go: bestmove is held until stop/ponderhit.
         let hold = Arc::new(AtomicBool::new(limits.infinite));
         let printed = Arc::new(AtomicBool::new(false));

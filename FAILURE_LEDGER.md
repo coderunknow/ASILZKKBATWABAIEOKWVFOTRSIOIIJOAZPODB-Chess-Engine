@@ -717,3 +717,9 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   - F-16/F-17: failing revision `2b10cd2` (signal exit under `ulimit -v`); fixed in `a400e80`. Resource-check outputs
     `/tmp/audit/vlim_*`, `vfix_*`, `vf2_*` were lost in the restore. Regression test passes on `ffd6b04` (CI success).
   - Current evidence (retained after this stretch): `/tmp/gates/final-ffd6b04/` (34 rows, rc=0) and `/tmp/audit/k/`.
+- F-21 FIXED (MINOR, found by CodeRabbit on `ce9f8d4`, `src/uci.rs`; reproduced): with the search thread refused,
+  `go searchmoves d2d4` answered `bestmove a2a3` (the first legal move in generation order, excluded by searchmoves) on the
+  pre-fix code, under `ulimit -v 50000` (debug build of the pre-fix HEAD, `/tmp/mut_f11`). Fix: the fallback is the first
+  legal move that is in `searchmoves`; if none is legal, the widened first legal move (as the search does). Regression:
+  `protocol_regressions::spawn_fallback_respects_searchmoves` (Linux): fails on the pre-fix code (`bestmove a2a3`), passes on
+  the fix (`bestmove d2d4`). F-22 (fallback bypasses the output hold for `go infinite`/`go ponder`) remains OPEN.

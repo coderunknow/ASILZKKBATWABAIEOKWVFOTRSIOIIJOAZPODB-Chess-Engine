@@ -723,3 +723,20 @@ fn hash_allocation_refusal_does_not_abort_the_engine() {
         "bestmove {mv} is not a legal start move"
     );
 }
+
+/// Regression (F-21): when the OS refuses the search thread, the fallback move must respect
+/// `go searchmoves`. Reproduced on the code before this fix under `ulimit -v 50000`: the fallback
+/// was the first legal move in generation order (`bestmove a2a3`), which `searchmoves d2d4` excludes.
+#[cfg(target_os = "linux")]
+#[test]
+fn spawn_fallback_respects_searchmoves() {
+    let (out, code) = run_under_address_limit(
+        50_000,
+        "uci\nisready\nposition startpos\ngo searchmoves d2d4\nquit\n",
+    );
+    assert_eq!(code, Some(0), "exit status under the limit:\n{out}");
+    assert!(
+        out.lines().any(|l| l == "bestmove d2d4"),
+        "fallback ignored searchmoves (expected bestmove d2d4):\n{out}"
+    );
+}
