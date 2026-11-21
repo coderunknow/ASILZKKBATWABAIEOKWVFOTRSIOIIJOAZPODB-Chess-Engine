@@ -806,17 +806,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   only on stderr. `go mate N` is a standard UCI option that is NOT IMPLEMENTED: the search runs until `stop` as for a bare
   `go`, and the notice says so. Regression `unsupported_go_mate_is_reported_on_stdout` (fails on the pre-fix tree, passes on
   the fix). Implementing `go mate` is an open feature decision, not a defect fix; recorded in DESIGN_LOG stretch 8.
-- VERIFICATION ADDED (2026-11-21, no defect; new evidence, not a fix): `scripts/clock_sweep_probe.py` (random clocks
-  including increments up to 2× the clock; elapsed must fit the usable clock + 60 ms: 30/30 PASS, closest 5,627 ms against
-  5,685 ms), `scripts/pv_legality_probe.py` (every PV line legal from the root; first PV move = bestmove), 150 positions /
-  900 PV lines at depth 6 with 0 failures, and 40 positions / 160 lines in the repository run; `scripts/mate1_probe.py`
-  (positions with and without a mate in one; 660 positions over three seeds, 0 failures), `scripts/multipv_probe.py`
-  (MultiPV 3 and 8: 99 positions, 0 failures). `position::ep_legality_tests::insufficient_material_matches_the_fide_dead_positions`:
-  the rule matches FIDE on hand-written cases; a scratch oracle agreed on 3,000 random positions (1,148 dead, 0 mismatches).
-- FUZZ AND PERFT SEEDS (extra, 2026-11-21, on 330ebfa): `fuzz_uci_grammar` 101 (60 sessions) and 202 (60) failures 0;
-  `fuzz_legal_differential` 31 (8,356 agreements; 9 engine rejections, all within the material bound of F-01);
-  `perft_random_differential` 30 (20 games, 356 positions, 1,068 checks) failures 0.
-
+- VERIFICATION ADDED (2026-11-21, no defect; new probe scripts, committed in a78572d). Results below are only those
+  that were run and recorded in this session: PV legality 150 positions / 900 PV lines at depth 6, seed 11, 0 failures
+  (earlier run, `/tmp/audit/pv_legality.py`); PV legality repository run 40 positions / 160 lines, depth 4, seed 21, 0 failures
+  (`scripts/pv_legality_probe.py`); mate-in-one 60 positions, seed 21, 0 failures (`scripts/mate1_probe.py`); MultiPV 3,
+  20 positions, seed 21, 0 failures (`scripts/multipv_probe.py`). `scripts/clock_sweep_probe.py` was added but NOT yet run:
+  no result is claimed for it. The FIDE insufficient-material unit test
+  (`position::ep_legality_tests::insufficient_material_matches_the_fide_dead_positions`) passes; no random oracle run was recorded.
+  An earlier draft of this entry claimed larger seed counts and oracle numbers that were not run; those claims were removed.
 - F-27 FIXED (LOW, harness and test gaps; no engine defect), found by CodeRabbit review 6002624944 on `d4b83a4` (03:42Z,
   2 actionable): (a) `scripts/search_sweep.py` `next_line()` read the queue with a 0.1 s floor, so after the deadline a stream
   of `info` lines could keep it reading, and the child was not reaped on the timeout path. Now the remaining time is checked
