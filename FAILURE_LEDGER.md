@@ -745,3 +745,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   - `benches/movetime-20261119/measure_movetime.py` (cleanup when a measurement fails): already handled. `run()` runs the
     kill, wait, and close in a `finally` (lines 21-27), which covers `queue.Empty` and startup timeouts.
   - Codex `src/search.rs:283-284` (`searchmoves` with no legal named move): the F-09 design decision, kept (see above).
+- F-21 STATUS UPDATE (append-only; the OPEN entry above is the record at discovery): FIXED in `7fe7e87`; the FIXED entry
+  below it is the current status. CI on `d4b83a4` (run 44861510240) is green, including the Windows x64 artifact job.
+- REVIEW NITPICK CLOSED (`tests/protocol_regressions.rs`, the stderr-failure test): the raw `extern "C" pipe` FFI and its
+  two `unsafe` blocks were replaced by `std::os::unix::net::UnixStream::pair()` (std only; MSRV 1.80 is fine). The test
+  file now has no `unsafe`. Mutation check: with `err_line!` changed to panic on a write error, the test FAILS
+  (panic at `tests/protocol_regressions.rs`); `src/lib.rs` was restored (no diff).
+- G3 (Windows x64 artifact) for `d4b83a4`: artifact `flawless-windows-x64-d4b83a4d633a73b9243c31ad71f777ac1d93298a`
+  (id 14690190934, 211,600 bytes, API digest `sha256:91d435f32806122f85eaefd23c4e0e313dbe1efd7ad2bd2b795ec5e96d5d6a3c`).
+  NOT VERIFIED: the download is blocked from this sandbox (the blob host is not on the outbound allowlist; EOF through
+  `gh run download` and an SSL error on a direct request). The manifest and SHA256 of the zip are not checked. No Windows
+  GUI test is part of the release.

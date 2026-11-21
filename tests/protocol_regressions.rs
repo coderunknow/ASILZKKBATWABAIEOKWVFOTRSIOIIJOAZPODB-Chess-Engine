@@ -524,17 +524,13 @@ fn oversized_position_line_does_not_leave_the_old_position_in_use() {
 #[test]
 fn stderr_write_failure_does_not_stop_the_session_on_an_oversized_line() {
     use std::io::Read;
-    use std::os::unix::io::{FromRawFd, OwnedFd};
-    let (reader, writer): (OwnedFd, OwnedFd) = {
-        let mut fds = [0i32; 2];
-        // SAFETY: `pipe` writes two valid fds into `fds` on success; we check the return value
-        // and take ownership of each fd exactly once.
-        let rc = unsafe { libc_pipe(fds.as_mut_ptr()) };
-        assert_eq!(rc, 0, "pipe()");
-        // SAFETY: both fds were just created by `pipe` and are owned by nothing else.
-        unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
-    };
-    drop(reader); // no reader: every write to `writer` fails with EPIPE
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    // A socket pair with no reader left: every write to `writer` fails with EPIPE. This uses
+    // only std (no FFI, no `unsafe`).
+    let (reader, writer) = UnixStream::pair().expect("socketpair");
+    drop(reader);
+    let writer: OwnedFd = writer.into();
     let mut child = Command::new(env!("CARGO_BIN_EXE_flawless"))
         .arg("uci")
         .stdin(Stdio::piped())
@@ -566,12 +562,6 @@ fn stderr_write_failure_does_not_stop_the_session_on_an_oversized_line() {
         "no readyok after an oversized line with stderr unwritable"
     );
     assert_eq!(status.code(), Some(0), "exit status with stderr unwritable");
-}
-
-#[cfg(unix)]
-extern "C" {
-    #[link_name = "pipe"]
-    fn libc_pipe(fds: *mut i32) -> i32;
 }
 
 /// Regression (F-14): in single-PV mode, a root position with insufficient material returned at
