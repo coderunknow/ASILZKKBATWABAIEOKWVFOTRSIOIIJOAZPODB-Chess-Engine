@@ -538,3 +538,13 @@ DRAFT ONLY — no code changes under this entry.
   hard limit (completed iterations are always kept). For a 20 s clock the answer after the hit took about 1.9 s (hard),
   not 0.47 s (soft). Within our clock and the designed hard limit. The owner may want the soft limit applied to that
   iteration; that would change search completion, so it is recorded here, not changed.
+
+## 2026-11-21 (stretch 7) — FEN form: duplicated castling letters and trailing fields are refused; stale castling rights are kept
+
+- Question: what should `position fen` do with `KK`, a seventh field, or a castling right with no rook (or the king off
+  its home square)?
+- Decision: refuse a duplicated castling letter and more than six FEN fields (malformed input, no contract conflicts).
+- Decision kept: stale castling rights are accepted, as the contract in `tests/correctness.rs` (AUDIT-FEN-02) requires:
+  they are ignored for castling, and no castling move is generated. Movegen was checked against python-chess on the
+  stale and boundary cases (identical move sets). The stricter rule (refuse stale rights, as python-chess does, and as
+  the en-passant check does here) is a real option; it changes AUDIT-FEN-02 and needs the owner's decision.

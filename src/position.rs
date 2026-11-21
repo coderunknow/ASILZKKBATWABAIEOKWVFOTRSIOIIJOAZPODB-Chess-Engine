@@ -226,6 +226,13 @@ impl Position {
                 fields.len()
             ));
         }
+        // A FEN has at most six fields (F-25): a seventh is garbage, not a silent extra.
+        if fields.len() > 6 {
+            return Err(format!(
+                "fen: expected at most 6 fields, got {}",
+                fields.len()
+            ));
+        }
         let mut pos = Position::empty();
         // piece placement
         let ranks: Vec<&str> = fields[0].split('/').collect();
@@ -284,13 +291,17 @@ impl Position {
         pos.castling = 0;
         if fields[2] != "-" {
             for ch in fields[2].chars() {
-                pos.castling |= match ch {
+                let bit = match ch {
                     'K' => CASTLE_WK,
                     'Q' => CASTLE_WQ,
                     'k' => CASTLE_BK,
                     'q' => CASTLE_BQ,
                     _ => return Err(format!("fen: invalid castling char {ch:?}")),
                 };
+                if pos.castling & bit != 0 {
+                    return Err(format!("fen: duplicate castling letter {ch:?}"));
+                }
+                pos.castling |= bit;
             }
         }
         // en passant
@@ -1003,5 +1014,29 @@ mod ep_legality_tests {
             walk(&mut pos, 3, &mut checked);
         }
         assert!(checked > 1000, "too few ep positions exercised: {checked}");
+    }
+
+    #[test]
+    fn castling_letters_are_checked_for_form() {
+        // Valid rights (incl. the classic all-rights start) are accepted.
+        for fen in [
+            "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+            "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1",
+            "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+        ] {
+            assert!(
+                Position::from_fen(fen).is_ok(),
+                "rejected valid rights: {fen}"
+            );
+        }
+        // A duplicated letter is malformed (F-25). Stale rights (no rook, king off its square) are
+        // NOT refused: tests/correctness.rs pins that they never produce a castling move (AUDIT-FEN-02).
+        assert!(Position::from_fen("4k3/8/8/8/8/8/8/4K3 w KK - 0 1").is_err());
+    }
+
+    #[test]
+    fn fen_with_extra_trailing_field_is_refused() {
+        assert!(Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1").is_ok());
+        assert!(Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1 extra").is_err());
     }
 }

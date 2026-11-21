@@ -773,3 +773,15 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   `movetime_smoke::ponderhit_starts_the_clock_slice_at_the_hit` (fails on the old logic with "answered after only 2 ms",
   passes with the fix: about 1.87 s, the hard limit, because the iteration already running at the hit is cut only at the
   hard limit; see DESIGN_LOG stretch 6).
+- F-25 FIXED (LOW, input validation; found by the 2026-11-21 audit with a FEN probe checked against python-chess
+  `Board.is_valid()`): the FEN parser accepted a duplicated castling letter (`KK`) and any number of trailing fields
+  (`… 0 1 extra`) without a notice. Fix: both are refused with `info string position error: fen: …` (R-07: the next `go`
+  answers `bestmove 0000`). Regression: `position::ep_legality_tests::castling_letters_are_checked_for_form`,
+  `position::ep_legality_tests::fen_with_extra_trailing_field_is_refused`. The mutation check (disable each check, expect
+  the test to fail) was run on both.
+- F-25 NOT CHANGED, decision for the owner: stale castling rights (a right whose king or rook is not on its home square,
+  e.g. `4k3/8/8/8/8/8/8/4K3 w K - 0 1`) are still accepted. The contract is pinned by
+  `tests/correctness.rs` (`stale_castling_rights_without_rooks_generate_no_castling`, comment "AUDIT-FEN-02"): they must
+  never produce a castling move. Probe evidence: our `divide 1` move sets equal python-chess's `legal_moves` for eight
+  stale or boundary FENs (counts 5, 16, 5, 26, 15, 26, 5, 5). Refusing them would change that contract, so it was not
+  done silently; an owner decision is recorded in DESIGN_LOG (stretch 7).
