@@ -546,7 +546,7 @@ fn stderr_write_failure_does_not_stop_the_session_on_an_oversized_line() {
     }
     big.push('\n');
     // Written before reading: the engine answers in order and the output is small.
-    stdin.write_all(b"uci\n").expect("write uci");
+    stdin.write_all(b"uci\ndebug on\n").expect("write uci");
     stdin
         .write_all(big.as_bytes())
         .expect("write oversized line");
@@ -1033,4 +1033,68 @@ fn ucinewgame_clears_a_rejected_position() {
         "ucinewgame kept the rejected-position flag: {best}"
     );
     e.quit_and_expect_exit(Duration::from_secs(10));
+}
+
+/// Regression (F-30): every refused `position` was also written to stderr, unconditionally. A GUI
+/// that does not read the engine's stderr fills that pipe after a few hundred refusals; the engine
+/// then blocks on the write and stops answering (reproduced at 1,000 refusals on f4b2a9e). The
+/// engine now writes stderr only after `debug on`; the notice is always on stdout. This test keeps
+/// stderr piped and never reads it.
+#[test]
+fn refused_positions_do_not_block_when_stderr_is_not_drained() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::sync::mpsc::RecvTimeoutError;
+
+    // An en passant square that no double pawn push could create: refused on every `position`.
+    const REFUSED: &str = "6q1/p2r3R/4B3/2nN1K2/8/q7/4k3/1n6 w kq a1 -1 1";
+    let mut child = Command::new(env!("CARGO_BIN_EXE_flawless"))
+        .arg("uci")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped()) // deliberately never read
+        .spawn()
+        .expect("spawn flawless");
+    let mut stdin = child.stdin.take().expect("stdin piped");
+    let stdout = child.stdout.take().expect("stdout piped");
+    let (tx, rx) = channel::<String>();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            match line {
+                Ok(l) => {
+                    if tx.send(l).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    let wait_for = |prefix: &str| -> String {
+        loop {
+            match rx.recv_timeout(Duration::from_secs(10)) {
+                Ok(l) if l.starts_with(prefix) => return l,
+                Ok(_) => {}
+                Err(RecvTimeoutError::Timeout) => {
+                    panic!("no `{prefix}` within 10 s (engine blocked on stderr?)")
+                }
+                Err(RecvTimeoutError::Disconnected) => panic!("engine closed stdout"),
+            }
+        }
+    };
+    stdin.write_all(b"uci\n").expect("write uci");
+    stdin.flush().expect("flush");
+    wait_for("uciok");
+    for i in 0..1500 {
+        stdin
+            .write_all(format!("position fen {REFUSED}\ngo depth 1\n").as_bytes())
+            .expect("write");
+        stdin.flush().expect("flush");
+        let answer = wait_for("bestmove");
+        assert_eq!(answer, "bestmove 0000", "refusal #{i} must answer 0000");
+    }
+    stdin.write_all(b"quit\n").expect("write quit");
+    stdin.flush().expect("flush");
+    drop(stdin);
+    let status = child.wait().expect("wait");
+    assert_eq!(status.code(), Some(0), "exit status after 1500 refusals");
 }

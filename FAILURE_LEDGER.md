@@ -863,3 +863,26 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   `search_sweep` 6 (50 positions, depth 4): PASS. `clock_sweep_probe` seed 9: 40/40 within the usable clock.
   `pv_legality_probe` 80 positions, depth 4, seed 31: 320 PV lines, 0 failures. `mate1_probe` 80 positions, seed 31: 0 failures.
   `multipv_probe` 20 positions, MultiPV 8, seed 31: 0 failures. `tt_bestmove_probe` 500 positions, Hash 1, depth 6, seed 4: 0 failures.
+- F-30 FIXED (MEDIUM, robustness; found by the 2026-11-21 FEN extremes fuzzer, `scripts/fuzz_fen_extremes.py`, seed 9: the run
+  hung at case 995): every refused `position` (and every oversized-line notice) was also written to stderr, unconditionally.
+  A GUI that does not drain the engine's stderr fills the ~64 KiB pipe after several hundred refusals, and the engine then
+  blocks in `write` and stops answering. Reproduced on f4b2a9e: 300 refusals answered; 1,000 refusals: no answer for the
+  rest (harness timeout). Fix: stderr copies only after `debug on`; the search-panic stderr copy removed (stdout copy kept);
+  "ended without result" and the table notices moved to stdout. Regression:
+  `refused_positions_do_not_block_when_stderr_is_not_drained` (fails before the fix with "engine blocked on stderr?",
+  passes after; 1,500 refusals). After the fix: `stderr_block` 1,000 of 1,000 answered; `fuzz_fen_extremes` seed 9, 1,000
+  cases, release: 0 failures (the same run hung before the fix). The F-13 test sends `debug on` first so its path still runs.
+  DESIGN_LOG stretch 9.
+- F-31 NOT A DEFECT, recorded: `fuzz_fen_extremes` flagged two positions python-chess accepts and the engine refuses.
+  (a) fullmove 4294967296: the engine stores fullmove as u32 and refuses a larger value with a notice (domain bound; the
+  oracle now skips counters outside u16/u32). (b) `8/1r5N/R1rk4/pqp4P/b1pq3r/3pp1r1/3P3R/1KrB4 w`: black has 5 pawns (3
+  missing), 5 rooks and 2 queens (4 promoted pieces): unreachable, refused by design; python-chess does not check this.
+- CHECKED, NO DEFECT (2026-11-21): castling rights without the rook or king (10 FENs) match python-chess's move sets exactly.
+  Fifty-move claim: `4k3/8/8/8/8/8/8/R3K3 w - - 100 60` gives `cp 0` at depth 3 (the side to move can claim the draw
+  after white's move reaches halfmove 100, so every white move is worth at most 0 under the claim rule, as DESIGN_LOG R-12
+  states); halfmove 96 and below give `cp 559`. Halfmove 100 with a mate in one still gives `mate 1` (mate precedence).
+  MultiPV 5 with `searchmoves e1g1 a1a2`: exactly 2 lines, both restricted to the named moves.
+- DEBUG BUILD (2026-11-21, `target/debug/flawless`, overflow checks on): `fuzz_uci_grammar` 61 and 73 (100 sessions each):
+  failures 0. `fuzz_legal_differential` 23 (20 games): PASS. `tt_bestmove_probe` 200 positions, Hash 1, depth 4: 0 failures.
+  `pv_legality_probe` 40 positions: 120 lines, 0 failures. `uci_malformed_probe` 37/37. `uci_extreme_args_probe`: 0 failures.
+  `uci_protocol_probe` 12/12. `fullgame_en_passant_probe`: PASS (checkmate, every move legal). No panic in any run after F-29.

@@ -142,11 +142,11 @@ fn allocate_tt(mb: usize) -> (TranspositionTable, usize) {
                 return (tt, size);
             }
             Err(e) if size > 1 => {
-                crate::err_line!("info string table of {size} MiB refused ({e}); trying half");
+                crate::out_line!("info string table of {size} MiB refused ({e}); trying half");
                 size /= 2;
             }
             Err(e) => {
-                crate::err_line!("fatal: no memory for even a 1 MiB table ({e})");
+                crate::out_line!("info string fatal: no memory for even a 1 MiB table ({e})");
                 std::process::exit(1);
             }
         }
@@ -256,9 +256,11 @@ impl UciEngine {
                     // rejected `position` does: `go` then answers `bestmove 0000` until a valid
                     // `position` command arrives (the next valid one clears the flag).
                     self.position_invalid = true;
-                    crate::err_line!(
-                        "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
-                    );
+                    if self.stderr_log {
+                        crate::err_line!(
+                            "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
+                        );
+                    }
                     crate::out_line!(
                         "info string input line exceeds {MAX_INPUT_LINE_BYTES} bytes; ignored"
                     );
@@ -340,8 +342,12 @@ impl UciEngine {
         // All-or-nothing (R-07): a rejected command keeps the previous position out of the
         // search and makes the next `go` answer `bestmove 0000`, so a GUI or runner error
         // is visible instead of silently searching a different position.
+        let stderr_log = self.stderr_log;
         let rejected = |why: String, flag: &mut bool| {
-            crate::err_line!("info string position error: {why}");
+            // stderr only with `debug on`: an undrained stderr pipe must never stall the engine (F-30).
+            if stderr_log {
+                crate::err_line!("info string position error: {why}");
+            }
             crate::out_line!("info string position error: {why}");
             *flag = true;
         };
@@ -636,7 +642,6 @@ impl UciEngine {
                     // Search thread panicked; unblock the GUI with a legal fallback.
                     // The marker goes to stdout so GUIs and the match runner can see it.
                     crate::out_line!("info string search thread panicked; emitting fallback bestmove");
-                    crate::err_line!("info string search thread panicked; emitting fallback bestmove");
                     let _g = lock_ignoring_poison(&flush_for_thread);
                     if !hold_for_thread.load(Ordering::Acquire)
                         && !printed_for_thread.swap(true, Ordering::AcqRel)
@@ -853,7 +858,7 @@ impl UciEngine {
             }
             Err(_) => {
                 if !worker.consumed.load(Ordering::Relaxed) {
-                    crate::err_line!("info string search thread ended without result");
+                    crate::out_line!("info string search thread ended without result");
                 }
                 if self.tt.is_none() {
                     let (tt, mb) = allocate_tt(self.hash_mb);

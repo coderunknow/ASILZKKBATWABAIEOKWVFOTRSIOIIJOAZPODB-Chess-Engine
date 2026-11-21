@@ -560,3 +560,17 @@ DRAFT ONLY — no code changes under this entry.
   (UCI says to ignore them, and GUIs send harmless extras).
 - Not changed: `go depth` with a bad value remains an unbounded search (until `stop`), not a refusal. A refusal would
   need a new `bestmove` rule; the owner may prefer it.
+
+## 2026-11-21 (stretch 9) — The engine never blocks on stderr (F-30); UCI notices are on stdout
+
+- Question: the engine wrote every refused `position` to stderr as well as stdout, unconditionally. A GUI that does not
+  read the engine's stderr fills the pipe after a few hundred refusals, and the engine then blocks on the write and stops
+  answering (reproduced: 300 refusals answered, 1,000 hung). Which channel carries UCI diagnostics?
+- Decision: stdout is the channel the GUI always reads, so every notice the GUI needs is an `info string` on stdout.
+  stderr carries a copy only after `debug on` (the same rule as unknown commands). The search-panic line keeps its
+  stdout copy only; startup/allocation messages (table refused, fatal no memory) became stdout `info string` lines.
+  The CLI one-shot commands (`perft`, `divide`, `eval`, `bench`) are unchanged: they write a bounded number of lines.
+- Not changed: `debug on` still writes to stderr, so a GUI that enables debug and never drains stderr can still stall;
+  that is the price of diagnostics the GUI asked for. Owner may prefer a bounded or non-blocking debug channel.
+- Tests: `refused_positions_do_not_block_when_stderr_is_not_drained` (1,500 refusals, stderr piped and never read), and the
+  F-13 stderr write-failure test now sends `debug on` first, so its stderr path still runs.
