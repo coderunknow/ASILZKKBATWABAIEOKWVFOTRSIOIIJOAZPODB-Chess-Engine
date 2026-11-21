@@ -574,3 +574,12 @@ DRAFT ONLY — no code changes under this entry.
   that is the price of diagnostics the GUI asked for. Owner may prefer a bounded or non-blocking debug channel.
 - Tests: `refused_positions_do_not_block_when_stderr_is_not_drained` (1,500 refusals, stderr piped and never read), and the
   F-13 stderr write-failure test now sends `debug on` first, so its stderr path still runs.
+
+## 2026-11-21 — CLOCK-1: per-move floor in clock_limits (F-32 fix, owner-approved)
+
+- Decision: owner selected "Amend ENGINE-1 and fix" for F-32 (sudden-death flags under the fixed 20 ms soft floor).
+- Change: soft floor `20 ms` → `clamp(t / (4·movestogo), 1 ms, 20 ms)`. Nothing else in the budget formula changes. Hard limit, reserve, and increment cap are unchanged.
+- Evidence and scope: PREREGISTRATION.md, entry CLOCK-1 (2026-11-21). Grid: 1,776 of 25,680 points changed, all with `t ≤ 1495 ms`; the 40/15 point and every `t ≥ 3200 ms` at movestogo 40 are unchanged.
+- Accepted cost: shorter thinking time on clocks of 300 ms to about 1 s (about 1 ms to 17 ms per move). Strength at those clocks is expected to fall. Not measured in Elo.
+- Frozen-evidence rule: the engine binary changes, so ENGINE-1 (`9663697d…`) and SEE-candidate (`168dc0ab…`) hashes no longer describe the head. No rating or screening is authorized by this entry. A new hash must be frozen and re-screened before rating use.
+- Pinned test value `clock_limits_respect_remaining_time` changed from `(20, 20)` to `(1, 1)` at 250 ms. This is the owner-approved expectation change, recorded here and in the test comment. The test was not weakened.

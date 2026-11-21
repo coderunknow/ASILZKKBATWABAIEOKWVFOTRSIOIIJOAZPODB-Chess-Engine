@@ -983,3 +983,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   271 plies CHECKMATE 1-0 (ep 1, castles 2, promo 1); 72 plies CHECKMATE 0-1 (ep 1, castles 2, promo 0); 96 plies THREEFOLD_REPETITION
   1/2-1/2 (ep 1, castles 2, promo 0); 175 plies CHECKMATE 1-0 (ep 1, castles 2, promo 1). All PASS: every engine move legal under
   python-chess. The probe varies only the time budget from a fixed opening, so variety is narrower than random play.
+- F-32 RESOLVED (2026-11-21; owner decision "Amend ENGINE-1 and fix"; formal record PREREGISTRATION.md CLOCK-1 and DESIGN_LOG.md 2026-11-21):
+  change in `src/uci.rs` `clock_limits`: soft floor `20 ms` → `clamp(t/(4·movestogo), 1, 20)`; `movestogo` multiplied with `saturating_mul` (overflow found while reviewing this change; the existing code had no such multiply, the new floor would have introduced one).
+  Regressions: `clock_floor_f32_short_clock_keeps_reserve_over_a_period` (40 moves at 2 ms overhead from 300/500/800/1000/1100 ms keep half the reserve), `clock_floor_f32_exact_values_below_the_old_floor_range` (300→(1,1), 1000→(17,68), 800→(12,48), 3000→(67,268)), `clock_floor_f32_huge_movestogo_does_not_overflow`. Pinned value `clock_limits_respect_remaining_time` 250 ms updated `(20,20)` → `(1,1)`.
+  Mutation (restore `.max(20)` in a scratch copy): exact-value, period, and respect-remaining tests FAIL (period: "move plans 16 ms of 14 ms (start 300)" = clock below zero; exact: left (20, 20) right (1, 1)).
+  Unit tests: clock filter 8/8 pass on the fix. Full release 131/0; debug 125/0 (6 perft gates ignored in debug by design).
+  Self-play (same 3-game series that flagged before, now on the fixed release binary, `selfplay_clock_probe.py`): 300 ms 3/3 clean (63 plies, 196–240 ms left); 1000 ms 3/3 clean (115–200 plies, 329–512 ms left); 2000 ms 3/3 clean (176–200 plies, 397–632 ms left). Other forms clean: 5000 ms 0 flags (192 plies); 15000+150 movestogo 40 ×2 clean (200 plies, 6.9–7.9 s left); 60000+1000 clean.
+  Scope: `clock_limits` grid, 25,680 points, old vs new: 1,776 changed, all `t ≤ 1495`, all explained by the old 20 ms floor. 40/15 point unchanged.
+  Clock probes on the fixed binary: `clock_sweep_probe.py` 30/30 within the usable clock (seed 71); `time_budget_probe.py` 8/8.
+  Cost recorded: total thinking time per game falls on short clocks (300 ms: ~0.2 s; 1 s: ~1.1–1.4 s). Not measured in Elo.
+  Naming: the amendment is CLOCK-1. "ENGINE-2" is already the SEE candidate in PREREGISTRATION.md and is not reused.
+  Gate and CI for this change: recorded in the next entry, on the final head.

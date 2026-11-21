@@ -899,7 +899,7 @@ pub fn clock_limits(
     // whose late-period overspend produced ~95% flag falls at 40/15 — see
     // FAILURE_LEDGER 2026-11-15):
     //   reserve = clamp(t/16, 300 ms, 8 s)   — safety margin for per-move overhead,
-    //   soft    = max(20 ms, (t - reserve)/mtg)  — full-period utilization is correct
+    //   soft    = max(min(20 ms, t/(4*mtg)), (t - reserve)/mtg)  (CLOCK-1 floor, F-32) — full-period utilization is correct
     //              for repeating 'add' schedules, but planned spend never passes the
     //              period budget, and there is no upper clamp (the old 30 s cap made
     //              soft exceed the remaining plan and starved the period end),
@@ -910,13 +910,18 @@ pub fn clock_limits(
     // engine never plans past the remaining clock.
     let reserve = (t / 16).clamp(300, 8_000);
     let usable = t.saturating_sub(reserve);
+    // Per-move floor (CLOCK-1 amendment, F-32): a quarter of the clock per planned move, capped at
+    // 20 ms and never below 1 ms. The former fixed 20 ms floor spent 20 ms per move on short clocks
+    // and drained the reserve to a flag. The floor reaches 20 ms at t >= 80 ms * movestogo (3.2 s at
+    // the default of 40), so it changes only the short-clock range.
+    let floor = (t / mtg.saturating_mul(4)).clamp(1, 20);
     // The increment share is part of the plan only within the usable clock (F-23): an increment
     // larger than the clock must not make soft (or hard) the whole clock.
     let soft = usable
         .saturating_div(mtg)
         .saturating_add(inc / 2)
         .min(usable)
-        .max(20)
+        .max(floor)
         .min(t);
     let cap = t.saturating_sub(reserve / 2).max(soft);
     let hard = soft
@@ -1011,8 +1016,10 @@ mod tests {
         let (sb, hb) = clock_limits(WHITE + 1, 3_000, 250, 0, 0, Some(40));
         // t=3000: reserve clamps to 300 ms -> usable 2700 -> soft 67, hard 4*soft=268.
         assert_eq!((sw, hw), (67, 268));
-        // t=250: reserve floor 300 > t -> usable 0 -> 20 ms floor moves.
-        assert_eq!((sb, hb), (20, 20));
+        // t=250: reserve floor 300 > t -> usable 0 -> per-move floor min(20, 250/(4*40)) = 1 ms.
+        // (CLOCK-1 amendment F-32: this was (20, 20) under the fixed 20 ms floor, which drained
+        // a 250 ms clock; the change is owner-approved and recorded in PREREGISTRATION.md.)
+        assert_eq!((sb, hb), (1, 1));
     }
 
     #[test]
@@ -1126,5 +1133,49 @@ mod tests {
             h <= 45_000u64.saturating_sub(300),
             "hard {h} unsafe at 45 s/40"
         );
+    }
+
+    #[test]
+    fn clock_floor_f32_short_clock_keeps_reserve_over_a_period() {
+        // F-32 regression (FAILURE_LEDGER F-32; CLOCK-1 amendment). With the fixed 20 ms floor,
+        // a 300 ms or 1000 ms sudden-death clock spent 20 ms per move (plus overhead) and flagged
+        // in self-play (300 ms: 3 of 3 games; 1000 ms: 2 of 3). Over a 40-move period at 2 ms
+        // overhead per move, the clock must keep at least half of its reserve.
+        for &t0 in &[300u64, 500, 800, 1_000, 1_100] {
+            let reserve = (t0 / 16).clamp(300, 8_000);
+            let mut t = t0;
+            for _ in 0..40 {
+                let (s, _) = clock_limits(WHITE, t, t, 0, 0, None);
+                let spent = s + 2;
+                assert!(spent < t, "move plans {spent} ms of {t} ms (start {t0})");
+                t -= spent;
+            }
+            assert!(
+                t >= reserve / 2,
+                "40 moves from {t0} ms left {t} ms, below half the {reserve} ms reserve"
+            );
+        }
+    }
+
+    #[test]
+    fn clock_floor_f32_exact_values_below_the_old_floor_range() {
+        // Values from the formula (reserve, usable, floor = clamp(t/(4*mtg), 1, 20)):
+        //  300 ms: reserve 300, usable 0 -> floor 1 -> soft 1; hard 1.
+        // 1000 ms: reserve 300, usable 700 -> soft 700/40 = 17 (floor 6 does not bind); hard 68.
+        // 800 ms: reserve 300, usable 500 -> soft 12; hard 48.
+        assert_eq!(clock_limits(WHITE, 300, 300, 0, 0, Some(40)), (1, 1));
+        assert_eq!(clock_limits(WHITE, 1_000, 1_000, 0, 0, Some(40)), (17, 68));
+        assert_eq!(clock_limits(WHITE, 800, 800, 0, 0, Some(40)), (12, 48));
+        // The floor is capped at 20 ms and does not change clocks at or above 3.2 s (default 40).
+        assert_eq!(clock_limits(WHITE, 3_000, 3_000, 0, 0, None), (67, 268));
+    }
+
+    #[test]
+    fn clock_floor_f32_huge_movestogo_does_not_overflow() {
+        // The floor computes 4 * movestogo; a huge movestogo must saturate, not overflow.
+        let (s, h) = clock_limits(WHITE, 1_000, 1_000, 0, 0, Some(u64::MAX));
+        assert!(s >= 1 && s <= h && h <= 1_000, "soft {s} hard {h}");
+        let (s0, h0) = clock_limits(WHITE, 0, 0, 0, 0, Some(40));
+        assert_eq!((s0, h0), (0, 0));
     }
 }

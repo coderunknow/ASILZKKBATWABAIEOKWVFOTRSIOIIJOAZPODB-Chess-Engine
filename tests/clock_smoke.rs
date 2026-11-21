@@ -108,7 +108,7 @@ fn tight_clock_returns_quickly() {
         &mut child,
         "uci\nisready\nposition startpos\ngo wtime 250 btime 250 winc 0 binc 0 movestogo 40\n",
     );
-    // clock_limits (ENGINE-1): reserve 300 ms exceeds 250 ms, usable 0, soft = the 20 ms floor, hard = 20 ms.
+    // clock_limits (CLOCK-1 floor): reserve 300 ms exceeds 250 ms, usable 0, soft = the 1 ms per-move floor, hard = 1 ms.
     let (best, elapsed) = wait_for_bestmove(&rx, Duration::from_secs(3));
     assert_bestmove_format(&best);
     assert!(
