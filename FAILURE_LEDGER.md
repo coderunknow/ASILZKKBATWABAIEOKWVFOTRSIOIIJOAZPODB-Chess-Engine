@@ -974,3 +974,7 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   repetition only at `ply > 0` (src/search.rs ~L535, ~L785), and the root is always searched (test `root_repetition_is_searched`,
   search.rs ~L1120). Non-defect. (c) After Nf3 Nf6 Ng1 (black to move, a repetition available inside the tree), the engine plays
   `b8c6` at cp 65 rather than taking the drawing line, consistent with draw scores compared against the alternative. Non-defect.
+- GO NUMERIC PARSING, DEBUG BUILD (2026-11-21, `/tmp/campaign/flawless_dbg`, overflow checks on): 570 `go` lines (each key × 17
+  edge values including 2^32, 2^64, 2^64+1, i64 limits, `+7`, empty, `0x10`, `1e9`, `1_000`, plus 400 random multi-key lines). Each
+  `go` was followed at once by `stop`, so the test covers parsing and immediate-stop arithmetic, not long searches. Result: 0 missing
+  bestmove, 0 panics, stderr 0 bytes, `isready` answered, rc 0. Non-defect.
