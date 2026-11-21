@@ -501,3 +501,16 @@ DRAFT ONLY — no code changes under this entry.
 - Decision: reserve the size with `try_reserve_exact` and release it, then allocate normally. The allocation that
   follows is the same size in a single-threaded process, so it normally succeeds; the lazy zeroing is kept.
   A `std::alloc::alloc_zeroed` path would be fallible too, but needs `unsafe` and a benchmark, and was not needed.
+
+## 2026-11-21 (stretch 4) — F-20: one fallible zeroed allocation for the table (supersedes the probe decision above)
+
+- Problem: the probe-then-allocate pattern in `try_resize` (reserve, release, then `vec![0; n]`) left a window in which
+  the second allocation could be refused and abort the process. CodeRabbit and Codex both flagged it (F-20).
+- Decision: `zeroed_entries` (`src/tt.rs`) calls `std::alloc::alloc_zeroed` once, checks for null, and wraps the result in
+  `Box<[u64]>`. This is the only `unsafe` in `src/`. Its invariants, tests, fallback, and benchmark are written out at the
+  function (see its doc comment) and in BENCHMARKING.md.
+- The table is still lazily zeroed by the OS. The old `clear()` call on resize wrote every entry; it is no longer
+  used, so laziness no longer depends on the compiler removing a `memset` after `calloc`. The counters are reset
+  explicitly.
+- Rejected alternative: eager `try_reserve` plus `resize(n, 0)`. Fallible, but it writes every page at resize (about
+  1 GiB resident at Hash 1024 at the first search). That is a resource change that needs an owner's decision.

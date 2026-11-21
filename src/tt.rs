@@ -89,6 +89,48 @@ impl std::fmt::Display for TableAllocError {
 
 const MATE_BOUND: i32 = crate::eval::MATE_SCORE - 100;
 
+/// Allocates `n` zeroed table entries, or reports a refused allocation.
+///
+/// This is the only `unsafe` in `src/` (test code has one FFI block, see F-18). Its purpose:
+/// `std::alloc::alloc_zeroed` returns a null pointer on refusal instead of aborting, and it
+/// returns zeroed pages that the OS commits lazily.
+///
+/// Invariants:
+///
+/// - `layout` is `Layout::array::<u64>(n)`, so it is valid for `n` entries; `n == 0` never reaches
+///   the allocator.
+/// - A non-null result points to `layout.size()` bytes, aligned to `align_of::<u64>()`, allocated
+///   by the global allocator and zeroed. An all-zero bit pattern is a valid `u64`, so the `n`
+///   elements are initialized.
+/// - `Box<[u64]>` frees its memory with `Layout::array::<u64>(len)` for the same `len`, which is
+///   the layout used here, so the allocation is released with the matching layout.
+/// - A null result is checked before the pointer is used. The error path allocates nothing.
+///
+/// Fallback: on `Err` the caller keeps its current table (see `try_resize`), and `setoption Hash`
+/// and start-up halve the size (see `src/uci.rs`).
+///
+/// Tests: `zeroed_entries_are_zero_and_sized`, `zeroed_entries_reject_impossible_sizes`, and the
+/// process test `hash_allocation_refusal_does_not_abort_the_engine`.
+///
+/// Benchmark: BENCHMARKING.md (first-`go` time and resident memory, before and after this change).
+fn zeroed_entries(n: usize) -> Result<Box<[u64]>, TableAllocError> {
+    if n == 0 {
+        // A zero-size allocation is not valid for `alloc_zeroed` (invariant 1), so no allocation.
+        return Ok(Vec::new().into_boxed_slice());
+    }
+    let bytes = n.saturating_mul(8);
+    let layout = std::alloc::Layout::array::<u64>(n).map_err(|_| TableAllocError { bytes })?;
+    // SAFETY: see the invariants above. `n >= 1` here, so `layout` has nonzero size. The null
+    // check runs before the pointer is used.
+    unsafe {
+        let ptr = std::alloc::alloc_zeroed(layout) as *mut u64;
+        if ptr.is_null() {
+            return Err(TableAllocError { bytes });
+        }
+        Ok(Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, n)))
+    }
+}
+
 impl TranspositionTable {
     pub fn new(size_mb: usize) -> Self {
         let mut tt = TranspositionTable {
@@ -125,25 +167,23 @@ impl TranspositionTable {
 
     /// Resizes the table to `size_mb` MiB. On a refused allocation the table is left unchanged.
     ///
-    /// Rust aborts the process when an allocation fails, so the size is first reserved and
-    /// released: a refused reservation is returned as an error. The zeroed allocation that
-    /// follows is the same size, so it normally succeeds; the table stays lazily zeroed (pages
-    /// are committed when first written). Single-threaded, so nothing else takes the space in
-    /// between.
+    /// The new table is one fallible zeroed allocation (see [`zeroed_entries`]). Rust aborts the
+    /// process when an allocation fails, so a probe-then-allocate pair would leave a window in
+    /// which the second allocation can still abort (F-20). The zeroed allocation keeps the table
+    /// lazily zeroed: pages are committed when first written, not at resize.
     pub fn try_resize(&mut self, size_mb: usize) -> Result<(), TableAllocError> {
         let bytes = size_mb.max(1) * 1024 * 1024;
         let want_entries = bytes / 8;
         // Keep a reasonable bound: at least 1024 entries, at most 2^27 entries (1 GiB).
         let entries = want_entries.clamp(1024, 1 << 27).next_power_of_two();
-        {
-            let mut probe: Vec<u64> = Vec::new();
-            probe
-                .try_reserve_exact(entries)
-                .map_err(|_| TableAllocError { bytes: entries * 8 })?;
-        }
-        self.entries = vec![0u64; entries].into_boxed_slice();
+        self.entries = zeroed_entries(entries)?;
         self.len_mask = entries - 1;
-        self.clear();
+        // The entries are already zero; only the counters and the generation need resetting.
+        // (`clear()` would write every entry and commit every page.)
+        self.generation = 1;
+        self.stores = 0;
+        self.probes = 0;
+        self.hits = 0;
         Ok(())
     }
 
@@ -467,5 +507,31 @@ mod mate_score_range_tests {
             halfmove: 0,
         });
         assert_eq!(tt.probe(key, 127).score, Some(MATE_SCORE - 1));
+    }
+
+    #[test]
+    fn zeroed_entries_are_zero_and_sized() {
+        let t = zeroed_entries(4096).expect("4096 entries");
+        assert_eq!(t.len(), 4096);
+        assert!(t.iter().all(|&v| v == 0));
+        assert_eq!(zeroed_entries(0).expect("empty table").len(), 0);
+    }
+
+    #[test]
+    fn zeroed_entries_reject_impossible_sizes() {
+        // 2^61 u64 entries are 2^64 bytes: no Layout exists, so the allocator is never asked.
+        assert!(zeroed_entries(1usize << 61).is_err());
+    }
+
+    #[test]
+    fn try_resize_sets_the_entry_count_and_resets_counters() {
+        let mut tt = TranspositionTable::try_new(1).expect("1 MiB");
+        assert_eq!(tt.entries.len(), 1024 * 1024 / 8);
+        tt.stores = 5;
+        tt.hits = 3;
+        tt.try_resize(2).expect("2 MiB");
+        assert_eq!(tt.entries.len(), 2 * 1024 * 1024 / 8);
+        assert_eq!((tt.stores, tt.hits), (0, 0));
+        assert!(tt.entries.iter().all(|&v| v == 0));
     }
 }

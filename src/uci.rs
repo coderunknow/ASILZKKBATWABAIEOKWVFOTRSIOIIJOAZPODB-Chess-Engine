@@ -44,6 +44,10 @@ pub struct UciEngine {
     hash_mb: usize,
     multi_pv: usize,
     worker: Option<WorkerHandle>,
+    /// Answer owed for a search that could not start (the OS refused the thread) and that the
+    /// protocol holds until `stop` (`go infinite`, `go ponder`, bare `go`). Printed by
+    /// `stop_and_join`, so `stop`, `quit`, EOF, and the next `go` all deliver it exactly once.
+    pending_answer: Option<Option<Move>>,
     last_clocks: Option<(u64, u64, u64, u64, Option<u64>)>, // wtime btime winc binc movestogo
     stderr_log: bool,
 }
@@ -210,6 +214,7 @@ impl UciEngine {
             hash_mb,
             multi_pv: 1,
             worker: None,
+            pending_answer: None,
             last_clocks: None,
             stderr_log: false,
         }
@@ -603,9 +608,15 @@ impl UciEngine {
                 crate::out_line!(
                     "info string search thread unavailable ({e}); answering without a search"
                 );
-                match fallback_move {
-                    Some(m) => crate::out_line!("bestmove {m}"),
-                    None => crate::out_line!("bestmove 0000"),
+                if limits.infinite {
+                    // `go infinite`, `go ponder`, and bare `go` hold bestmove until `stop` (UCI).
+                    // Answering now would send a bestmove before the GUI asked for one (F-22).
+                    self.pending_answer = Some(fallback_move);
+                } else {
+                    match fallback_move {
+                        Some(m) => crate::out_line!("bestmove {m}"),
+                        None => crate::out_line!("bestmove 0000"),
+                    }
                 }
                 let _ = std::io::stdout().flush();
                 return;
@@ -752,6 +763,15 @@ impl UciEngine {
     }
 
     fn stop_and_join(&mut self) {
+        if let Some(answer) = self.pending_answer.take() {
+            // A held answer for a search that never started (see `cmd_go`, F-22).
+            match answer {
+                Some(m) => crate::out_line!("bestmove {m}"),
+                None => crate::out_line!("bestmove 0000"),
+            }
+            let _ = std::io::stdout().flush();
+            return;
+        }
         if self.worker.is_none() {
             return;
         }

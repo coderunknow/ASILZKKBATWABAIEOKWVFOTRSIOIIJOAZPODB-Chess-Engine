@@ -147,3 +147,20 @@ The initial reduced-suite bytes were rejected by the Python standard-library sel
   for the same bench (about 18× more nodes, 117 s). LMR stays enabled.
 - The `141943aa23b3fc68` entry above is historical and is kept unchanged.
 
+
+### 2026-11-21 — TT allocation change (F-20, `unsafe` in `src/tt.rs`): before/after
+
+- Script: `/tmp/audit/tt_bench.py` (scratch; not in the repo). For each size: 5 cold starts; `setoption Hash N`, `isready`;
+  the first `go movetime 1` is timed (the table is allocated at the first `go`); RSS is read at idle and after a
+  `go movetime 500` search. Linux, 2 vCPU sandbox (not the reference machine).
+- Before: release build of the pre-change `src/tt.rs` (`52d6510`). After: working tree at this change.
+
+| Hash MiB | first-go ms before (median) | first-go ms after (median) | idle RSS MiB before / after | RSS after 500 ms before / after |
+|---|---|---|---|---|
+| 64 | 2.2 | 1.9 | 4.9 / 4.8 | 38.3 / 39.8 |
+| 256 | 1.8 | 2.9 | 4.8 / 4.8 | 50.2 / 44.9 |
+| 1024 | 2.2 | 2.9 | 4.8 / 4.8 | 49.8 / 33.2 |
+
+- Reading: the allocation stays lazy in both builds (about 2 ms for a table of up to 1 GiB, so pages are not written).
+  The RSS-after-search columns vary from run to run in both builds (33–50 MiB); no systematic difference is shown.
+  This is a sandbox measurement, not a claim about the reference machine.

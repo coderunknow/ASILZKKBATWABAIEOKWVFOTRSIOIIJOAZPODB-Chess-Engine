@@ -723,3 +723,25 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   legal move that is in `searchmoves`; if none is legal, the widened first legal move (as the search does). Regression:
   `protocol_regressions::spawn_fallback_respects_searchmoves` (Linux): fails on the pre-fix code (`bestmove a2a3`), passes on
   the fix (`bestmove d2d4`). F-22 (fallback bypasses the output hold for `go infinite`/`go ponder`) remains OPEN.
+- F-20 FIXED (MAJOR, resources; found by CodeRabbit and Codex on `ce9f8d4`, `src/tt.rs:143-144`; code-verified, not
+  reproduced): `try_resize` released a probe reservation and then allocated the table with `vec![0; n]`. If that second
+  allocation was refused, Rust aborted. Fix: `zeroed_entries` (`src/tt.rs`) makes one `std::alloc::alloc_zeroed` call,
+  checks for null, and returns `TableAllocError` on refusal. This is the only `unsafe` in `src/`; the invariants are in its
+  doc comment (DESIGN_LOG "stretch 4", BENCHMARKING.md). The table stays lazily zeroed; `clear()` is no longer run on
+  resize. Tests: unit `zeroed_entries_are_zero_and_sized`, `zeroed_entries_reject_impossible_sizes`,
+  `try_resize_sets_the_entry_count_and_resets_counters`; process `hash_allocation_refusal_does_not_abort_the_engine`.
+  Benchmark: first `go` 1.8–2.9 ms before and after; idle RSS 4.8 MiB before and after.
+- F-22 FIXED (MINOR, protocol; found by CodeRabbit on `ce9f8d4`, `src/uci.rs:611`; reproduced): when the search thread
+  was refused, `go infinite` (and `go ponder`, bare `go`) printed `bestmove` at once. Pre-fix build (debug copy of the
+  pre-fix code): `bestmove a2a3` during the 1 s after `go infinite`, before `stop`. Fix: `pending_answer` holds the
+  answer; `stop_and_join` prints it on `stop`, `quit`, EOF, or the next `go`, exactly once. Fixed-time and fixed-depth
+  searches still answer at once, as before. Regression: `protocol_regressions::refused_thread_holds_bestmove_for_go_infinite_until_stop`
+  (fails on the pre-fix code with "bestmove printed before stop", passes on the fix).
+- REVIEW TRIAGE (CodeRabbit `ce9f8d4`, comments from 2026-11-20 that were still on the PR; checked against the current code):
+  - `scripts/uci_malformed_probe.py` (every bestmove on the complete transcript): already handled. The probe counts all replies
+    (`EXTRA_BESTMOVE`). Checked with a fake engine that prints each bestmove twice: the probe reports the extra replies.
+  - `scripts/uci_protocol_probe.py` (count after draining): already handled. Same fake engine: `2 bestmove lines on stdout`
+    failures.
+  - `benches/movetime-20261119/measure_movetime.py` (cleanup when a measurement fails): already handled. `run()` runs the
+    kill, wait, and close in a `finally` (lines 21-27), which covers `queue.Empty` and startup timeouts.
+  - Codex `src/search.rs:283-284` (`searchmoves` with no legal named move): the F-09 design decision, kept (see above).

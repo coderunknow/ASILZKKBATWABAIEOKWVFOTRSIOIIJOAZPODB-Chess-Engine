@@ -740,3 +740,87 @@ fn spawn_fallback_respects_searchmoves() {
         "fallback ignored searchmoves (expected bestmove d2d4):\n{out}"
     );
 }
+
+/// Kills and reaps the child when it goes out of scope, so a failing assertion cannot leave an engine
+/// running (the `Engine` harness does the same for the other tests).
+#[cfg(target_os = "linux")]
+struct KillOnDrop(std::process::Child);
+
+#[cfg(target_os = "linux")]
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Regression (F-22): when the OS refuses the search thread, `go infinite` must hold its bestmove
+/// until `stop`, as the normal search does. The fallback used to print `bestmove` at once.
+#[cfg(target_os = "linux")]
+#[test]
+fn refused_thread_holds_bestmove_for_go_infinite_until_stop() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let child = Command::new("sh")
+        .arg("-c")
+        .arg("ulimit -v 50000 && exec \"$0\" uci")
+        .arg(env!("CARGO_BIN_EXE_flawless"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn flawless under a 50 MB address limit");
+    let mut child = KillOnDrop(child);
+    let mut stdin = child.0.stdin.take().expect("stdin piped");
+    let stdout = child.0.stdout.take().expect("stdout piped");
+    let (tx, rx) = channel::<String>();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            match line {
+                Ok(l) => {
+                    if tx.send(l).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    let wait_for = |prefix: &str, limit: Duration| -> Option<String> {
+        let end = Instant::now() + limit;
+        loop {
+            let left = end.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left) {
+                Ok(l) if l.starts_with(prefix) => return Some(l),
+                Ok(_) => {}
+                Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {
+                    return None
+                }
+            }
+        }
+    };
+    stdin
+        .write_all(b"uci\nisready\nposition startpos\ngo infinite\n")
+        .expect("write");
+    stdin.flush().expect("flush");
+    assert!(
+        wait_for("readyok", Duration::from_secs(10)).is_some(),
+        "no readyok under the limit"
+    );
+    // Nothing may answer before `stop`: a `bestmove` here would come before the GUI asked for one.
+    let early = wait_for("bestmove", Duration::from_secs(1));
+    assert!(
+        early.is_none(),
+        "bestmove printed before stop during go infinite: {early:?}"
+    );
+    stdin.write_all(b"stop\n").expect("write stop");
+    stdin.flush().expect("flush");
+    let answer = wait_for("bestmove", Duration::from_secs(10));
+    assert!(
+        answer.is_some(),
+        "no bestmove after stop with the search thread refused"
+    );
+    stdin.write_all(b"quit\n").expect("write quit");
+    stdin.flush().expect("flush");
+}
