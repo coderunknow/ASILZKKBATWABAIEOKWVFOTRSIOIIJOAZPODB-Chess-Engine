@@ -816,3 +816,14 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
 - FUZZ AND PERFT SEEDS (extra, 2026-11-21, on 330ebfa): `fuzz_uci_grammar` 101 (60 sessions) and 202 (60) failures 0;
   `fuzz_legal_differential` 31 (8,356 agreements; 9 engine rejections, all within the material bound of F-01);
   `perft_random_differential` 30 (20 games, 356 positions, 1,068 checks) failures 0.
+
+- F-27 FIXED (LOW, harness and test gaps; no engine defect), found by CodeRabbit review 6002624944 on `d4b83a4` (03:42Z,
+  2 actionable): (a) `scripts/search_sweep.py` `next_line()` read the queue with a 0.1 s floor, so after the deadline a stream
+  of `info` lines could keep it reading, and the child was not reaped on the timeout path. Now the remaining time is checked
+  before each read, and every failure path kills and reaps the child. (b) `tests/protocol_regressions.rs`:
+  `spawn_fallback_respects_searchmoves` and `refused_thread_holds_bestmove_for_go_infinite_until_stop` did not assert the
+  "info string search thread unavailable" notice on stdout. Both now assert it. Mutation check (2026-11-21): replacing the
+  notice text with `...unavailablX` in `src/uci.rs` fails exactly those two tests (21 pass, 2 fail); restored byte-for-byte.
+  F-26 mutation (same session): restoring `60731d8`'s `src/uci.rs` fails 4 tests (`startpos_with_tokens_before_moves_is_refused_visibly`,
+  `unknown_option_is_reported_on_stdout`, `go_bad_value_is_reported_and_the_next_keyword_survives`, and
+  `unsupported_go_mate_is_reported_on_stdout`, which `330ebfa` added); restored byte-for-byte. `protocol_regressions` 23/0 on the fix.

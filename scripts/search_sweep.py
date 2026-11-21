@@ -52,12 +52,22 @@ def search(fen: str, depth: int) -> tuple[list[str], int, str]:
     out_lines: list[str] = []
     deadline = time.monotonic() + DEADLINE_S
 
+    def fail(msg: str) -> None:
+        # Kill and reap the child on every failure path so no engine outlives the probe.
+        p.kill()
+        p.wait()
+        raise RuntimeError(msg)
+
     def next_line() -> str | None:
+        # Check the remaining time before every read: a stream of `info` lines never empties the
+        # queue, so a bare get() with a floor could keep reading past the deadline.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            fail(f"no bestmove within {DEADLINE_S} s on {fen!r}")
         try:
-            return out_q.get(timeout=max(0.1, deadline - time.monotonic()))
+            return out_q.get(timeout=remaining)
         except queue.Empty:
-            p.kill()
-            raise RuntimeError(f"no bestmove within {DEADLINE_S} s on {fen!r}")
+            fail(f"no bestmove within {DEADLINE_S} s on {fen!r}")
 
     try:
         p.stdin.write(script)

@@ -729,6 +729,11 @@ fn spawn_fallback_respects_searchmoves() {
         out.lines().any(|l| l == "bestmove d2d4"),
         "fallback ignored searchmoves (expected bestmove d2d4):\n{out}"
     );
+    assert!(
+        out.lines()
+            .any(|l| l.starts_with("info string search thread unavailable")),
+        "refused thread was not announced on stdout:\n{out}"
+    );
 }
 
 /// Kills and reaps the child when it goes out of scope, so a failing assertion cannot leave an engine
@@ -797,6 +802,14 @@ fn refused_thread_holds_bestmove_for_go_infinite_until_stop() {
     assert!(
         wait_for("readyok", Duration::from_secs(10)).is_some(),
         "no readyok under the limit"
+    );
+    assert!(
+        wait_for(
+            "info string search thread unavailable",
+            Duration::from_secs(10)
+        )
+        .is_some(),
+        "refused thread was not announced on stdout after go infinite"
     );
     // Nothing may answer before `stop`: a `bestmove` here would come before the GUI asked for one.
     let early = wait_for("bestmove", Duration::from_secs(1));
