@@ -917,4 +917,4 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   yield exactly one bestmove, every isready a readyok, no spurious bestmove, exit 0): seeds 1 (5×150), 2, 3, 4 (25×300 each),
   release: 0 failures. Seed 7 (20×300) on the debug build: 0 failures.
   `scripts/searchmoves_probe.py` (bestmove and every multipv-1 PV root inside the searchmoves set): 297 positions MultiPV 3 seed 1:
-  0 failures; 300 positions MultiPV 1 seed 2: see below; 200 positions MultiPV 8 seed 3: see below.
+  0 failures; 300 positions MultiPV 1 seed 2: 0 failures; 197 positions MultiPV 8 seed 3: 0 failures.
