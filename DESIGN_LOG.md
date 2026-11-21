@@ -514,3 +514,14 @@ DRAFT ONLY — no code changes under this entry.
   explicitly.
 - Rejected alternative: eager `try_reserve` plus `resize(n, 0)`. Fallible, but it writes every page at resize (about
   1 GiB resident at Hash 1024 at the first search). That is a resource change that needs an owner's decision.
+
+## 2026-11-21 (stretch 5) — F-23: the increment never widens the planned spend past the usable clock
+
+- Question: with an increment larger than the remaining clock, should the engine spend the whole clock?
+- Decision: no. The planned spend (soft, and hard) stays within `t - reserve`, whatever the increment. The increment
+  share (`inc/2`) still counts toward the plan, but only inside the usable clock. The reserve is what protects against
+  per-move overhead and a flag; spending the whole clock on one move gives the GUI nothing to absorb it.
+- Effect: only when `usable/movestogo + inc/2 > usable`, i.e. `movestogo` 1 or a very large increment. Normal
+  schedules (for example 40 moves in 15 minutes) are unchanged; the existing expected values still pass.
+- Evidence: unit regression `clock_limits_never_plan_past_the_usable_clock_with_large_increment`; process timing in
+  FAILURE_LEDGER F-23.

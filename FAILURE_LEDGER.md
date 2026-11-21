@@ -756,3 +756,11 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   NOT VERIFIED: the download is blocked from this sandbox (the blob host is not on the outbound allowlist; EOF through
   `gh run download` and an SSL error on a direct request). The manifest and SHA256 of the zip are not checked. No Windows
   GUI test is part of the release.
+- F-23 FIXED (MEDIUM, time management; found by the 2026-11-21 audit by reading `clock_limits`; reproduced in a unit
+  test): the increment share `inc/2` was added after the division by `movestogo` and only clamped to the whole clock.
+  With an increment larger than the clock, `soft` equalled the whole remaining time (`clock_limits(WHITE, 1000, 1000,
+  2000, 2000, Some(40))` gave soft 1000 where the usable clock is 700), and `hard` followed. The GUI adds the increment
+  after the move, so a move planned to use the whole clock could flag. This also broke the invariant written in the
+  function's comment (planned spend <= t - reserve). Fix: `.min(usable)` before the floor and the clock clamp.
+  Regression: `uci::tests::clock_limits_never_plan_past_the_usable_clock_with_large_increment` (failed before the fix,
+  passes after; existing expected values unchanged). Process check (`wtime 1000 winc 2000`): bestmove after 0.36–0.40 s.

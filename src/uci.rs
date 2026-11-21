@@ -843,9 +843,12 @@ pub fn clock_limits(
     // engine never plans past the remaining clock.
     let reserve = (t / 16).clamp(300, 8_000);
     let usable = t.saturating_sub(reserve);
+    // The increment share is part of the plan only within the usable clock (F-23): an increment
+    // larger than the clock must not make soft (or hard) the whole clock.
     let soft = usable
         .saturating_div(mtg)
         .saturating_add(inc / 2)
+        .min(usable)
         .max(20)
         .min(t);
     let cap = t.saturating_sub(reserve / 2).max(soft);
@@ -881,6 +884,36 @@ pub fn run_uci() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clock_limits_never_plan_past_the_usable_clock_with_large_increment() {
+        // Regression (F-23): `inc/2` was added after the division and only clamped to the whole
+        // clock, so with an increment larger than the clock, soft (and hard) equalled the whole
+        // remaining time. A GUI adds the increment only after the move, so such a move could flag.
+        // The planned spend must stay within `t - reserve` (the usable clock), for any increment.
+        for &(t, inc, mtg) in &[
+            (1_000u64, 2_000u64, Some(40u64)),
+            (10_000, 20_000, Some(40)),
+            (900, 5_000, Some(1)),
+            (3_000, 60_000, None),
+            (250, 10_000, Some(40)),
+        ] {
+            let reserve = (t / 16).clamp(300, 8_000);
+            let usable = t.saturating_sub(reserve);
+            for side in [WHITE, WHITE + 1] {
+                let (s, h) = clock_limits(side, t, t, inc, inc, mtg);
+                assert!(
+                    s <= usable.max(20),
+                    "soft {s} plans past usable {usable} (t={t} inc={inc})"
+                );
+                assert!(
+                    h <= usable.max(20),
+                    "hard {h} plans past usable {usable} (t={t} inc={inc})"
+                );
+                assert!(h >= s, "hard {h} below soft {s}");
+            }
+        }
+    }
 
     #[test]
     fn clock_limits_respect_remaining_time() {
