@@ -89,11 +89,14 @@ fn cmd_perft(args: &[String]) {
 }
 
 fn cmd_divide(args: &[String]) {
+    // Depth 0 is refused (F-36): `perft_divide` gives each root move `perft(0) = 1`, so the total
+    // (the number of root moves) would contradict `perft 0` = 1. A divide needs at least one ply.
     let depth: u32 = args
         .first()
         .and_then(|s| s.parse().ok())
+        .filter(|&d| d >= 1)
         .unwrap_or_else(|| {
-            flawless::err_line!("usage: divide <depth> [fen]");
+            flawless::err_line!("usage: divide <depth >= 1> [fen]");
             std::process::exit(2);
         });
     let fen = args.get(1).map(|s| s.as_str());
