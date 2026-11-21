@@ -89,6 +89,11 @@ impl std::fmt::Display for TableAllocError {
 
 const MATE_BOUND: i32 = crate::eval::MATE_SCORE - 100;
 
+/// Largest power of two that is at most `n` (`n` must be at least 1).
+fn prev_power_of_two(n: usize) -> usize {
+    1usize << (usize::BITS - 1 - n.leading_zeros())
+}
+
 /// Allocates `n` zeroed table entries, or reports a refused allocation.
 ///
 /// This is the only `unsafe` in `src/` (test code has one FFI block, see F-18). Its purpose:
@@ -174,8 +179,10 @@ impl TranspositionTable {
     pub fn try_resize(&mut self, size_mb: usize) -> Result<(), TableAllocError> {
         let bytes = size_mb.max(1) * 1024 * 1024;
         let want_entries = bytes / 8;
-        // Keep a reasonable bound: at least 1024 entries, at most 2^27 entries (1 GiB).
-        let entries = want_entries.clamp(1024, 1 << 27).next_power_of_two();
+        // Keep a reasonable bound: at least 1024 entries, at most 2^27 entries (1 GiB). The count is
+        // rounded DOWN to a power of two, so the table never holds more than the requested MiB (F-40:
+        // rounding up made `Hash 65` allocate 128 MiB and `Hash 513` allocate 1 GiB).
+        let entries = prev_power_of_two(want_entries.clamp(1024, 1 << 27));
         self.entries = zeroed_entries(entries)?;
         self.len_mask = entries - 1;
         // The entries are already zero; only the counters and the generation need resetting.
@@ -533,5 +540,38 @@ mod mate_score_range_tests {
         assert_eq!(tt.entries.len(), 2 * 1024 * 1024 / 8);
         assert_eq!((tt.stores, tt.hits), (0, 0));
         assert!(tt.entries.iter().all(|&v| v == 0));
+    }
+}
+
+#[cfg(test)]
+mod size_tests_f40 {
+    use super::*;
+
+    /// F-40: the allocated table never exceeds the requested size, and is at least half of it
+    /// (up to the 1 GiB cap). Before the fix, 65 MiB allocated 128 MiB and 513 MiB allocated 1 GiB.
+    #[test]
+    fn allocated_table_never_exceeds_the_requested_size() {
+        for mb in [
+            1usize, 2, 3, 16, 33, 64, 65, 100, 129, 500, 513, 1000, 1023, 1024, 4096,
+        ] {
+            let mut tt = TranspositionTable::try_new(1).expect("1 MiB table");
+            tt.try_resize(mb).expect("resize");
+            let bytes = tt.entries.len() * 8;
+            let want = mb.min(1024) * 1024 * 1024 / 1024 * 1024; // MiB → bytes, capped at 1 GiB
+            assert!(bytes <= want, "{mb} MiB requested, {bytes} bytes allocated");
+            assert!(
+                bytes * 2 > want.min(1 << 30),
+                "{mb} MiB requested, only {bytes} bytes allocated"
+            );
+        }
+    }
+
+    #[test]
+    fn power_of_two_sizes_are_unchanged() {
+        for mb in [1usize, 16, 64, 1024] {
+            let mut tt = TranspositionTable::try_new(1).expect("1 MiB table");
+            tt.try_resize(mb).expect("resize");
+            assert_eq!(tt.entries.len() * 8, mb * 1024 * 1024, "{mb} MiB");
+        }
     }
 }

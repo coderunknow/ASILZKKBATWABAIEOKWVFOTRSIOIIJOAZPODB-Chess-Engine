@@ -595,3 +595,8 @@ DRAFT ONLY — no code changes under this entry.
 - Decision: the rule already used for time values applies to these two as well. A digit-only value beyond the type saturates (depth to `i32::MAX`, then clamped to 64; nodes to `u64::MAX`). A negative depth saturates to `i32::MIN` (clamped to 1, as `-1` already was). A negative node count is 0, as a negative time is 0 (answers at once).
 - Not changed: `go movestogo` (parsed as `u64`, overflow already saturates through the parser; it is not `Option<u32>`), `setoption` values, and the `go ponder movetime` decision above.
 - Tests: `out_of_range_go_depth_and_nodes_saturate_instead_of_being_ignored`, `negative_go_depth_and_nodes_answer_at_once` (tests/protocol_regressions.rs). Both time out (20 s) on the pre-fix source and pass on the fix.
+
+## 2026-11-21 — F-40: Hash sizes round down to a power of two (the table never exceeds the request)
+- Found by audit: `try_resize` rounded the entry count up, so a non-power-of-two Hash allocated up to 2× the requested size (`Hash 513` → 1 GiB). The engine reported the requested size.
+- Decision: round down. The table is at least half the requested size and never more; the 1 GiB cap and the 1024-entry floor are unchanged. Power-of-two sizes are unchanged, so the bench signature `849a85bf7e8e1eba` is unchanged.
+- Cost: `Hash 100` now gives 64 MiB, not 128 MiB. A user who wants the full 100 MiB gets 64 MiB; the info string on the reduction path is not printed for this (the table is smaller than requested by design, not refused).
