@@ -562,3 +562,12 @@ The RATING-100 power assessment remains ENGINE-1-specific. Its screening inputs 
   - the RATING-100 power report and its guard in `scripts/power_analysis.py` stay pinned to ENGINE-1 and will fail closed on the CLOCK-1 binary; this is intended;
   - no screening, control, or confirmatory game is authorized by this entry. Before any use of the CLOCK-1 binary in rating evidence, its hash must be frozen in a later append-only entry, and screening and controls must be re-registered on that hash.
 - **Question put to the owner (verbatim options):** (a) amend ENGINE-1 and fix; (b) keep the formula and document the limit; (c) defer to a later release. Owner selected (a).
+
+### CLOCK-1 binary identity freeze — ATTEMPTED, NOT FROZEN (2026-11-21, append-only)
+
+- Purpose: the CLOCK-1 entry above says the new binary's hash must be frozen in a later append-only entry before any rating use. The owner's F-32 decision also asked for the refreeze and a gate and CI run on the new head.
+- Head checked: `000266e` (source identical to the gated tree; later commits are ledger and docs only). Full local gate PASS (45 steps, FAILS=0; FAILURE_LEDGER.md). CI on `000266e`: `CI` run 44886526755 success; `anchor-verify` run 44886526780 success; its job `verify-flawless` (136792890005) success.
+- Required by line 512 of this file: a successful exact-head anchor-verification run must publish the binary SHA-256. That value is NOT readable from this sandbox. Attempts, all failed with blob-storage EOF: `gh run download 44886526780 -n flawless-verify-44886526780` (blob URL), `gh api .../actions/artifacts/14700342084/zip`, and `gh api .../actions/jobs/136792890005/logs`. The check-run summary is empty.
+- Therefore no hash is frozen by this entry. The local release SHA-256 of `000266e` (`0d9c508d…`, local build only) is NOT the hosted identity and is not recorded here as a freeze.
+- Consequences (unchanged): ENGINE-1 hash `9663697d…` and ENGINE-2 (SEE) hash `168dc0ab…` still describe the pre-CLOCK-1 binary. No screening, control, rating, or confirmatory game is authorized. The RATING-100 power guard continues to fail closed.
+- Next step, when the manifest is readable: take the SHA-256 of the `verify-flawless` binary from the exact-head anchor-verification run for the final head, append a new entry with that value, its run ID, and the source commit, and only then re-register screening on it.
