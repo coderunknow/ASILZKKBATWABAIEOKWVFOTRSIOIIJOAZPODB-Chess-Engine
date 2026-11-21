@@ -651,3 +651,40 @@ result + uncertainty, suspected mechanism (hypothesis), what was learned, next e
   `extern "C"` block are `#[cfg(unix)]`; `Read` moved into the test body. The test still runs on Linux (17/17 pass).
   Not verifiable locally: no Windows target is installed, so the fix is confirmed by the CI run on the new head.
   Log for CI job 136423393755 downloads failed with EOF; the step result and annotation were used instead.
+- F-14 EVIDENCE ADDED (2026-11-21 re-check; the classification above stands): the earlier note "not reproduced" was
+  wrong. It looked only at bestmove legality, which is legal in both builds because the fallback picks the first legal
+  move. Comparing the pre-fix build (`0d4fda1`) with HEAD on five insufficient-material roots (K v K, K+N v K, K+B v K,
+  K+B v k as Black, K+N v k as Black), `go depth 4`, single PV: pre-fix gives `info depth 4 seldepth 0 ... nodes 4 ... pv`
+  (empty) and bestmove legal; HEAD gives `seldepth 1`, nodes 24-52, a non-empty PV whose first move is the bestmove.
+  The regression test `insufficient_material_root_is_searched_and_yields_a_pv` fails on `0d4fda1` with
+  "empty PV" and passes on HEAD. Interior nodes keep the draw rule, so scores are unchanged (0).
+- F-19 (LOW, hardening, NOT a reproduced defect): the three `flush` mutex `unwrap()`s in `src/uci.rs` now recover a
+  poisoned lock (`lock_ignoring_poison`, introduced in `df6417d`). The guarded value is `()`, so a poisoned lock holds no
+  state to protect. No regression test: the path needs a panic while the lock is held, and there is no way to produce one
+  through the protocol. Recorded so the change is traceable; not claimed as a fixed defect.
+- F-09 RE-RAISED (not a new defect): Codex review on `a400e80` (`src/search.rs:283`, P2) repeats the F-09 point that
+  `go searchmoves` with no legal named move should preserve the empty intersection or reject. The documented decision
+  (DESIGN_LOG 2026-11-20) is kept: refuse the null move, search the legal moves, and announce the widening on stdout.
+  Reason: the earlier known defect was a `bestmove 0000` answer, and UCI requires a bestmove. This is a
+  design disagreement and stays open for the user; it is not silently changed.
+- ENVIRONMENT EVENT (2026-11-21 ~01:56 UTC): a sandbox restore left the repo as a fresh clone at `c25e65e` with the
+  working tree restored. The local commits `1d2cd24`..`a400e80` were not in the clone, but `origin` held `a400e80`, so
+  nothing pushed was lost. The one unpushed commit (`0105db2`, F-18) survived as working-tree changes, which were
+  verified byte-for-byte against `a400e80` (exactly the two F-18 files) and recommitted as `ffd6b04` (same tree; new
+  hash, since commit metadata differs). `/home/user/.toolchain` and `/home/user/.venv` were gone and were reinstalled from
+  the pinned `@toolchain-bin` npm tarballs (rustc, cargo, rust-std, clippy 0.1.99, rustfmt 1.10.0; install.sh --prefix)
+  and `chess==1.11.2` from PyPI. `/tmp/gates` scripts were lost; the gate script was rebuilt from the same steps.
+- F-11 MUTATION CHECK DONE (2026-11-21): on a copy of HEAD with the `self.position_invalid = true;` line removed from the
+  `LineRead::TooLong` arm, `oversized_position_line_does_not_leave_the_old_position_in_use` FAILS (`go` answers
+  `bestmove b1c3`, i.e. it searches the old position; expected `bestmove 0000`). On the fix it passes.
+- F-18 VERIFIED IN CI: run 44853133810 on `ffd6b04` (CI): success on ubuntu-latest, windows-latest, msrv (rust 1.80), and
+  the windows x64 release artifact job. anchor-verify 44853133745: success. The failure on `a400e80` (run 44777328791,
+  job 136430504382) was the same `Clippy (deny warnings)` step on Windows.
+- RSS AT HASH 1024 (sustained search; `/tmp/audit/rss1024.py`, one process, `go movetime 2000-3000` per round, four
+  positions): idle 4.8 MiB; after round 1, 272 MiB; round 12, 964 MiB; round 29, 1007 MiB, still rising at about 1-3
+  MiB per round. Consistent with lazily zeroed table pages being touched as the 1024 MiB table fills, so the ceiling
+  should be roughly table size plus overhead (earlier hash-cycle measurement: 1029-1046 MiB). NOT proven capped: no
+  plateau was observed in the time available. Not a leak claim: the table size is fixed and no second table is
+  allocated (`hash_cycle.py`: 30 resizes, exit 0).
+- G3 (Windows artifact, `ffd6b04`, artifact 14686132529, 211,374 bytes): `gh run download` and the REST artifact zip both
+  failed with EOF from the blob host. NOT VERIFIED. No manifest or SHA256 was checked from the downloaded file.

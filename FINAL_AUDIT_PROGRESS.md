@@ -238,3 +238,55 @@ Commits: `7d5b489` (Phase I source) → `6102643` (Phase I ledger, docs only) �
 **Gate summary for the final head `c6fc956`:** G1 CI PASS. G2 CodeRabbit NOT OBTAINED (rate-limited). G3 Windows artifact NOT VERIFIED (EOF). G4 GUI N/A. G5 local gates PASS. G6 MSRV 1.80 PASS in CI.
 
 **Release decision:** NOT RELEASED. PR #4 is NOT merged. No tag `v0.1.0`, no GitHub Release. Open gates: G2 and G3. Next check: when CodeRabbit posts a review with `commit_id` `c6fc956`, triage it; if its findings change source, that is a new SHA and the full gate set and CI run again. The Windows artifact needs a network that can reach the blob host, or the user verifies it directly.
+
+## Phase K — audit stretch to 10:00 UTC+7 (2026-11-21): F-14 evidence, F-18 CI fix, restore recovery
+
+Commits (branch `arena/f668bde4-flawlesschess`, PR #4): `a400e80` (F-16/F-17, pushed earlier; CI failed on Windows clippy)
+→ `ffd6b04` (F-18: Unix-only pipe test gated with `cfg(unix)`, pushed; CI success on all four jobs). The docs commit that
+adds this section is the final head; its source tree is identical to `ffd6b04` (no `src/`, `tests/`, `scripts/`, or
+`Cargo.toml` change, checked by `git diff --stat ffd6b04 HEAD -- src tests scripts Cargo.toml`).
+
+**Sandbox restore (2026-11-21 ~01:56 UTC):** the clone was rebuilt at `c25e65e`; `origin` still held `a400e80`, so no pushed
+commit was lost. The unpushed F-18 commit survived as working-tree changes (verified exactly the two files), and was
+recommitted. The Rust toolchain (`@toolchain-bin` pins) and the venv (`chess==1.11.2`) were reinstalled. See FAILURE_LEDGER.md.
+
+**CI:** `a400e80` run 44777328791 failed on `windows-latest` at `Clippy (deny warnings)` (job 136430504382): the F-13 test
+used a Unix-only pipe binding without a `cfg` gate. Fixed in `ffd6b04` (F-18). Run 44853133810 on `ffd6b04`: success for
+`ubuntu-latest`, `windows-latest`, `msrv (rust 1.80)`, and `windows x64 release artifact`. anchor-verify 44853133745: success.
+
+**Local gates on `ffd6b04`** (`/tmp/gates/final-ffd6b04/summary.txt`, `commit ffd6b04…`, `dirty_files 0`): 34 of 34 rows rc=0.
+Release tests 107 passed, 0 failed; debug tests 101 passed, 0 failed; clippy release and debug with `-D warnings` clean;
+`cargo fmt --check` clean; bench signature `849a85bf7e8e1eba`; `time_budget_probe` 8/8; `uci_extreme_args_probe` 0 failures;
+perft random differential seeds 2 and 8: 0 mismatches (seeds 8 and 9 were read earlier: 0 mismatches each); legal
+differential seeds 1 and 7: 0 failures; search sweep debug seed 3 and release seed 2: PASS; full-game en passant PASS;
+UCI grammar fuzz seeds 9 and 21: 0 failures.
+
+**Findings in this stretch:**
+- F-14 (LOW, fixed in `df6417d`): the earlier "not reproduced" note was wrong. Pre-fix build `0d4fda1` gives an empty PV at
+  the insufficient-material root (nodes 4). HEAD searches the root (nodes 24-52, PV present). Regression test fails on the
+  pre-fix build with "empty PV".
+- F-18 (LOW, CI portability, fixed in `ffd6b04`): see CI above.
+- F-19 (hardening, not a reproduced defect): lock poisoning recovery in the flush paths. No regression test.
+- F-11 mutation check: removing the fix makes its regression test fail (`bestmove b1c3` instead of `0000`). Verified.
+- RSS at Hash 1024: 1007 MiB after 29 searches and still rising; not shown to plateau (see FAILURE_LEDGER.md).
+
+**Probes run (scratch, outside the repo unless noted):**
+- MultiPV 256 on start position, K v K, and a 17-move position: lines equal the legal-move count (20, 5, 17); exit 0.
+- Responsiveness: `isready` during `go infinite` on Kiwipete (Hash 256): `readyok` in under 1 ms; `stop` answered in under 1 ms (5 trials).
+- Mate sign: side being mated gets `score mate -1` (probe on `a400e80`, four positions, earlier in this session).
+- Codex review on `a400e80` (`src/search.rs:283`, P2): repeats F-09 (`searchmoves` with no legal named move). Kept the documented
+  decision (refuse null move, widen to legal moves, announce on stdout). Open design point for the user.
+
+**Gate summary for the final head (source `ffd6b04`):**
+G1 CI: PASS (run 44853133810 and anchor-verify 44853133745).
+G2 CodeRabbit on final head: see the PR comment for the request result; NOT CLAIMED unless a review with that commit_id is received.
+G3 Windows artifact `flawless-windows-x64-ffd6b04dc03bb3d0616941e13bc49b1cb798d36b` (14686132529, 211,374 bytes): NOT VERIFIED (blob EOF on `gh run download` and REST zip).
+G4 GUI: N/A (no GUI in the release).
+G5 local gates: PASS on `ffd6b04` (34/34).
+G6 MSRV 1.80: PASS in CI on `ffd6b04`.
+
+**Release decision: NOT RELEASED.** PR #4 is not merged. No tag `v0.1.0`, no GitHub Release. G3 is not verified, and G2 has no
+review on the final head. Both must pass before any release step.
+
+**Open items (not claimed fixed):** Codex P2 `searchmoves` design point (F-09); RSS plateau at Hash 1024 not shown; `go ponder
+movetime` clock start (DESIGN_LOG); kilo billing-blocked (not bypassed).
